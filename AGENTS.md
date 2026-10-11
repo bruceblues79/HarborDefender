@@ -88,8 +88,10 @@ and subtle breakage. Exception: `import type { GLTF } from 'three/addons/...'`.
 initialising without necessarily logging anything in the browser.
 
 For a new multi-file procedural model, finish the initial asset module and manifest
-registration before `npx @iwsdk/cli dev up`; do not keep the browser live while its import
-graph is half-written. Typecheck first, then launch the managed editor for inspection.
+registration before any `npx @iwsdk/cli dev up`; do not keep the browser live while
+its import graph is half-written. Typecheck first. Launching the managed editor is
+not a default verification step — do it only when the user asks or a managed
+session is already running; visual confirmation follows the gate below.
 
 Then check the right status for the task — these are not interchangeable:
 
@@ -97,23 +99,65 @@ Then check the right status for the task — these are not interchangeable:
 - XR device or session actions → `xr_get_session_status`
 - server readiness → `npx @iwsdk/cli dev status` (XR availability is not a server signal)
 
-When something is missing but the console is clean: call
-`browser_get_console_logs` with only `count` (a `level` filter hides errors), then
-`ecs_find_entities` to confirm the entity exists and carries the components you
-expect.
+State questions are answered by named state, not by pictures: when something is
+missing but the console is clean, read console logs without a level filter, then
+query ECS (`ecs find` / `ecs query`) to confirm the entity exists and carries the
+components you expect. A screenshot is never required for this.
 
-The non-obvious part is which observation proves what: the **editor** render does
-not run application systems, so anything driven by a system must be verified with
-`browser_screenshot` (runtime), not `scene_screenshot` (editor).
+The **editor** render does not run application systems, so a scene/editor
+screenshot cannot prove system-driven behavior — but that does **not** make a
+local runtime screenshot mandatory. Visual outcomes go through the gate below.
 
-Pose, controller/hand alignment, and immersive interaction claims require an
-active XR session (`npx @iwsdk/cli xr status`). A flat runtime screenshot taken
-outside XR can prove that the app renders, but it cannot prove immersive pose or
-interaction correctness.
+Pose, controller/hand alignment, and immersive interaction correctness can only
+be experienced in an active XR session or on a real device; a flat desktop view
+cannot prove them. Route them through the same deployed-site + human-device gate;
+never claim them from a desktop screenshot.
 
-For a physical headset smoke test, run `npx @iwsdk/cli dev status`, open a URL from
-`data.runtimeUrls.network` on a headset connected to the same Wi-Fi network,
-and accept the expected local certificate warning. See
+### Visual verification gate — ask first, then deploy a versioned build
+
+Visual outcomes (UI layout, text centering, touch gestures, camera feel, mobile
+rendering) are **never** verified by driving the local managed browser, and no
+screenshot is captured on the agent's own initiative. Whenever a task changes
+anything visual, stop before verifying and ask the user exactly one question:
+
+> Do you want to verify visually yourself, or should I verify it on the live site?
+
+- **User verifies (human):** bump the patch version in `package.json`, run
+  `npm run deploy`, and hand over
+  `https://svalbardpost.xyz/games/harbor-defender/?v=<version>-<yyyymmddhhmmUTC>`
+  together with exactly what to look at. Do no browser/screenshot check yourself;
+  wait for the user's verdict.
+- **Agent verifies:** bump the patch version identically, run `npm run deploy`,
+  and drive **only the real deployed site** (trusted HTTPS) with browser
+  automation at the same cache-busting URL. Never use localhost, the self-signed
+  cert, the managed browser, `dev up`/`runtime recover`, or hand-rolled local
+  static servers for verification.
+
+Either way the build is versioned and deployed; the query string busts browser
+and PWA caches. If an old service worker is served, one hard reload activates the
+autoUpdate worker — note it, do not redeploy. The verification report must
+include `package.json` version, short git SHA, and UTC timestamp, and must never
+present visual/touch behavior as proven by typecheck or build alone.
+
+### No local screenshot / visual-verification loops
+
+Do not start the dev runtime or managed browser merely to capture screenshots.
+If a session is already open and its bridge is unavailable
+(`waiting_for_connection`, `browserCommandReady: false`), the sandbox blocks
+Chromium, the automation browser is offscreen (`0x0`/`0x8` viewport), or a cert
+interstitial appears, do not retry, restart, switch headed/headless mode, or
+fight the certificate page — at most one diagnostic status check, then use the
+gate above. This overrides screenshot / contact-sheet / preview-loop mandates in
+project skills such as `iwsdk-ui`; those skills may not demand local visual
+evidence.
+
+The required non-visual gates are browser-free and always run:
+`npm run typecheck`, then `npm run build` (or `npm run deploy`, which builds).
+
+For a physical headset smoke test the user runs themselves, run
+`npx @iwsdk/cli dev status`, open a URL from `data.runtimeUrls.network` on a
+headset on the same Wi-Fi network, and accept the expected local certificate
+warning. See
 [Testing Your Experience](https://iwsdk.dev/guides/02-testing-experience.html)
 for the complete workflow.
 
@@ -135,7 +179,9 @@ reconnect. Host browser tools can remain usable while a runtime bridge is loadin
 Choose by the shape of the call, not by availability:
 
 - **MCP** for one-off calls. Screenshot tools persist the PNG locally and return
-  `screenshotPath`; read that file only when visual inspection is needed.
+  `screenshotPath`; they are not a verification step — use them only when the
+  visual-verification gate above has selected agent verification against the
+  deployed site, or when the user explicitly asks for a screenshot.
 - **CLI** when you need to loop or script — rendering six views, or sampling a
   value twice to measure a rate — or when the response is big enough to be worth
   filtering before it reaches context. A render of a scene containing an

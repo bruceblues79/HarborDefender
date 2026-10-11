@@ -5,60 +5,171 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { createSystem, VisibilityState } from '@iwsdk/core';
+import { createSystem, UIKitMLAsset, Vector3, VisibilityState } from '@iwsdk/core';
 
 /**
- * Browser-mode camera look-around system.
+ * Browser-mode (non-immersive) touch/mouse camera rig.
  *
- * Camera is fixed at the position configured in iwsdk.config.json
- * (0, 1.5, 0). Dragging with pointer (mouse/touch) rotates yaw and
- * pitch to simulate looking around from a standing position.
- * Automatically disabled during XR sessions.
+ * IWSDK does not own browser camera controls, so this system implements them:
+ * - One pointer drag: first-person look-around (yaw + pitch only, never roll).
+ *   Drag right -> look right; drag up -> look up.
+ * - Two pointer drag: grab-style pan of the camera position on the ground
+ *   plane (drag the world under the fingers, like R3F orbit panning).
+ * - Two pointer pinch: dolly forward/back along the view direction.
+ *
+ * The rig only runs outside XR; during an immersive session the tracked player
+ * owns the camera.
  */
+
+const LOOK_SPEED = 0.004; // radians per dragged pixel
+const PAN_SPEED = 0.0035; // metres per dragged pixel
+const DOLLY_SPEED = 0.015; // metres per pixel of pinch gap change
+const PITCH_LIMIT = Math.PI / 2 - 0.05;
+
+type DragMode = 'none' | 'look' | 'move';
+
 export class CameraLookSystem extends createSystem({}) {
   private yaw = 0;
   private pitch = 0;
-  private isDragging = false;
-  private lastX = 0;
-  private lastY = 0;
+  private mode: DragMode = 'none';
+  private readonly pointers = new Map<number, { x: number; y: number }>();
+  // Pointers whose press landed on an interactive UI element: the UI owns the
+  // whole gesture, so the camera rig must not react to it at all.
+  private readonly blockedPointers = new Set<number>();
+  // Last anchor for look mode (the single tracked pointer).
+  private lookLast = { x: 0, y: 0 };
+  // Last anchors for move mode (two-pointer midpoint + gap).
+  private moveMid = { x: 0, y: 0 };
+  private moveGap = 0;
+
+  private readonly right = new Vector3();
+  private readonly forward = new Vector3();
+  private readonly move = new Vector3();
 
   init(): void {
     const canvas = this.world.renderer.domElement;
+    // Without this, mobile browsers intercept touch drags for page
+    // scroll/zoom and only deliver sparse, cancelled pointer events —
+    // this is what made look-around feel stuck/janky.
+    canvas.style.touchAction = 'none';
+
     canvas.addEventListener('pointerdown', this.onPointerDown);
-    window.addEventListener('pointermove', this.onPointerMove);
+    canvas.addEventListener('pointermove', this.onPointerMove);
     window.addEventListener('pointerup', this.onPointerUp);
+    window.addEventListener('pointercancel', this.onPointerUp);
+
+    // A press starting on the ENTER GAME button belongs to the button (tap /
+    // click / button drag), never to the camera rig. UIKitML buttons live
+    // inside the same WebGL canvas, so their pointer events are synthetic;
+    // they share the exact hit-test that fires the button's own click.
+    const enterGameButton = this.world
+      .getSceneObject<UIKitMLAsset>('welcome-panel')
+      ?.getElementById('enter-game-button');
+    const onUiPointerDown = (e: { pointerId: number }): void => {
+      this.blockedPointers.add(e.pointerId);
+    };
+    enterGameButton?.addEventListener('pointerdown', onUiPointerDown);
 
     this.cleanupFuncs.push(
       () => canvas.removeEventListener('pointerdown', this.onPointerDown),
-      () => window.removeEventListener('pointermove', this.onPointerMove),
+      () => canvas.removeEventListener('pointermove', this.onPointerMove),
       () => window.removeEventListener('pointerup', this.onPointerUp),
+      () => window.removeEventListener('pointercancel', this.onPointerUp),
+      () =>
+        enterGameButton?.removeEventListener('pointerdown', onUiPointerDown),
     );
   }
 
   private onPointerDown = (e: PointerEvent): void => {
-    this.isDragging = true;
-    this.lastX = e.clientX;
-    this.lastY = e.clientY;
+    if (this.world.visibilityState.peek() !== VisibilityState.NonImmersive) {
+      return;
+    }
+    // Press started on a UI element: ignore this pointer for the gesture.
+    if (this.blockedPointers.has(e.pointerId)) return;
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (this.pointers.size === 1) {
+      this.mode = 'look';
+      this.lookLast.x = e.clientX;
+      this.lookLast.y = e.clientY;
+    } else if (this.pointers.size === 2) {
+      // Adding a second finger switches to move mode; re-anchor so the new
+      // finger does not cause a position jump.
+      this.mode = 'move';
+      this.refreshMoveAnchor();
+    }
   };
 
   private onPointerMove = (e: PointerEvent): void => {
-    if (!this.isDragging) return;
-    const dx = e.clientX - this.lastX;
-    const dy = e.clientY - this.lastY;
-    this.yaw -= dx * 0.005;
-    this.pitch -= dy * 0.005;
-    // Clamp pitch to avoid gimbal lock flip
-    this.pitch = Math.max(
-      -Math.PI / 2 + 0.1,
-      Math.min(Math.PI / 2 - 0.1, this.pitch),
-    );
-    this.lastX = e.clientX;
-    this.lastY = e.clientY;
+    if (this.mode === 'none' || !this.pointers.has(e.pointerId)) return;
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (this.mode === 'look' && this.pointers.size === 1) {
+      const dx = e.clientX - this.lookLast.x;
+      const dy = e.clientY - this.lookLast.y;
+      // Drag right -> look right; drag up -> look up. YXZ order keeps the
+      // movement a pure yaw/pitch with zero roll (z rotation untouched).
+      this.yaw -= dx * LOOK_SPEED;
+      this.pitch -= dy * LOOK_SPEED;
+      this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch));
+      this.lookLast.x = e.clientX;
+      this.lookLast.y = e.clientY;
+    } else if (this.mode === 'move' && this.pointers.size >= 2) {
+      const pts = [...this.pointers.values()];
+      const midX = (pts[0].x + pts[1].x) / 2;
+      const midY = (pts[0].y + pts[1].y) / 2;
+      const gap = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+
+      const dx = midX - this.moveMid.x;
+      const dy = midY - this.moveMid.y;
+      const dGap = gap - this.moveGap;
+      this.applyMove(dx, dy, dGap);
+
+      this.moveMid.x = midX;
+      this.moveMid.y = midY;
+      this.moveGap = gap;
+    }
   };
 
-  private onPointerUp = (): void => {
-    this.isDragging = false;
+  private onPointerUp = (e: PointerEvent): void => {
+    this.pointers.delete(e.pointerId);
+    this.blockedPointers.delete(e.pointerId);
+    if (this.pointers.size === 0) {
+      this.mode = 'none';
+    } else if (this.pointers.size === 1) {
+      // One finger remains after releasing the other: re-anchor look mode so
+      // the view does not jump.
+      this.mode = 'look';
+      const remaining = [...this.pointers.values()][0];
+      this.lookLast.x = remaining.x;
+      this.lookLast.y = remaining.y;
+    }
   };
+
+  private refreshMoveAnchor(): void {
+    const pts = [...this.pointers.values()];
+    this.moveMid.x = (pts[0].x + pts[1].x) / 2;
+    this.moveMid.y = (pts[0].y + pts[1].y) / 2;
+    this.moveGap = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+  }
+
+  private applyMove(dx: number, dy: number, dGap: number): void {
+    const camera = this.world.camera;
+    // Ground-plane basis from the current yaw: right and horizontal forward.
+    this.right.setFromMatrixColumn(camera.matrixWorld, 0);
+    this.right.y = 0;
+    this.right.normalize();
+    this.forward.crossVectors(camera.up, this.right).normalize();
+
+    // Grab-style pan: world follows the fingers. Pinch out dollies forward.
+    this.move
+      .set(0, 0, 0)
+      .addScaledVector(this.right, -dx * PAN_SPEED)
+      .addScaledVector(this.forward, -dy * PAN_SPEED)
+      .addScaledVector(this.forward, dGap * DOLLY_SPEED);
+
+    this.world.player.position.add(this.move);
+  }
 
   update(): void {
     if (this.world.visibilityState.peek() !== VisibilityState.NonImmersive) {
@@ -68,5 +179,6 @@ export class CameraLookSystem extends createSystem({}) {
     camera.rotation.order = 'YXZ';
     camera.rotation.y = this.yaw;
     camera.rotation.x = this.pitch;
+    camera.rotation.z = 0;
   }
 }
