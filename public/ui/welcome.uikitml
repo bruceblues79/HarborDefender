@@ -1,8 +1,8 @@
 <!--
   Panel and Button come from the bundled Horizon kit.
-  Column layout: 5 equal sections (flex-grow 4:1).
-  Top 4/5: "Harbor Defender" title.
-  Bottom 1/5: "ENTER GAME" button (reserved interface).
+  Column layout with explicit heights (flex-grow is not supported in UIKitML).
+  Panel inner area: 100 - 4*2 padding = 92.
+  Title: 70, Button: 22.
 -->
 <style>
   .panel-root {
@@ -17,7 +17,7 @@
 
   .title-section {
     display: flex;
-    flex-grow: 4;
+    height: 70;
     justify-content: center;
     align-items: center;
   }
@@ -31,9 +31,14 @@
 
   .button-section {
     display: flex;
-    flex-grow: 1;
+    height: 22;
     justify-content: center;
     align-items: center;
+  }
+
+  .enter-button {
+    font-size: 6;
+    padding: 6;
   }
 </style>
 
@@ -42,6 +47,6 @@
     <div class="title-text">Harbor Defender</div>
   </div>
   <div class="button-section">
-    <Button id="enter-game-button">ENTER GAME</Button>
+    <Button id="enter-game-button" class="enter-button">ENTER GAME</Button>
   </div>
 </Panel>
