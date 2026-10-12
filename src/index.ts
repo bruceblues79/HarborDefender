@@ -18,6 +18,7 @@ import {
 } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
 import { CameraLookSystem } from './camera-look-system.js';
+import { OceanTag } from './components.js';
 import { OceanSystem } from './ocean-system.js';
 import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
 import { createOceanBody } from './scene-assets/ocean.scene-asset.js';
@@ -28,7 +29,6 @@ World.create(
 ).then((world) => {
   world.registerSystem(CameraLookSystem);
   world.registerSystem(OceanSystem);
-  const oceanSystem = world.getSystem(OceanSystem)!;
 
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
   const enterGameButton = panel?.getElementById('enter-game-button');
@@ -64,13 +64,12 @@ World.create(
                 const mat = (child as Mesh).material as ShaderMaterial;
                 mat.uniforms.envMap.value = cubeRT.texture;
                 mat.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
-                oceanSystem.setOceanMesh(child as Mesh);
               }
             });
 
-            // Place ocean at requested position
+            // Place ocean at requested position, tagged for OceanSystem
             oceanObject.position.set(0, 0.8, -4);
-            world.createTransformEntity(oceanObject);
+            world.createTransformEntity(oceanObject).addComponent(OceanTag);
 
             // Place harbor wall at the ocean body's maxZ edge
             const wallObject = createHarborWall();

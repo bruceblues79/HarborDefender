@@ -7,18 +7,24 @@
 
 import { createSystem } from '@iwsdk/core';
 import type { Mesh, ShaderMaterial } from '@iwsdk/core';
+import { OceanTag } from './components.js';
 
-export class OceanSystem extends createSystem({}) {
-  private oceanMesh: Mesh | null = null;
-
-  setOceanMesh(mesh: Mesh): void {
-    this.oceanMesh = mesh;
-  }
-
+/**
+ * Drives the ocean surface shader clock for every entity tagged with
+ * OceanTag. Stateless: entities are discovered through the query each
+ * frame, nothing is injected or cached on the system.
+ */
+export class OceanSystem extends createSystem({
+  oceans: { required: [OceanTag] },
+}) {
   update(_delta: number, time: number): void {
-    if (this.oceanMesh) {
-      const mat = this.oceanMesh.material as ShaderMaterial;
-      mat.uniforms.time.value = time;
-    }
+    this.queries.oceans.entities.forEach((entity) => {
+      entity.object3D?.traverse((child) => {
+        const mesh = child as Mesh;
+        if (mesh.isMesh) {
+          (mesh.material as ShaderMaterial).uniforms.time.value = time;
+        }
+      });
+    });
   }
 }
