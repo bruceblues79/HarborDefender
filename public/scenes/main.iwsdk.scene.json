@@ -8,10 +8,8 @@
       "ground": [0.5, 0.5, 0.5, 1],
       "intensity": 1
     },
-    "com.iwsdk.components.IBLGradient": {
-      "sky": [0.5, 0.5, 0.5, 1],
-      "equator": [0.5, 0.5, 0.5, 1],
-      "ground": [0.5, 0.5, 0.5, 1],
+    "com.iwsdk.components.IBLTexture": {
+      "src": "ocean-env-hdr",
       "intensity": 1
     }
   },

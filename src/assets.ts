@@ -6,6 +6,7 @@
  */
 
 import { AssetType, defineAssets } from '@iwsdk/core';
+import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
 import { createOceanBody } from './scene-assets/ocean.scene-asset.js';
 
 const publicAssetUrl = (filePath: string): string =>
@@ -28,4 +29,5 @@ export default defineAssets({
     name: 'Ocean Environment HDR',
   },
   'ocean-body': createOceanBody(),
+  'harbor-wall': createHarborWall(),
 });

@@ -7,16 +7,19 @@
 
 import {
   AssetManager,
+  HalfFloatType,
   Mesh,
   Object3D,
   ShaderMaterial,
   UIKitMLAsset,
+  WebGLCubeRenderTarget,
   World,
   loadUIKitMLAsset,
 } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
 import { CameraLookSystem } from './camera-look-system.js';
 import { OceanSystem } from './ocean-system.js';
+import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
 import { createOceanBody } from './scene-assets/ocean.scene-asset.js';
 
 World.create(
@@ -48,12 +51,19 @@ World.create(
         // 3. Load game assets: HDR env + procedural ocean body
         AssetManager.loadHDRTextureById('ocean-env-hdr')
           .then((hdrTexture) => {
+            // Equirect HDR -> cubemap: avoids pole stretching in reflections
+            const cubeRT = new WebGLCubeRenderTarget(256, {
+              type: HalfFloatType,
+            });
+            cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
+
             const oceanObject = createOceanBody();
 
             oceanObject.traverse((child: Object3D) => {
               if ((child as Mesh).isMesh) {
                 const mat = (child as Mesh).material as ShaderMaterial;
-                mat.uniforms.envMap.value = hdrTexture;
+                mat.uniforms.envMap.value = cubeRT.texture;
+                mat.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
                 oceanSystem.setOceanMesh(child as Mesh);
               }
             });
@@ -61,6 +71,11 @@ World.create(
             // Place ocean at requested position
             oceanObject.position.set(0, 0.8, -4);
             world.createTransformEntity(oceanObject);
+
+            // Place harbor wall at the ocean body's maxZ edge
+            const wallObject = createHarborWall();
+            wallObject.position.set(0, 0.8, -0.8);
+            world.createTransformEntity(wallObject);
 
             // 4. Hide loading panel — game is ready
             loadingPanel.visible = false;

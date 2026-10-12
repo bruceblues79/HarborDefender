@@ -38,13 +38,11 @@ void main() {
 `;
 
 const fragmentShader = `
-uniform sampler2D envMap;
+uniform samplerCube envMap;
 uniform float reflectivity;
 varying vec3 vWorldNormal;
 varying vec3 vLocalNormal;
 varying vec3 vWorldPosition;
-
-#define PI 3.14159265359
 
 // ShaderMaterial bypasses the renderer's linear -> sRGB output conversion
 // (renderer.outputColorSpace is SRGBColorSpace), so apply it manually here.
@@ -57,16 +55,12 @@ void main() {
   vec3 color;
 
   // Fake reflection only on the +y surface (the water top).
-  // Sample with the view reflection vector so the sky texture visibly
-  // shifts with the camera angle instead of staying a single color.
+  // Cubemap sampling avoids the pole stretching of equirect UV mapping.
   if (vLocalNormal.y > 0.5) {
     vec3 viewDir = normalize(vWorldPosition - cameraPosition);
     vec3 reflDir = reflect(viewDir, normalize(vWorldNormal));
-    float theta = atan(reflDir.z, reflDir.x);
-    float phi   = acos(clamp(reflDir.y, -1.0, 1.0));
-    vec2 uv = vec2(theta / (2.0 * PI) + 0.5, phi / PI);
 
-    color = texture2D(envMap, uv).rgb * reflectivity;
+    color = textureCube(envMap, reflDir).rgb * reflectivity;
     color = mix(color, vec3(0.30, 0.52, 0.72), 0.18);
   } else {
     // Sides / bottom: deep water body color, no env mapping
