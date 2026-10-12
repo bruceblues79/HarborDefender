@@ -6,6 +6,7 @@
  */
 
 import { AssetType, defineAssets } from '@iwsdk/core';
+import { createOceanBody } from './scene-assets/ocean.scene-asset.js';
 
 const publicAssetUrl = (filePath: string): string =>
   `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
@@ -16,4 +17,15 @@ export default defineAssets({
     type: AssetType.UIKitML,
     name: 'Welcome Panel',
   },
+  'loading-panel': {
+    url: publicAssetUrl('ui/loading.uikitml'),
+    type: AssetType.UIKitML,
+    name: 'Loading Panel',
+  },
+  'ocean-env-hdr': {
+    url: publicAssetUrl('textures/kloofendal_partly_cloudy_puresky_1k.hdr'),
+    type: AssetType.HDRTexture,
+    name: 'Ocean Environment HDR',
+  },
+  'ocean-body': createOceanBody(),
 });

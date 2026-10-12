@@ -13,8 +13,8 @@ import { createSystem, UIKitMLAsset, Vector3, VisibilityState } from '@iwsdk/cor
  * IWSDK does not own browser camera controls, so this system implements them:
  * - One pointer drag: first-person look-around (yaw + pitch only, never roll).
  *   Drag right -> look right; drag up -> look up.
- * - Two pointer drag: grab-style pan of the camera position on the ground
- *   plane (drag the world under the fingers, like R3F orbit panning).
+ * - Two pointer drag: grab-style pan — horizontal drag strafes left/right,
+ *   vertical drag raises/lowers the rig (drag the world under the fingers).
  * - Two pointer pinch: dolly forward/back along the view direction.
  *
  * The rig only runs outside XR; during an immersive session the tracked player
@@ -25,6 +25,8 @@ const LOOK_SPEED = 0.004; // radians per dragged pixel
 const PAN_SPEED = 0.0035; // metres per dragged pixel
 const DOLLY_SPEED = 0.015; // metres per pixel of pinch gap change
 const PITCH_LIMIT = Math.PI / 2 - 0.05;
+const MIN_RIG_HEIGHT = 0.2; // metres; keep the rig above the water plane
+const MAX_RIG_HEIGHT = 4; // metres
 
 type DragMode = 'none' | 'look' | 'move';
 
@@ -161,14 +163,22 @@ export class CameraLookSystem extends createSystem({}) {
     this.right.normalize();
     this.forward.crossVectors(camera.up, this.right).normalize();
 
-    // Grab-style pan: world follows the fingers. Pinch out dollies forward.
+    // Grab-style pan: world follows the fingers. Horizontal drag strafes,
+    // pinch dollies along the view. Vertical drag raises/lowers the rig —
+    // sliding along forward felt identical to the pinch dolly, so it is
+    // deliberately NOT used for translation.
+    const player = this.world.player;
     this.move
       .set(0, 0, 0)
       .addScaledVector(this.right, -dx * PAN_SPEED)
-      .addScaledVector(this.forward, -dy * PAN_SPEED)
       .addScaledVector(this.forward, dGap * DOLLY_SPEED);
+    player.position.add(this.move);
 
-    this.world.player.position.add(this.move);
+    // Finger up -> world follows -> camera lowers (grab convention).
+    player.position.y = Math.max(
+      MIN_RIG_HEIGHT,
+      Math.min(MAX_RIG_HEIGHT, player.position.y + dy * PAN_SPEED),
+    );
   }
 
   update(): void {
