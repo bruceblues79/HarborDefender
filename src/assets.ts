@@ -6,9 +6,6 @@
  */
 
 import { AssetType, defineAssets } from '@iwsdk/core';
-import { createCannon } from './scene-assets/cannon.scene-asset.js';
-import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
-import { createOceanBody } from './scene-assets/ocean.scene-asset.js';
 
 const publicAssetUrl = (filePath: string): string =>
   `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
@@ -29,7 +26,19 @@ export default defineAssets({
     type: AssetType.HDRTexture,
     name: 'Ocean Environment HDR',
   },
-  'ocean-body': createOceanBody(),
-  'harbor-wall': createHarborWall(),
-  cannon: createCannon(),
+  'ocean-body': {
+    url: publicAssetUrl('gltf/ocean-body.glb'),
+    type: AssetType.GLTF,
+    name: 'Ocean Body',
+  },
+  'harbor-wall': {
+    url: publicAssetUrl('gltf/harbor-wall.glb'),
+    type: AssetType.GLTF,
+    name: 'Harbor Wall',
+  },
+  cannon: {
+    url: publicAssetUrl('gltf/cannon.glb'),
+    type: AssetType.GLTF,
+    name: 'Cannon',
+  },
 });

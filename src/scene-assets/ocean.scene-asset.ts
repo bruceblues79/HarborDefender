@@ -5,12 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {
-  BoxGeometry,
-  Mesh,
-  Object3D,
-  ShaderMaterial,
-} from '@iwsdk/core';
+import { ShaderMaterial } from '@iwsdk/core';
 
 const vertexShader = `
 uniform float time;
@@ -150,15 +145,16 @@ export interface OceanNoiseParams {
 }
 
 /**
- * Runtime-tunable noise interfaces. Adjust live via the material uniforms, e.g.
- * `oceanMesh.material.uniforms.noiseIntensity.value = 0.3`.
+ * Wave + fake-reflection material for the solidified ocean body
+ * (gltf/ocean-body.glb, exported by scripts/export-assets.ts). The GLB
+ * carries the geometry; this shader supplies vertex waves and the cubemap
+ * reflection, applied to the loaded mesh at game start.
+ *
+ * Runtime-tunable noise interfaces. Adjust live via the material uniforms,
+ * e.g. `oceanMaterial.uniforms.noiseIntensity.value = 0.3`.
  */
-export function createOceanBody(noise: OceanNoiseParams = {}): Object3D {
-  // 3 m wide, 0.25 m thick, 6 m long
-  // 10×1×20 segments keeps the top surface visibly low-poly
-  const geometry = new BoxGeometry(3, 0.25, 6, 10, 1, 20);
-
-  const material = new ShaderMaterial({
+export function createOceanMaterial(noise: OceanNoiseParams = {}): ShaderMaterial {
+  return new ShaderMaterial({
     uniforms: {
       time: { value: 0 },
       envMap: { value: null },
@@ -170,13 +166,4 @@ export function createOceanBody(noise: OceanNoiseParams = {}): Object3D {
     vertexShader,
     fragmentShader,
   });
-
-  const mesh = new Mesh(geometry, material);
-  mesh.name = 'ocean-body-mesh';
-
-  const root = new Object3D();
-  root.name = 'ocean-body';
-  root.add(mesh);
-
-  return root;
 }

@@ -10,7 +10,6 @@ import {
   HalfFloatType,
   Mesh,
   Object3D,
-  ShaderMaterial,
   UIKitMLAsset,
   WebGLCubeRenderTarget,
   World,
@@ -20,9 +19,7 @@ import projectOptions from 'virtual:iwsdk-project';
 import { CameraLookSystem } from './camera-look-system.js';
 import { OceanTag } from './components.js';
 import { OceanSystem } from './ocean-system.js';
-import { createCannon } from './scene-assets/cannon.scene-asset.js';
-import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
-import { createOceanBody } from './scene-assets/ocean.scene-asset.js';
+import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
 
 World.create(
   document.getElementById('scene-container') as HTMLDivElement,
@@ -49,22 +46,29 @@ World.create(
         loadingPanel.position.set(0, 1.5, -1.5);
         world.createTransformEntity(loadingPanel);
 
-        // 3. Load game assets: HDR env + procedural ocean body
+        // 3. Load game assets: HDR env + solidified GLB models
         AssetManager.loadHDRTextureById('ocean-env-hdr')
-          .then((hdrTexture) => {
+          .then(async (hdrTexture) => {
             // Equirect HDR -> cubemap: avoids pole stretching in reflections
             const cubeRT = new WebGLCubeRenderTarget(256, {
               type: HalfFloatType,
             });
             cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
 
-            const oceanObject = createOceanBody();
+            const [oceanGltf, wallGltf, cannonGltf] = await Promise.all([
+              AssetManager.loadGLTFById('ocean-body'),
+              AssetManager.loadGLTFById('harbor-wall'),
+              AssetManager.loadGLTFById('cannon'),
+            ]);
 
+            // Swap the GLB's placeholder material for the wave shader
+            const oceanObject = oceanGltf.scene;
+            const oceanMaterial = createOceanMaterial();
+            oceanMaterial.uniforms.envMap.value = cubeRT.texture;
+            oceanMaterial.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
             oceanObject.traverse((child: Object3D) => {
               if ((child as Mesh).isMesh) {
-                const mat = (child as Mesh).material as ShaderMaterial;
-                mat.uniforms.envMap.value = cubeRT.texture;
-                mat.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
+                (child as Mesh).material = oceanMaterial;
               }
             });
 
@@ -73,7 +77,7 @@ World.create(
             world.createTransformEntity(oceanObject).addComponent(OceanTag);
 
             // Place harbor wall at the ocean body's maxZ edge
-            const wallObject = createHarborWall();
+            const wallObject = wallGltf.scene;
             wallObject.position.set(0, 0.8, -0.8);
             world.createTransformEntity(wallObject);
 
@@ -81,7 +85,7 @@ World.create(
             // 3.4 m wall (0.2 m margin each side), muzzles facing the
             // sea (-Z). One prototype is cloned so geometry/materials
             // stay shared while each gun_rotate pivot stays independent.
-            const cannonPrototype = createCannon();
+            const cannonPrototype = cannonGltf.scene;
             for (const x of [-1.2, -0.6, 0, 0.6, 1.2]) {
               const cannon = cannonPrototype.clone(true);
               cannon.position.set(x, 1.05, -0.8);
