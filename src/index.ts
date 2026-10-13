@@ -7,19 +7,21 @@
 
 import { UIKitMLAsset, World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
+import { startBattle } from './battle-setup.js';
 import { CameraLookSystem } from './camera-look-system.js';
+import { OceanSystem } from './ocean-system.js';
+import { installXRButton } from './xr-button.js';
 
 World.create(
   document.getElementById('scene-container') as HTMLDivElement,
   projectOptions,
 ).then((world) => {
-  // Register camera drag-to-look system (browser mode only)
   world.registerSystem(CameraLookSystem);
+  world.registerSystem(OceanSystem);
+  installXRButton(world);
 
-  // Bind "ENTER GAME" button on the panel (reserved interface)
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
-  const enterGameButton = panel?.getElementById('enter-game-button');
-  enterGameButton?.addEventListener('click', () => {
-    console.log('ENTER GAME clicked — interface reserved, game entry TBD');
-  });
+  panel
+    ?.getElementById('enter-game-button')
+    ?.addEventListener('click', () => startBattle(world));
 });

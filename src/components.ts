@@ -5,6 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { defineComponents } from '@iwsdk/core';
+import { createComponent, defineComponents } from '@iwsdk/core';
 
-export default defineComponents([]);
+/** Marks the ocean body entity so OceanSystem can find it via query. */
+export const OceanTag = createComponent('OceanTag', {});
+
+export default defineComponents([OceanTag]);
