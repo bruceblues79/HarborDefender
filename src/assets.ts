@@ -6,6 +6,7 @@
  */
 
 import { AssetType, defineAssets } from '@iwsdk/core';
+import { createCannon } from './scene-assets/cannon.scene-asset.js';
 import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
 import { createOceanBody } from './scene-assets/ocean.scene-asset.js';
 
@@ -30,4 +31,5 @@ export default defineAssets({
   },
   'ocean-body': createOceanBody(),
   'harbor-wall': createHarborWall(),
+  cannon: createCannon(),
 });

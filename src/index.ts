@@ -20,6 +20,7 @@ import projectOptions from 'virtual:iwsdk-project';
 import { CameraLookSystem } from './camera-look-system.js';
 import { OceanTag } from './components.js';
 import { OceanSystem } from './ocean-system.js';
+import { createCannon } from './scene-assets/cannon.scene-asset.js';
 import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
 import { createOceanBody } from './scene-assets/ocean.scene-asset.js';
 
@@ -75,6 +76,17 @@ World.create(
             const wallObject = createHarborWall();
             wallObject.position.set(0, 0.8, -0.8);
             world.createTransformEntity(wallObject);
+
+            // Five cannons evenly spaced across the central 3 m of the
+            // 3.4 m wall (0.2 m margin each side), muzzles facing the
+            // sea (-Z). One prototype is cloned so geometry/materials
+            // stay shared while each gun_rotate pivot stays independent.
+            const cannonPrototype = createCannon();
+            for (const x of [-1.2, -0.6, 0, 0.6, 1.2]) {
+              const cannon = cannonPrototype.clone(true);
+              cannon.position.set(x, 1.05, -0.8);
+              world.createTransformEntity(cannon);
+            }
 
             // 4. Hide loading panel — game is ready
             loadingPanel.visible = false;
