@@ -11,6 +11,7 @@ import {
   Mesh,
   Object3D,
   UIKitMLAsset,
+  Vector3,
   WebGLCubeRenderTarget,
   World,
   loadUIKitMLAsset,
@@ -20,6 +21,7 @@ import { CameraLookSystem } from './camera-look-system.js';
 import { OceanTag } from './components.js';
 import { OceanSystem } from './ocean-system.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
+import { installXRButton } from './xr-button.js';
 
 World.create(
   document.getElementById('scene-container') as HTMLDivElement,
@@ -27,6 +29,13 @@ World.create(
 ).then((world) => {
   world.registerSystem(CameraLookSystem);
   world.registerSystem(OceanSystem);
+  installXRButton(world);
+
+  const cameraSystem = world
+    .getSystems()
+    .find((system): system is CameraLookSystem =>
+      system instanceof CameraLookSystem,
+    );
 
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
   const enterGameButton = panel?.getElementById('enter-game-button');
@@ -92,8 +101,12 @@ World.create(
               world.createTransformEntity(cannon);
             }
 
-            // 4. Hide loading panel — game is ready
+            // 4. Hide loading panel — game is ready, ease into the game view
             loadingPanel.visible = false;
+            cameraSystem?.moveToView(
+              new Vector3(0, 3, 2.75),
+              new Vector3(0, 1.5, -1.5),
+            );
           })
           .catch((err: unknown) => {
             console.error('Failed to load game assets:', err);

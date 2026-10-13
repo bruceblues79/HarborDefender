@@ -28,10 +28,16 @@ const PITCH_LIMIT = Math.PI / 2 - 0.05;
 const MIN_RIG_HEIGHT = 0.2; // metres; keep the rig above the water plane
 const MAX_RIG_HEIGHT = 4; // metres
 
+const easeInOutCubic = (t: number): number =>
+  t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+
 type DragMode = 'none' | 'look' | 'move';
 
 export class CameraLookSystem extends createSystem({}) {
   private yaw = 0;
+  // Welcome/loading pose from iwsdk.config.json: (0,1.5,2) looking level at
+  // (0,1.5,-1.5), so the seed pitch is 0. Game-start transitions are driven
+  // through moveToView() and eased in update().
   private pitch = 0;
   private mode: DragMode = 'none';
   private readonly pointers = new Map<number, { x: number; y: number }>();
@@ -47,6 +53,16 @@ export class CameraLookSystem extends createSystem({}) {
   private readonly right = new Vector3();
   private readonly forward = new Vector3();
   private readonly move = new Vector3();
+
+  // Eased game-start camera move (browser mode only)
+  private readonly viewFrom = new Vector3();
+  private readonly viewTo = new Vector3();
+  private viewElapsed = 1; // >= viewDuration means "no active tween"
+  private viewDuration = 1;
+  private fromYaw = 0;
+  private fromPitch = 0;
+  private toYaw = 0;
+  private toPitch = 0;
 
   init(): void {
     const canvas = this.world.renderer.domElement;
@@ -181,9 +197,38 @@ export class CameraLookSystem extends createSystem({}) {
     );
   }
 
-  update(): void {
+  /**
+   * Ease the browser-mode camera to `position` looking at `target`. Called
+   * once when loading finishes. Allocation is confined to this call; the
+   * per-frame tween in update() reuses class-owned vectors only.
+   */
+  moveToView(position: Vector3, target: Vector3, duration = 0.9): void {
+    this.viewFrom.copy(this.world.camera.position);
+    this.viewTo.copy(position);
+    const dx = target.x - position.x;
+    const dy = target.y - position.y;
+    const dz = target.z - position.z;
+    this.toYaw = Math.atan2(-dx, -dz);
+    this.toPitch = Math.atan2(dy, Math.hypot(dx, dz));
+    this.fromYaw = this.yaw;
+    this.fromPitch = this.pitch;
+    this.viewElapsed = 0;
+    this.viewDuration = duration;
+  }
+
+  update(delta: number): void {
     if (this.world.visibilityState.peek() !== VisibilityState.NonImmersive) {
       return;
+    }
+    if (this.viewElapsed < this.viewDuration) {
+      this.viewElapsed = Math.min(
+        this.viewDuration,
+        this.viewElapsed + delta,
+      );
+      const t = easeInOutCubic(this.viewElapsed / this.viewDuration);
+      this.world.camera.position.lerpVectors(this.viewFrom, this.viewTo, t);
+      this.yaw = this.fromYaw + (this.toYaw - this.fromYaw) * t;
+      this.pitch = this.fromPitch + (this.toPitch - this.fromPitch) * t;
     }
     const camera = this.world.camera;
     camera.rotation.order = 'YXZ';
