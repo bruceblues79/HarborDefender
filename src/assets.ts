@@ -15,30 +15,39 @@ export default defineAssets({
     url: publicAssetUrl('ui/welcome.uikitml'),
     type: AssetType.UIKitML,
     name: 'Welcome Panel',
+    priority: 'critical',
   },
   'loading-panel': {
     url: publicAssetUrl('ui/loading.uikitml'),
     type: AssetType.UIKitML,
     name: 'Loading Panel',
+    priority: 'critical',
   },
-  'ocean-env-hdr': {
+  // Key must end with ".hdr": IWSDK's EnvironmentSystem sniffs the file type
+  // from the raw src suffix BEFORE resolving manifest keys, so a key without
+  // the extension would be loaded as a plain (non-decodable) texture.
+  'ocean-env.hdr': {
     url: publicAssetUrl('textures/kloofendal_partly_cloudy_puresky_1k.hdr'),
     type: AssetType.HDRTexture,
     name: 'Ocean Environment HDR',
+    priority: 'background',
   },
   'ocean-body': {
     url: publicAssetUrl('gltf/ocean-body.glb'),
     type: AssetType.GLTF,
     name: 'Ocean Body',
+    priority: 'background',
   },
   'harbor-wall': {
     url: publicAssetUrl('gltf/harbor-wall.glb'),
     type: AssetType.GLTF,
     name: 'Harbor Wall',
+    priority: 'background',
   },
   cannon: {
     url: publicAssetUrl('gltf/cannon.glb'),
     type: AssetType.GLTF,
     name: 'Cannon',
+    priority: 'background',
   },
 });

@@ -9,7 +9,7 @@
       "intensity": 1
     },
     "com.iwsdk.components.IBLTexture": {
-      "src": "ocean-env-hdr",
+      "src": "ocean-env.hdr",
       "intensity": 1
     }
   },
