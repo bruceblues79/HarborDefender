@@ -16,7 +16,7 @@ import {
   World,
   loadUIKitMLAsset,
 } from '@iwsdk/core';
-import { CameraLookSystem } from './camera-look-system.js';
+import { CameraOrbitSystem } from './camera-orbit-system.js';
 import { OceanTag } from './components.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
 
@@ -42,8 +42,8 @@ export function startBattle(world: World): void {
 
   const cameraSystem = world
     .getSystems()
-    .find((system): system is CameraLookSystem =>
-      system instanceof CameraLookSystem,
+    .find((system): system is CameraOrbitSystem =>
+      system instanceof CameraOrbitSystem,
     );
 
   // 1. Hide the welcome panel

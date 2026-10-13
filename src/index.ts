@@ -8,7 +8,7 @@
 import { UIKitMLAsset, World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
 import { startBattle } from './battle-setup.js';
-import { CameraLookSystem } from './camera-look-system.js';
+import { CameraOrbitSystem } from './camera-orbit-system.js';
 import { OceanSystem } from './ocean-system.js';
 import { installXRButton } from './xr-button.js';
 
@@ -16,7 +16,7 @@ World.create(
   document.getElementById('scene-container') as HTMLDivElement,
   projectOptions,
 ).then((world) => {
-  world.registerSystem(CameraLookSystem);
+  world.registerSystem(CameraOrbitSystem);
   world.registerSystem(OceanSystem);
   installXRButton(world);
 
