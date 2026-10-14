@@ -22,7 +22,7 @@ export const WakeSource = createComponent('WakeSource', {
   /** Target strength — set to 0 to fade out, 1 to fade in. */
   targetStrength: { type: 'Float32', default: 1.0 },
   /** Radius (m) of the ripple's influence on the surface. */
-  radius: { type: 'Float32', default: 1.2 },
+  radius: { type: 'Float32', default: 1.25 },
   /** Peak-to-peak wave height (m) at the centre of the ripple. */
   amplitude: { type: 'Float32', default: 0.015 },
   /** Spatial frequency of the concentric rings (waves per metre). */
