@@ -17,10 +17,12 @@ export const OceanTag = createComponent('OceanTag', {});
  * Works for ships, shells, or any object that should disturb the surface.
  */
 export const WakeSource = createComponent('WakeSource', {
-  /** Whether this source currently produces ripples. */
-  active: { type: 'Boolean', default: true },
+  /** Current ripple strength 0..1. OceanSystem lerps toward targetStrength. */
+  strength: { type: 'Float32', default: 1.0 },
+  /** Target strength — set to 0 to fade out, 1 to fade in. */
+  targetStrength: { type: 'Float32', default: 1.0 },
   /** Radius (m) of the ripple's influence on the surface. */
-  radius: { type: 'Float32', default: 2.0 },
+  radius: { type: 'Float32', default: 1.2 },
   /** Peak-to-peak wave height (m) at the centre of the ripple. */
   amplitude: { type: 'Float32', default: 0.015 },
   /** Spatial frequency of the concentric rings (waves per metre). */

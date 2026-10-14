@@ -133,9 +133,12 @@ export function startBattle(world: World): void {
           });
           shipObject.position.set(0, 0.46, -4);
           shipObject.rotation.y = Math.PI;
-          // Wake ripples: sailing by default (active=true). Set active=false
-          // when the ship anchors or is destroyed.
-          world.createTransformEntity(shipObject).addComponent(WakeSource);
+          // Wake ripples: sailing by default (strength=1). To fade out,
+          // set targetStrength=0; OceanSystem lerps over ~0.5 s.
+          world.createTransformEntity(shipObject).addComponent(WakeSource, {
+            strength: 1,
+            targetStrength: 1,
+          });
 
           // 4. Hide loading panel — game is ready, ease into the game view
           loadingPanel.visible = false;

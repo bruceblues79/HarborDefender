@@ -10,11 +10,17 @@ import type { Mesh, ShaderMaterial } from '@iwsdk/core';
 import { OceanTag, WakeSource } from './components.js';
 
 const MAX_WAKE = 8;
+/** Strength lerp speed — ~0.5 s to fade from 0 to 1. */
+const FADE_SPEED = 2.0;
 
 /**
  * Drives the ocean surface shader clock for every entity tagged with
  * OceanTag, and feeds active WakeSource positions into the shader's
  * wake uniform array so ships and projectiles leave concentric ripples.
+ *
+ * Fade in/out: set `targetStrength` to 0 or 1; OceanSystem lerps the
+ * running `strength` toward it each frame. Sources with strength < 0.001
+ * are skipped so fully faded wakes don't waste shader uniform slots.
  */
 export class OceanSystem extends createSystem({
   oceans: { required: [OceanTag] },
@@ -32,12 +38,20 @@ export class OceanSystem extends createSystem({
   );
   private readonly scratch = new Vector3();
 
-  update(_delta: number, time: number): void {
+  update(delta: number, time: number): void {
     // --- collect active wake sources (pre-allocated, no allocation per frame) ---
     let count = 0;
     for (const entity of this.queries.wakes.entities) {
       if (count >= MAX_WAKE) break;
-      if (!entity.getValue(WakeSource, 'active')) continue;
+
+      // Lerp strength toward target for smooth fade in/out.
+      const strength = Number(entity.getValue(WakeSource, 'strength'));
+      const target = Number(entity.getValue(WakeSource, 'targetStrength'));
+      const newStrength =
+        strength + (target - strength) * Math.min(1, delta * FADE_SPEED);
+      entity.setValue(WakeSource, 'strength', newStrength);
+
+      if (newStrength < 0.001) continue;
       const obj = entity.object3D;
       if (!obj) continue;
       obj.getWorldPosition(this.scratch);
@@ -48,7 +62,7 @@ export class OceanSystem extends createSystem({
         this.scratch.z,
       );
       this.wakeParams[count].set(
-        Number(entity.getValue(WakeSource, 'amplitude')),
+        Number(entity.getValue(WakeSource, 'amplitude')) * newStrength,
         Number(entity.getValue(WakeSource, 'frequency')),
         Number(entity.getValue(WakeSource, 'speed')),
       );
