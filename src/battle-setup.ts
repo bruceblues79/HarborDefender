@@ -65,10 +65,11 @@ export function startBattle(world: World): void {
           });
           cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
 
-          const [oceanGltf, wallGltf, cannonGltf] = await Promise.all([
+          const [oceanGltf, wallGltf, cannonGltf, shipGltf] = await Promise.all([
             AssetManager.loadGLTFById('ocean-body'),
             AssetManager.loadGLTFById('harbor-wall'),
             AssetManager.loadGLTFById('cannon'),
+            AssetManager.loadGLTFById('pirate-ship'),
           ]);
 
           // Swap the GLB's placeholder material for the wave shader
@@ -79,6 +80,9 @@ export function startBattle(world: World): void {
           oceanObject.traverse((child: Object3D) => {
             if ((child as Mesh).isMesh) {
               (child as Mesh).material = oceanMaterial;
+              // The unlit shader still samples the shadow map when the
+              // mesh receives shadows (see createOceanMaterial).
+              child.receiveShadow = true;
             }
           });
 
@@ -115,6 +119,19 @@ export function startBattle(world: World): void {
             });
             world.createTransformEntity(cannon);
           }
+
+          // Visual acceptance ship: one raider on the ocean's far -Z edge,
+          // bow (and gun muzzle, -Z local) turned toward the harbour.
+          const shipObject = shipGltf.scene;
+          shipObject.traverse((child: Object3D) => {
+            if ((child as Mesh).isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          shipObject.position.set(0, 0.46, -6);
+          shipObject.rotation.y = Math.PI;
+          world.createTransformEntity(shipObject);
 
           // 4. Hide loading panel — game is ready, ease into the game view
           loadingPanel.visible = false;

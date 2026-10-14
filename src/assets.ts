@@ -50,4 +50,10 @@ export default defineAssets({
     name: 'Cannon',
     priority: 'background',
   },
+  'pirate-ship': {
+    url: publicAssetUrl('gltf/pirate-ship.glb'),
+    type: AssetType.GLTF,
+    name: 'Pirate Ship',
+    priority: 'background',
+  },
 });
