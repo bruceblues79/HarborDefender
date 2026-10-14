@@ -24,17 +24,18 @@ import {
  *   changes the field of view, never the orbit radius.
  *
  * Orbit yaw/pitch are clamped to a window around the default battle view
- * (±YAW_RANGE / ±PITCH_RANGE); FOV is clamped to ±FOV_RANGE around the
- * project default. The camera never translates freely and never free-looks.
+ * (±YAW_RANGE / ±PITCH_RANGE); FOV is clamped to [FOV_MIN, FOV_MAX]. The
+ * camera never translates freely and never free-looks.
  *
  * The rig only runs outside XR; during an immersive session the tracked player
  * owns the camera.
  */
 
 const ORBIT_SPEED = 0.004; // radians per dragged pixel
-const YAW_RANGE = Math.PI / 9; // ±20° around the default view
+const YAW_RANGE = Math.PI / 4; // ±45° around the default view
 const PITCH_RANGE = Math.PI / 18; // ±10° around the default view
-const FOV_RANGE = 10; // ±10 degrees around the default FOV
+const FOV_MIN = 40; // pinch/wheel zoom clamp, degrees
+const FOV_MAX = 60;
 const PINCH_SPEED = 0.05; // FOV degrees per pixel of pinch spread
 const WHEEL_SPEED = 0.02; // FOV degrees per wheel deltaY unit
 
@@ -55,7 +56,8 @@ export class CameraOrbitSystem extends createSystem({}) {
   // Clamp window center, re-seeded by moveToView() once the tween completes.
   private defaultYaw = 0;
   private defaultPitch = 0;
-  // FOV zoom state; defaultFov is read from the world camera at init.
+  // FOV zoom state; defaultFov is read from the world camera at init
+  // (world.render.fov in iwsdk.config.json).
   private currentFov = 50;
   private defaultFov = 50;
 
@@ -270,10 +272,7 @@ export class CameraOrbitSystem extends createSystem({}) {
   }
 
   private clampFov(value: number): number {
-    return Math.max(
-      this.defaultFov - FOV_RANGE,
-      Math.min(this.defaultFov + FOV_RANGE, value),
-    );
+    return Math.max(FOV_MIN, Math.min(FOV_MAX, value));
   }
 
   private applyFov(): void {
