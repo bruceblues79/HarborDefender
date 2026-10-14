@@ -18,6 +18,7 @@ import {
   BufferGeometry,
   Color,
   CylinderGeometry,
+  DoubleSide,
   ExtrudeGeometry,
   LatheGeometry,
   Mesh,
@@ -526,7 +527,7 @@ const HULL_COLOR = 0x5c4430;
 const DECK_COLOR = 0x8a6c49;
 const CABIN_COLOR = 0x6b4f34;
 const MAST_COLOR = 0x74583a;
-const SAIL_COLOR = 0xe8ddc4;
+const SAIL_COLOR = 0xc0a279;
 const FLAG_COLOR = 0x8c3b2e;
 
 interface HullStation {
@@ -715,30 +716,39 @@ function buildShipSuperstructure(rand: () => number): BufferGeometry {
   paint(mast, MAST_COLOR, 0.03, rand);
   parts.push(mast);
 
-  const yard = new CylinderGeometry(0.007, 0.007, 0.42, 6);
+  const yard = new CylinderGeometry(0.007, 0.007, 0.54, 6);
   yard.rotateZ(Math.PI / 2);
-  yard.translate(0, 0.68, -0.05);
+  yard.translate(0, 0.76, -0.05);
   paint(yard, MAST_COLOR, 0.03, rand);
   parts.push(yard);
 
-  // Square sail hung below the yard, billowing toward the bow (-Z).
-  const sail = new PlaneGeometry(0.4, 0.28, 4, 3);
+  // Square sail hung high on the mast, bellying toward the bow (-Z): a
+  // horizontal arc eases to the yard/sheet edges while the vertical
+  // profile keeps the mid-height fullest, so it reads as wind-filled.
+  const sailW = 0.5;
+  const sailH = 0.36;
+  const sail = new PlaneGeometry(sailW, sailH, 5, 4);
   const sailPos = sail.attributes.position as BufferAttribute;
   for (let i = 0; i < sailPos.count; i++) {
+    const u = sailPos.getX(i) / (sailW / 2);
+    const v = sailPos.getY(i) / (sailH / 2);
     sailPos.setZ(
       i,
       sailPos.getZ(i) -
-        0.035 * Math.cos((sailPos.getX(i) / 0.2) * (Math.PI / 2)),
+        0.045 *
+          Math.cos((u * Math.PI) / 2) *
+          (0.55 + 0.45 * Math.cos((v * Math.PI) / 2)),
     );
   }
   sail.computeVertexNormals();
-  sail.translate(0, 0.54, -0.06);
+  sail.translate(0, 0.58, -0.06);
   paint(sail, SAIL_COLOR, 0.02, rand);
   parts.push(sail);
 
-  // Pennant flag at the masthead.
+  // Pennant flag at the masthead; the inner edge starts just outside the
+  // mast surface so the cylinder never pokes through the cloth.
   const flag = new PlaneGeometry(0.11, 0.055);
-  flag.translate(0.055, 0.85, -0.05);
+  flag.translate(0.075, 0.85, -0.05);
   paint(flag, FLAG_COLOR, 0.02, rand);
   parts.push(flag);
 
@@ -773,6 +783,9 @@ function createPirateShipExport(): Object3D {
     roughness: 0.6,
     metalness: 0,
     vertexColors: true,
+    // The hull is a closed solid, but the sail and pennant are thin planes:
+    // double-sided keeps them visible from any heading the ship is placed at.
+    side: DoubleSide,
   });
   const woodMaterial = new MeshStandardMaterial({
     name: 'cannon-wood',

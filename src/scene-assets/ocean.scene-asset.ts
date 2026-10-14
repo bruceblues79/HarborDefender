@@ -150,9 +150,11 @@ void main() {
     color = vec3(0.06, 0.11, 0.18);
   }
 
-  // Darken by the shadow mask (receiveShadow-gated by the renderer), so a
-  // ship's shadow lands on the fake-reflection surface like a real one.
-  color *= getShadowMask();
+  // Darken by the shadow mask (receiveShadow-gated by the renderer). The
+  // fake-reflection surface is unlit — no ambient term to fall back on —
+  // so remap the mask (0 in umbra) to a floor that keeps some water colour;
+  // without this the ship's shadow would read pitch black on the sea.
+  color *= mix(0.5, 1.0, getShadowMask());
 
   gl_FragColor = vec4(linearToSRGB(color), 1.0);
 }
