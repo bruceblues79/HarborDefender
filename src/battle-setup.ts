@@ -53,7 +53,7 @@ export function startBattle(world: World): void {
   // 2. Show loading panel (1 m × 0.5 m, faces +Z)
   loadUIKitMLAsset('loading-panel')
     .then((loadingPanel) => {
-      loadingPanel.position.set(0, 1.5, -1.5);
+      loadingPanel.position.set(0, 1.05, -1.5);
       world.createTransformEntity(loadingPanel);
 
       // 3. Load game assets: HDR env + solidified GLB models
@@ -83,12 +83,12 @@ export function startBattle(world: World): void {
           });
 
           // Place ocean at requested position, tagged for OceanSystem
-          oceanObject.position.set(0, 0.8, -4);
+          oceanObject.position.set(0, 0.35, -4);
           world.createTransformEntity(oceanObject).addComponent(OceanTag);
 
           // Place harbor wall at the ocean body's maxZ edge
           const wallObject = wallGltf.scene;
-          wallObject.position.set(0, 0.8, -0.8);
+          wallObject.position.set(0, 0.35, -0.8);
           // Runtime-instantiated GLB meshes keep three.js defaults
           // (both false); scene-JSON assets get these via content flags.
           wallObject.traverse((child: Object3D) => {
@@ -106,7 +106,7 @@ export function startBattle(world: World): void {
           const cannonPrototype = cannonGltf.scene;
           for (const x of [-1.2, -0.6, 0, 0.6, 1.2]) {
             const cannon = cannonPrototype.clone(true);
-            cannon.position.set(x, 1.05, -0.8);
+            cannon.position.set(x, 0.6, -0.8);
             cannon.traverse((child: Object3D) => {
               if ((child as Mesh).isMesh) {
                 child.castShadow = true;
@@ -119,8 +119,8 @@ export function startBattle(world: World): void {
           // 4. Hide loading panel — game is ready, ease into the game view
           loadingPanel.visible = false;
           cameraSystem?.moveToView(
-            new Vector3(0, 3, 2.75),
-            new Vector3(0, 1.947, -2),
+            new Vector3(0, 2.55, 2.75),
+            new Vector3(0, 1.497, -2),
           );
         })
         .catch((err: unknown) => {

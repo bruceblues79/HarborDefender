@@ -62,7 +62,10 @@ void main() {
 
   vec4 worldPos = modelMatrix * vec4(pos, 1.0);
   vWorldPosition = worldPos.xyz;
-  vWorldNormal = normalize(normalMatrix * normal);
+  // mat3(modelMatrix) keeps the normal in world space; the renderer's
+  // normalMatrix is view-space, which made the cubemap reflection roll with
+  // head roll in XR. Uniform scale only (GLB placed at scale 1).
+  vWorldNormal = normalize(mat3(modelMatrix) * normal);
   vLocalNormal = normal;
   gl_Position = projectionMatrix * viewMatrix * worldPos;
 }
