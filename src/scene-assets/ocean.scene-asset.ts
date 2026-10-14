@@ -5,7 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { ShaderMaterial, UniformsLib, UniformsUtils } from '@iwsdk/core';
+import { ShaderMaterial, UniformsLib, UniformsUtils, Vector3 } from '@iwsdk/core';
+
+const MAX_WAKE = 8;
 
 const vertexShader = `
 #include <common>
@@ -15,6 +17,9 @@ uniform float time;
 uniform float noiseSpeed;     // metres/second, disturbance drifts toward +z
 uniform float noiseFrequency; // noise cells per metre
 uniform float noiseIntensity; // master disturbance strength
+uniform int wakeCount;
+uniform vec3 wakePos[${MAX_WAKE}];    // x, packed radius, z
+uniform vec3 wakeParams[${MAX_WAKE}]; // amplitude, frequency, speed
 varying vec3 vWorldNormal;
 varying vec3 vLocalNormal;
 varying vec3 vWorldPosition;
@@ -61,6 +66,20 @@ void main() {
     );
     pos.y += surge * noiseIntensity * 0.25;
     pos.z += max(surge, 0.0) * noiseIntensity * 0.15;
+
+    // Wake ripples: concentric rings expanding outward from each source.
+    vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+    for (int i = 0; i < ${MAX_WAKE}; i++) {
+      if (i >= wakeCount) break;
+      vec2 diff = worldPos.xz - wakePos[i].xz;
+      float dist = length(diff);
+      float radius = wakePos[i].y;
+      float amp = wakeParams[i].x;
+      float freq = wakeParams[i].y;
+      float speed = wakeParams[i].z;
+      float atten = smoothstep(radius, 0.0, dist);
+      pos.y += sin(dist * freq - time * speed) * amp * atten;
+    }
   }
 
   vec4 worldPos = modelMatrix * vec4(pos, 1.0);
@@ -94,6 +113,9 @@ uniform float time;
 uniform float noiseSpeed;     // metres/second, perturbation drifts toward +z
 uniform float noiseFrequency; // noise cells per metre
 uniform float noiseIntensity; // master disturbance strength
+uniform int wakeCount;
+uniform vec3 wakePos[${MAX_WAKE}];    // x, packed radius, z
+uniform vec3 wakeParams[${MAX_WAKE}]; // amplitude, frequency, speed
 varying vec3 vWorldNormal;
 varying vec3 vLocalNormal;
 varying vec3 vWorldPosition;
@@ -143,6 +165,27 @@ void main() {
     float n2 = flowingNoise(vWorldPosition.zx * noiseFrequency + 19.3, time * noiseSpeed * 0.8);
     reflDir = normalize(reflDir + vec3(n1, 0.0, n2) * noiseIntensity);
 
+    // Wake ripple perturbation: the ripple gradient tilts the reflection
+    // toward the ring centre, creating a lensing wobble around each source.
+    vec2 wakeGrad = vec2(0.0);
+    for (int i = 0; i < ${MAX_WAKE}; i++) {
+      if (i >= wakeCount) break;
+      vec2 diff = vWorldPosition.xz - wakePos[i].xz;
+      float dist = length(diff);
+      float radius = wakePos[i].y;
+      float amp = wakeParams[i].x;
+      float freq = wakeParams[i].y;
+      float speed = wakeParams[i].z;
+      // d/d(dist) of sin(dist * freq - time * speed) * amp * smoothstep(radius,0,dist)
+      float atten = smoothstep(radius, 0.0, dist);
+      float phase = dist * freq - time * speed;
+      float d = cos(phase) * freq * amp * atten;
+      // Direction from source to fragment, normalised (gradient direction)
+      vec2 dir = diff / max(dist, 0.001);
+      wakeGrad += dir * d;
+    }
+    reflDir = normalize(reflDir + vec3(wakeGrad.x, 0.0, wakeGrad.y) * 0.5);
+
     color = textureCube(envMap, reflDir).rgb * reflectivity;
     color = mix(color, vec3(0.30, 0.52, 0.72), 0.18);
   } else {
@@ -179,6 +222,11 @@ export interface OceanNoiseParams {
  * the shadow-map uniforms, so the surface can receive cast shadows while
  * staying unlit (the shadow mask only darkens the fake-reflection colour).
  *
+ * Wake ripples: up to MAX_WAKE active sources are fed per frame by
+ * OceanSystem via the wakePos / wakeParams uniform arrays. Toggle
+ * WakeSource.active to turn a source's ripples on or off (sailing vs.
+ * anchored, projectile splash vs. inert).
+ *
  * Runtime-tunable noise interfaces. Adjust live via the material uniforms,
  * e.g. `oceanMaterial.uniforms.noiseIntensity.value = 0.3`.
  */
@@ -193,6 +241,9 @@ export function createOceanMaterial(noise: OceanNoiseParams = {}): ShaderMateria
         noiseSpeed: { value: noise.speed ?? 0.8 },
         noiseFrequency: { value: noise.frequency ?? 3.0 },
         noiseIntensity: { value: noise.intensity ?? 0.015 },
+        wakeCount: { value: 0 },
+        wakePos: { value: Array.from({ length: MAX_WAKE }, () => new Vector3()) },
+        wakeParams: { value: Array.from({ length: MAX_WAKE }, () => new Vector3()) },
       },
     ]),
     lights: true,

@@ -23,7 +23,7 @@
       "id": "sun-light",
       "name": "Sun Light",
       "transform": {
-        "position": [0, 5.55, -2.5],
+        "position": [0, 5.55, -5.5],
         "rotationDeg": [-90, 0, 0]
       },
       "components": {
@@ -31,7 +31,7 @@
           "color": [1, 1, 1, 1],
           "intensity": 3.14,
           "castShadow": true,
-          "shadowCameraSize": 10,
+          "shadowCameraSize": 12,
           "shadowNormalBias": 0.008
         }
       }

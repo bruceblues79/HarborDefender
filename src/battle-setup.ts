@@ -17,7 +17,7 @@ import {
   loadUIKitMLAsset,
 } from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
-import { OceanTag } from './components.js';
+import { OceanTag, WakeSource } from './components.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
 
 let battleStarted = false;
@@ -86,8 +86,9 @@ export function startBattle(world: World): void {
             }
           });
 
-          // Place ocean at requested position, tagged for OceanSystem
-          oceanObject.position.set(0, 0.35, -4);
+          // Ocean extended to 10 m: near edge stays at z = -1 (against the
+          // wall), centre shifts back from -4 to -6.
+          oceanObject.position.set(0, 0.35, -6);
           world.createTransformEntity(oceanObject).addComponent(OceanTag);
 
           // Place harbor wall at the ocean body's maxZ edge
@@ -120,8 +121,9 @@ export function startBattle(world: World): void {
             world.createTransformEntity(cannon);
           }
 
-          // Visual acceptance ship: one raider on the ocean's far -Z edge,
-          // bow (and gun muzzle, -Z local) turned toward the harbour.
+          // Visual acceptance ship: placed closer to the harbour for better
+          // visibility of wake ripples. Bow (and gun muzzle, -Z local) turned
+          // toward the harbour.
           const shipObject = shipGltf.scene;
           shipObject.traverse((child: Object3D) => {
             if ((child as Mesh).isMesh) {
@@ -129,9 +131,11 @@ export function startBattle(world: World): void {
               child.receiveShadow = true;
             }
           });
-          shipObject.position.set(0, 0.46, -6);
+          shipObject.position.set(0, 0.46, -4);
           shipObject.rotation.y = Math.PI;
-          world.createTransformEntity(shipObject);
+          // Wake ripples: sailing by default (active=true). Set active=false
+          // when the ship anchors or is destroyed.
+          world.createTransformEntity(shipObject).addComponent(WakeSource);
 
           // 4. Hide loading panel — game is ready, ease into the game view
           loadingPanel.visible = false;

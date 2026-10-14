@@ -74,9 +74,9 @@ const smooth = (t: number): number => t * t * (3 - 2 * t);
 // ---------------------------------------------------------------------------
 
 function createOceanBodyExport(): Object3D {
-  // 3 m wide, 0.25 m thick, 6 m long; 10×1×20 segments keep the top
-  // surface visibly low-poly. White vertex colours per solidification spec.
-  const geometry = new BoxGeometry(3, 0.25, 6, 10, 1, 20);
+  // 3 m wide, 0.25 m thick, 10 m long (was 6 m, extended by 2/3); 10×1×33
+  // segments keep the same ~3.3/m vertex density so the wave look is unchanged.
+  const geometry = new BoxGeometry(3, 0.25, 10, 10, 1, 33);
   const colors = new Float32Array(geometry.attributes.position.count * 3).fill(1);
   geometry.setAttribute('color', new BufferAttribute(colors, 3));
 
