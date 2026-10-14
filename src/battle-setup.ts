@@ -89,6 +89,14 @@ export function startBattle(world: World): void {
           // Place harbor wall at the ocean body's maxZ edge
           const wallObject = wallGltf.scene;
           wallObject.position.set(0, 0.8, -0.8);
+          // Runtime-instantiated GLB meshes keep three.js defaults
+          // (both false); scene-JSON assets get these via content flags.
+          wallObject.traverse((child: Object3D) => {
+            if ((child as Mesh).isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
           world.createTransformEntity(wallObject);
 
           // Five cannons evenly spaced across the central 3 m of the
@@ -99,6 +107,12 @@ export function startBattle(world: World): void {
           for (const x of [-1.2, -0.6, 0, 0.6, 1.2]) {
             const cannon = cannonPrototype.clone(true);
             cannon.position.set(x, 1.05, -0.8);
+            cannon.traverse((child: Object3D) => {
+              if ((child as Mesh).isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+              }
+            });
             world.createTransformEntity(cannon);
           }
 

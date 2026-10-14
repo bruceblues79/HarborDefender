@@ -14,19 +14,25 @@
     }
   },
   "resources": {},
+  "environment": {
+    "shadows": true,
+    "shadowMapType": "pcf-soft"
+  },
   "nodes": [
     {
       "id": "sun-light",
       "name": "Sun Light",
       "transform": {
-        "position": [2, 4, -1],
-        "rotationDeg": [-39.5, -76.0, 0]
+        "position": [0, 6, -0.8],
+        "rotationDeg": [-90, 0, 0]
       },
       "components": {
         "DirectionalLight": {
           "color": [1, 1, 1, 1],
           "intensity": 3.14,
-          "castShadow": true
+          "castShadow": true,
+          "shadowCameraSize": 6,
+          "shadowNormalBias": 0.008
         }
       }
     },
