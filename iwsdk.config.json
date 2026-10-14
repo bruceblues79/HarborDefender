@@ -13,7 +13,8 @@
       "mode": "ar",
       "offer": "always",
       "features": {
-        "handTracking": true
+        "handTracking": true,
+        "gazeTracking": true
       }
     },
     "input": {
