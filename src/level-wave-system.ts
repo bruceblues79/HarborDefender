@@ -23,6 +23,7 @@ import {
   SHIP_STOP_Z_MIN,
   SHIP_Y,
   SPAWN_FADE_DURATION,
+  SPAWN_ROLL_TRIES,
   STOP_MIN_GAP_X,
   STOP_MIN_GAP_Z,
   STOP_ROLL_TRIES,
@@ -134,6 +135,41 @@ export class LevelWaveSystem extends createSystem({
     return (Math.random() * 2 - 1) * (OCEAN.width / 2 - SPAWN_MARGIN);
   }
 
+  /**
+   * Pick the spawn X furthest from every active attacker's current X.
+   *
+   * A plain random roll keeps dropping new ships on top of ones that just
+   * emerged — same X, parallel course, neither can pass. Rolling several
+   * candidates and keeping the one with the largest clearance spreads the
+   * fleet across the far edge. This mirrors `pickTarget`'s best-candidate
+   * approach but in one dimension (all spawns share the same Z).
+   *
+   * Runs once per dispatch (~every 2 s), never per frame.
+   */
+  private pickSpawnX(): number {
+    let best = this.rollX();
+    let bestClearance = this.spawnClearance(best);
+    for (let attempt = 1; attempt < SPAWN_ROLL_TRIES; attempt += 1) {
+      const x = this.rollX();
+      const clearance = this.spawnClearance(x);
+      if (clearance <= bestClearance) continue;
+      best = x;
+      bestClearance = clearance;
+    }
+    return best;
+  }
+
+  /** Smallest |Δx| from a candidate spawn to any attacker still on the water. */
+  private spawnClearance(x: number): number {
+    let clearance = Number.POSITIVE_INFINITY;
+    for (const entity of this.queries.attackers.entities) {
+      const object = entity.object3D;
+      if (!object) continue;
+      clearance = Math.min(clearance, Math.abs(x - object.position.x));
+    }
+    return clearance;
+  }
+
   private rollZ(): number {
     return SHIP_STOP_Z_MIN + Math.random() * (SHIP_STOP_Z_MAX - SHIP_STOP_Z_MIN);
   }
@@ -206,9 +242,12 @@ export class LevelWaveSystem extends createSystem({
 
     const object = prototype.clone(true);
 
-    // Spawn point: rolled x on the far edge. The stop target comes from the
-    // berth cascade, which is why it is resolved before anything is committed.
-    const spawnX = this.rollX();
+    // Spawn point: best-candidate x on the far edge (spread away from active
+    // attackers). A single-unit wave just comes down the centre line — no
+    // need to randomise when there is nothing to avoid. The stop target comes
+    // from the berth cascade, which is why it is resolved before anything is
+    // committed.
+    const spawnX = units.length === 1 ? 0 : this.pickSpawnX();
     const target = this.pickTarget();
     object.position.set(spawnX, SHIP_Y, SPAWN_Z);
     // Bow is the hull's local -Z; yaw it onto the spawn -> target direction.

@@ -153,6 +153,14 @@ export const STOP_MIN_GAP_Z = 1.5;
 export const STOP_ROLL_TRIES = 8;
 
 /**
+ * Spawn-point best-candidate tries. The far edge is only 3 m wide, so a plain
+ * random roll keeps landing new ships on top of ones that just emerged. Roll a
+ * handful and keep the X furthest from every active attacker's current X —
+ * same pattern as stop-point selection, one dimension simpler.
+ */
+export const SPAWN_ROLL_TRIES = 6;
+
+/**
  * Designer's sandbox: one level, tuned by hand.
  *
  * The wave is as long as `PACING.maxConcurrentUnits`, so the level runs to
