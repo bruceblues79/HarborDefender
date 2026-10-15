@@ -56,7 +56,7 @@ export interface LevelSpec {
 /** Director pacing in seconds. Retune the rhythm of the defence here. */
 export const PACING = {
   /** Gap between two units inside one wave. */
-  spawnInterval: 1.5,
+  spawnInterval: 2.0,
   /** Gap after a wave is cleared before the next wave starts. */
   postWaveDelay: 3.0,
   /** Gap after a level is cleared before the next level starts. */
@@ -129,12 +129,17 @@ export const WAKE_STRENGTH_MOVING = 1.0;
 export const WAKE_STRENGTH_HALTED = 0.75;
 export const WAKE_RADIUS = 1.25;
 
+/** Seconds a dispatched unit takes to materialise (hull opacity 0 -> 1). */
+export const SPAWN_FADE_DURATION = 0.9;
+
 /**
  * Designer's sandbox: one level, tuned by hand.
  *
- * The wave is capped at PACING.maxConcurrentUnits ships: with no combat yet,
- * units never leave the water, so a longer wave would strand its overflow
- * units forever and the level could never be declared defended.
+ * The wave lists more ships than `PACING.maxConcurrentUnits`: the director
+ * simply holds the overflow units until slots free up, which is what keeps
+ * the field from flooding. Nothing leaves the water until combat exists, so
+ * the last ship waits indefinitely for now — that resolves itself once units
+ * can be sunk, and is not a defect of the pacing.
  */
 export const designList: LevelSpec[] = [
   {
@@ -142,6 +147,7 @@ export const designList: LevelSpec[] = [
     waves: [
       {
         units: [
+          'pirate-ship',
           'pirate-ship',
           'pirate-ship',
           'pirate-ship',

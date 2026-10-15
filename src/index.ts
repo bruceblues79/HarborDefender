@@ -15,6 +15,7 @@ import { LevelWaveSystem } from './level-wave-system.js';
 import { OceanSystem } from './ocean-system.js';
 import { PanelScaleSystem } from './panel-scale-system.js';
 import { ShipMovementSystem } from './ship-movement-system.js';
+import { SpawnFadeSystem } from './spawn-fade-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { installXRButton } from './xr-button.js';
 
@@ -24,9 +25,11 @@ World.create(
 ).then((world) => {
   world.registerSystem(CameraOrbitSystem);
   world.registerSystem(OceanSystem);
-  // Simulation tier: the director paces dispatch, movement runs the ships in.
+  // Simulation tier: the director paces dispatch, movement runs the ships in
+  // while the fade system materialises their hulls in parallel.
   world.registerSystem(LevelWaveSystem, { priority: 5 });
   world.registerSystem(ShipMovementSystem, { priority: 10 });
+  world.registerSystem(SpawnFadeSystem, { priority: 12 });
   // UI tier, after the camera updates so billboards track this frame's view.
   world.registerSystem(PanelScaleSystem, { priority: 30 });
   world.registerSystem(StartPanelSystem, { priority: 30 });

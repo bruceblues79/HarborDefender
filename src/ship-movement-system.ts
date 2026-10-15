@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -6,7 +6,7 @@
  */
 
 import { createSystem } from '@iwsdk/core';
-import type { Entity, Mesh, Object3D } from '@iwsdk/core';
+import type { Entity, Object3D } from '@iwsdk/core';
 import { ShipMovement, UnitTag, WakeSource } from './components.js';
 import {
   SHIP_Y,
@@ -18,10 +18,8 @@ import {
 /**
  * Runs the `default-ship` movement pattern.
  *
- * Spawning: the hull fades in from transparent; shadows switch on once the
- * ship is fully materialised.
- * Moving: sail the straight line from the spawn point to the rolled target;
- * a ship keeps `stopDistance` behind a same-type ship ahead along its travel
+ * Moving: sail the straight line from the spawn point to the rolled target; a
+ * ship keeps `stopDistance` behind a same-type ship ahead along its travel
  * direction and waits for it to clear.
  * Stopped: hold at the target, wake eased down.
  *
@@ -29,6 +27,9 @@ import {
  * WAKE_STRENGTH_HALTED while stopped or waiting.
  * WakeSource targets are only rewritten when they change; OceanSystem eases
  * the running values toward them.
+ *
+ * Visual arrival (the hull materialising) belongs to SpawnFadeSystem and is
+ * deliberately not a gate on movement.
  */
 export class ShipMovementSystem extends createSystem({
   movers: { required: [ShipMovement, UnitTag, WakeSource] },
@@ -37,40 +38,10 @@ export class ShipMovementSystem extends createSystem({
     for (const entity of this.queries.movers.entities) {
       const object = entity.object3D;
       if (!object) continue;
-      const state = entity.getValue(ShipMovement, 'state');
-      if (state === 'spawning') this.emerge(entity, object, delta);
-      else if (state === 'moving') this.advance(entity, object, delta);
-    }
-  }
-
-  /** Fade the hull in from transparent, then hand over to the run. */
-  private emerge(entity: Entity, object: Object3D, delta: number): void {
-    const duration = Number(
-      entity.getValue(ShipMovement, 'spawnFadeDuration'),
-    );
-    const fade = Math.min(
-      1,
-      Number(entity.getValue(ShipMovement, 'spawnFade')) + delta / duration,
-    );
-    entity.setValue(ShipMovement, 'spawnFade', fade);
-
-    const done = fade >= 1;
-    object.traverse((child) => {
-      const mesh = child as Mesh;
-      if (!mesh.isMesh) return;
-      const materials = Array.isArray(mesh.material)
-        ? mesh.material
-        : [mesh.material];
-      for (const material of materials) {
-        material.opacity = fade;
-        if (done) material.transparent = false;
+      if (entity.getValue(ShipMovement, 'state') !== 'stopped') {
+        this.advance(entity, object, delta);
       }
-      if (done) mesh.castShadow = true;
-    });
-    if (!done) return;
-
-    entity.setValue(ShipMovement, 'state', 'moving');
-    this.setWake(entity, WAKE_STRENGTH_MOVING, WAKE_RADIUS);
+    }
   }
 
   /**

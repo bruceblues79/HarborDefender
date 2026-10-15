@@ -6,10 +6,11 @@
  */
 
 import { AssetManager, createSystem, Mesh } from '@iwsdk/core';
-import type { Entity, Material, Object3D } from '@iwsdk/core';
+import type { Entity, Object3D } from '@iwsdk/core';
 import {
   LevelDirector,
   ShipMovement,
+  SpawnFade,
   UnitTag,
   WakeSource,
 } from './components.js';
@@ -21,9 +22,10 @@ import {
   SHIP_STOP_Z_MAX,
   SHIP_STOP_Z_MIN,
   SHIP_Y,
+  SPAWN_FADE_DURATION,
   UNIT_TYPES,
   WAKE_RADIUS,
-  WAKE_STRENGTH_HALTED,
+  WAKE_STRENGTH_MOVING,
 } from './level-config.js';
 
 /** Ships emerge this far inside the ocean's far edge. */
@@ -149,9 +151,10 @@ export class LevelWaveSystem extends createSystem({
     // Bow is the hull's local -Z; yaw it onto the spawn -> target direction.
     object.rotation.y = Math.atan2(-(targetX - spawnX), -(targetZ - SPAWN_Z));
 
-    // Fade-in via standard-material alpha: hull materials are shared across
-    // clones, so each ship gets its own clones driven by opacity. Shadows stay
-    // off until the ship is fully materialised.
+    // Instancing setup for the fade: hull materials are shared across clones,
+    // so each ship gets its own clones starting fully transparent. Driving that
+    // opacity, and switching shadows on when the hull is solid, is
+    // SpawnFadeSystem's job — the spawner only lands the starting state.
     object.traverse((child) => {
       const mesh = child as Mesh;
       if (!mesh.isMesh) return;
@@ -170,20 +173,23 @@ export class LevelWaveSystem extends createSystem({
 
     const entity = this.world.createTransformEntity(object);
     entity.addComponent(UnitTag, { unitType, faction: def.faction });
+    // No `state`: ShipMovement defaults to 'moving', so the run starts on the
+    // spawn frame while SpawnFadeSystem materialises the hull in parallel.
     entity.addComponent(ShipMovement, {
       pattern: def.movement,
-      state: 'spawning',
-      spawnFade: 0,
       spawnX,
       targetX,
       targetZ,
     });
+    entity.addComponent(SpawnFade, { duration: SPAWN_FADE_DURATION });
     entity.addComponent(WakeSource, {
       strength: 0,
-      // Fading in, the ship is stationary: wake at the halted strength.
-      targetStrength: WAKE_STRENGTH_HALTED,
+      // Under way (or held up) from frame one, so the wake aims at the
+      // sailing values; ShipMovementSystem retargets it the moment the ship
+      // stops or starts waiting.
+      targetStrength: WAKE_STRENGTH_MOVING,
       radius: WAKE_RADIUS,
-      targetRadius: WAKE_RADIUS * 0.5,
+      targetRadius: WAKE_RADIUS,
     });
     return true;
   }
@@ -239,19 +245,15 @@ export class LevelWaveSystem extends createSystem({
 
   /**
    * Placeholder wave-clear test. Combat is not in yet, so a wave counts as
-   * cleared once every dispatched attacker has finished emerging and is
-   * either halted at its lane or waiting behind another ship. Swap this for a
-   * destroyed/killed check once units can be sunk.
+   * cleared once every dispatched attacker has stopped at its target or is
+   * queued behind another ship. Swap this for a destroyed/killed check once
+   * units can be sunk.
    */
   private fieldSettled(): boolean {
     for (const entity of this.queries.attackers.entities) {
       if (entity.getValue(UnitTag, 'faction') !== 'attacker') continue;
-      if (entity.getValue(ShipMovement, 'state') === 'spawning') return false;
-      if (
-        entity.getValue(ShipMovement, 'state') === 'moving' &&
-        !entity.getValue(ShipMovement, 'blocked')
-      ) {
-        return false;
+      if (entity.getValue(ShipMovement, 'state') !== 'stopped') {
+        if (!entity.getValue(ShipMovement, 'blocked')) return false;
       }
     }
     return true;

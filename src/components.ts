@@ -59,19 +59,15 @@ export const UnitTag = createComponent('UnitTag', {
 });
 
 /**
- * Sail-in behaviour for attacker ships: fade in at the ocean's far edge, then
- * sail a straight line to a rolled target point short of the wall. Plain
- * scalars so a designer can read a unit's real state from the inspector.
+ * Sail-in behaviour for attacker ships: a straight run from the ocean's far
+ * edge to a rolled target point short of the wall. Plain scalars so a
+ * designer can read a unit's real state from the inspector.
  */
 export const ShipMovement = createComponent('ShipMovement', {
   /** Movement pattern id (see MovementPattern in level-config). */
   pattern: { type: 'String', default: 'default-ship' },
-  /** 'spawning' | 'moving' | 'stopped' */
-  state: { type: 'String', default: 'spawning' },
-  /** Emerge progress 0..1; drives the wire-to-solid fade. */
-  spawnFade: { type: 'Float32', default: 0 },
-  /** Seconds the emerge animation takes. */
-  spawnFadeDuration: { type: 'Float32', default: 0.9 },
+  /** 'moving' | 'stopped' */
+  state: { type: 'String', default: 'moving' },
   /** World x the ship emerged at (z is always the ocean's far edge). */
   spawnX: { type: 'Float32', default: 0 },
   /** World x of the sail target, rolled across the ocean width. */
@@ -86,6 +82,19 @@ export const ShipMovement = createComponent('ShipMovement', {
   laneHalfWidth: { type: 'Float32', default: 0.35 },
   /** Set while a ship ahead keeps this one waiting. */
   blocked: { type: 'Boolean', default: false },
+});
+
+/**
+ * Materialisation countdown for a freshly dispatched unit. Carrying this
+ * component *is* the tag "hull still fading in": SpawnFadeSystem drives the
+ * materials and removes it once the unit is solid, so nothing downstream has
+ * to know a fade ever happened. Movement runs in parallel, not after it.
+ */
+export const SpawnFade = createComponent('SpawnFade', {
+  /** Seconds the materialisation takes. */
+  duration: { type: 'Float32', default: 0.9 },
+  /** Seconds elapsed so far. */
+  elapsed: { type: 'Float32', default: 0 },
 });
 
 /**
@@ -115,6 +124,7 @@ export default defineComponents([
   LevelDirector,
   UnitTag,
   ShipMovement,
+  SpawnFade,
   Billboard,
   PanelScaleAnim,
 ]);
