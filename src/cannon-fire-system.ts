@@ -55,13 +55,15 @@ export class CannonFireSystem extends createSystem({
     this.queries.cannons.subscribe('qualify', (entity) => {
       const muzzle = entity.object3D?.getObjectByName('muzzle');
       if (muzzle) this.muzzles.set(entity.index, muzzle);
+      // Roll the first cooldown too: the opening volley starts staggered.
+      entity.setValue(CannonFire, 'cooldown', this.rollInterval(entity));
     });
   }
 
   update(delta: number): void {
     // Hold fire until the START gate opens: LevelDirector.phase is the single
-    // truth for game flow, and cooldowns stay 0 so the first volley answers
-    // the click immediately once the level begins.
+    // truth for game flow. Cooldowns were rolled at mount time and tick only
+    // once the level begins.
     if (!this.gameRunning()) return;
     this.claimed.clear();
     for (const entity of this.queries.cannons.entities) {
@@ -69,12 +71,19 @@ export class CannonFireSystem extends createSystem({
       if (cooldown <= 0) {
         // Pool empty: retry shortly instead of banking negative time, which
         // would burst several shells out the moment one comes back.
-        cooldown = this.fire(entity)
-          ? cooldown + Number(entity.getValue(CannonFire, 'interval'))
-          : 0.1;
+        cooldown = this.fire(entity) ? this.rollInterval(entity) : 0.1;
       }
       entity.setValue(CannonFire, 'cooldown', cooldown);
     }
+  }
+
+  /** Every cooldown is a fresh roll: the cannon's interval plus a jitter. */
+  private rollInterval(cannon: Entity): number {
+    return (
+      Number(cannon.getValue(CannonFire, 'interval')) +
+      COMBAT.fireJitterMin +
+      Math.random() * (COMBAT.fireJitterMax - COMBAT.fireJitterMin)
+    );
   }
 
   /** Launch one free shell along the muzzle's world -Z. False when none is free. */

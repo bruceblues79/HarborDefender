@@ -6,6 +6,7 @@
  */
 
 import { createComponent, defineComponents } from '@iwsdk/core';
+import { COMBAT } from './level-config.js';
 
 /** Marks the ocean body entity so OceanSystem can find it via query. */
 export const OceanTag = createComponent('OceanTag', {});
@@ -132,7 +133,7 @@ export const ShellTag = createComponent('ShellTag', {});
  */
 export const CannonFire = createComponent('CannonFire', {
   /** Seconds between two shots. */
-  interval: { type: 'Float32', default: 1.0 },
+  interval: { type: 'Float32', default: COMBAT.fireInterval },
   /** Countdown to the next shot; written only by CannonFireSystem. */
   cooldown: { type: 'Float32', default: 0 },
 });
@@ -168,7 +169,7 @@ export const CannonAim = createComponent('CannonAim', {
  */
 export const SplashFade = createComponent('SplashFade', {
   /** Seconds the ripple takes to fade out. */
-  duration: { type: 'Float32', default: 0.5 },
+  duration: { type: 'Float32', default: COMBAT.splashDuration },
   /** Seconds elapsed so far. */
   elapsed: { type: 'Float32', default: 0 },
 });

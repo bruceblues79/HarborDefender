@@ -207,8 +207,16 @@ export const COMBAT = {
   shellRadius: 0.0375,
   /** Medieval black-iron cannonball tint (metalness/roughness stay 1 / 0.6). */
   shellColor: 0x222222,
-  /** Seconds between two shots from one cannon. */
-  fireInterval: 2.0,
+  /** Seconds between two shots from one cannon — the base of every roll. */
+  fireInterval: 2.5,
+  /**
+   * Per-shot jitter (s): each cannon re-rolls its cooldown as
+   * `fireInterval + [fireJitterMin, fireJitterMax]` after every shot, and the
+   * first volley rolls the same way at mount time — the battery drifts out
+   * of lockstep from the very first round.
+   */
+  fireJitterMin: 0.2,
+  fireJitterMax: 0.5,
   /** Gravity (m/s^2) for the parabolic flight. */
   gravity: 9.8,
   /**
@@ -223,7 +231,7 @@ export const COMBAT = {
   /** Shells recycle this far (m) below the ocean surface. */
   splashMargin: 0.05,
   /** Splash ripple: strength 1 -> 0 over this many seconds, then disposed. */
-  splashDuration: 0.5,
+  splashDuration: 1.0,
   /** Splash ripple shape: tighter and punchier than a ship wake. */
   splashRadius: 0.6,
   splashAmplitude: 0.04,
