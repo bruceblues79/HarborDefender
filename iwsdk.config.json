@@ -13,7 +13,8 @@
       "mode": "ar",
       "offer": "always",
       "features": {
-        "handTracking": true
+        "handTracking": true,
+        "gazeTracking": true
       }
     },
     "input": {
@@ -22,9 +23,10 @@
     "render": {
       "near": 0.001,
       "far": 200,
+      "fov": 50,
       "camera": {
-        "position": [0, 1.5, 2],
-        "lookAt": [0, 1.5, -1.5]
+        "position": [0, 1.05, 2],
+        "lookAt": [0, 1.05, -1.5]
       }
     },
     "features": {
