@@ -13,7 +13,7 @@ import {
   Vector3,
 } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
-import { BallisticFlight, CannonFire, ShellTag } from './components.js';
+import { BallisticFlight, CannonFire, LevelDirector, ShellTag } from './components.js';
 import { COMBAT } from './level-config.js';
 
 /**
@@ -30,6 +30,7 @@ import { COMBAT } from './level-config.js';
 export class CannonFireSystem extends createSystem({
   cannons: { required: [CannonFire] },
   freeShells: { required: [ShellTag], excluded: [BallisticFlight] },
+  directors: { required: [LevelDirector] },
 }) {
   /** Muzzle object per cannon entity index, resolved once on qualify. */
   private readonly muzzles = new Map<number, Object3D>();
@@ -58,6 +59,10 @@ export class CannonFireSystem extends createSystem({
   }
 
   update(delta: number): void {
+    // Hold fire until the START gate opens: LevelDirector.phase is the single
+    // truth for game flow, and cooldowns stay 0 so the first volley answers
+    // the click immediately once the level begins.
+    if (!this.gameRunning()) return;
     this.claimed.clear();
     for (const entity of this.queries.cannons.entities) {
       let cooldown = Number(entity.getValue(CannonFire, 'cooldown')) - delta;
@@ -102,5 +107,15 @@ export class CannonFireSystem extends createSystem({
       }
     }
     return undefined;
+  }
+
+  /** True once the START hand-off has moved the director past waiting-start. */
+  private gameRunning(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return (
+        String(director.getValue(LevelDirector, 'phase')) !== 'waiting-start'
+      );
+    }
+    return false;
   }
 }

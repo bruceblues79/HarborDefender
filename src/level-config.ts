@@ -208,19 +208,18 @@ export const COMBAT = {
   /** Medieval black-iron cannonball tint (metalness/roughness stay 1 / 0.6). */
   shellColor: 0x222222,
   /** Seconds between two shots from one cannon. */
-  fireInterval: 1.0,
+  fireInterval: 2.0,
   /** Gravity (m/s^2) for the parabolic flight. */
   gravity: 9.8,
   /**
-   * Muzzle speed (m/s), derived from the design constraint "at the maximum
-   * pitch (45°) the shell lands at z ≈ -6.15":
+   * Muzzle speed (m/s). Tuned so a flat shot (0°) reaches z ≈ -2.4 — just
+   * past the dock line — and the maximum pitch (45°) lands at z ≈ -6.9:
    *   launch at 45° ≈ (x, 0.941, -0.941) — the muzzle swings up on its pivot;
-   *   splash y = surfaceY - splashMargin ≈ 0.625, travel Δz = 5.21
-   *   s = v/√2;  s·[s + √(s² + 2g·0.316)] / g = 5.21  ->  v ≈ 6.94
-   * Flat shots (0°) fall short at z ≈ -2.3: elevation is what buys range.
-   * A slow, lobbed cannonball arc (~24% of the original 29 m/s).
+   *   splash y = surfaceY - splashMargin ≈ 0.625, travel Δz ≈ 5.96
+   *   s = v/√2;  s·[s + √(s² + 2g·0.316)] / g = 5.96  ->  v ≈ 7.45
+   * A slow, lobbed cannonball arc (~26% of the original 29 m/s).
    */
-  shellSpeed: 6.94,
+  shellSpeed: 7.45,
   /** Shells recycle this far (m) below the ocean surface. */
   splashMargin: 0.05,
   /** Splash ripple: strength 1 -> 0 over this many seconds, then disposed. */
