@@ -7,7 +7,12 @@
 
 import { ShaderMaterial, UniformsLib, UniformsUtils, Vector3 } from '@iwsdk/core';
 
-const MAX_WAKE = 8;
+/**
+ * Shader uniform array cap for simultaneous wake sources — the single source
+ * of truth, imported by OceanSystem. 12 covers six sailing ships plus a
+ * volley of cannonball splashes with margin.
+ */
+export const MAX_WAKE = 12;
 
 const vertexShader = `
 #include <common>

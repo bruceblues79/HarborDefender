@@ -1,0 +1,106 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+import {
+  createSystem,
+  Mesh,
+  MeshStandardMaterial,
+  SphereGeometry,
+  Vector3,
+} from '@iwsdk/core';
+import type { Entity, Object3D } from '@iwsdk/core';
+import { BallisticFlight, CannonFire, ShellTag } from './components.js';
+import { COMBAT } from './level-config.js';
+
+/**
+ * Owns the shared shell pool and the cannons' fire rhythm.
+ *
+ * Pool: `COMBAT.shellPoolSize` shells created once at init, all sharing one
+ * geometry and one material; a shell is free exactly while it does not carry
+ * BallisticFlight. Firing never allocates — it repositions a free shell at
+ * the muzzle and hands it to BallisticSystem by adding BallisticFlight.
+ *
+ * The muzzle is the `muzzle` child battle-setup hangs under each cannon's
+ * gun_rotate pivot, so the launch direction always follows the current aim.
+ */
+export class CannonFireSystem extends createSystem({
+  cannons: { required: [CannonFire] },
+  freeShells: { required: [ShellTag], excluded: [BallisticFlight] },
+}) {
+  /** Muzzle object per cannon entity index, resolved once on qualify. */
+  private readonly muzzles = new Map<number, Object3D>();
+  /** Shells handed out this frame; the free-shell query only refreshes next frame. */
+  private readonly claimed = new Set<number>();
+  private readonly muzzlePos = new Vector3();
+  private readonly muzzleDir = new Vector3();
+
+  init(): void {
+    const geometry = new SphereGeometry(COMBAT.shellRadius, 8, 6);
+    const material = new MeshStandardMaterial({
+      color: COMBAT.shellColor,
+      metalness: 1,
+      roughness: 0.6,
+    });
+    for (let i = 0; i < COMBAT.shellPoolSize; i++) {
+      const shell = new Mesh(geometry, material);
+      shell.castShadow = true;
+      shell.visible = false;
+      this.world.createTransformEntity(shell).addComponent(ShellTag);
+    }
+    this.queries.cannons.subscribe('qualify', (entity) => {
+      const muzzle = entity.object3D?.getObjectByName('muzzle');
+      if (muzzle) this.muzzles.set(entity.index, muzzle);
+    });
+  }
+
+  update(delta: number): void {
+    this.claimed.clear();
+    for (const entity of this.queries.cannons.entities) {
+      let cooldown = Number(entity.getValue(CannonFire, 'cooldown')) - delta;
+      if (cooldown <= 0) {
+        // Pool empty: retry shortly instead of banking negative time, which
+        // would burst several shells out the moment one comes back.
+        cooldown = this.fire(entity)
+          ? cooldown + Number(entity.getValue(CannonFire, 'interval'))
+          : 0.1;
+      }
+      entity.setValue(CannonFire, 'cooldown', cooldown);
+    }
+  }
+
+  /** Launch one free shell along the muzzle's world -Z. False when none is free. */
+  private fire(cannon: Entity): boolean {
+    const muzzle = this.muzzles.get(cannon.index);
+    if (!muzzle) return false;
+    const shell = this.firstFreeShell();
+    const shellObject = shell?.object3D;
+    if (!shell || !shellObject) return false;
+
+    muzzle.getWorldPosition(this.muzzlePos);
+    // Object3D.getWorldDirection returns +Z; the barrel fires down its -Z.
+    muzzle.getWorldDirection(this.muzzleDir).negate();
+    shellObject.position.copy(this.muzzlePos);
+    shellObject.visible = true;
+    shell.addComponent(BallisticFlight, {
+      vx: this.muzzleDir.x * COMBAT.shellSpeed,
+      vy: this.muzzleDir.y * COMBAT.shellSpeed,
+      vz: this.muzzleDir.z * COMBAT.shellSpeed,
+    });
+    return true;
+  }
+
+  /** First pooled shell that is neither airborne nor already claimed this frame. */
+  private firstFreeShell(): Entity | undefined {
+    for (const shell of this.queries.freeShells.entities) {
+      if (!this.claimed.has(shell.index)) {
+        this.claimed.add(shell.index);
+        return shell;
+      }
+    }
+    return undefined;
+  }
+}

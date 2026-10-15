@@ -7,15 +7,19 @@
 
 import { UIKitMLAsset, World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
+import { BallisticSystem } from './ballistic-system.js';
 import { BillboardSystem } from './billboard-system.js';
 import { startBattle } from './battle-setup.js';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
+import { CannonAimSystem } from './cannon-aim-system.js';
+import { CannonFireSystem } from './cannon-fire-system.js';
 import { Billboard } from './components.js';
 import { LevelWaveSystem } from './level-wave-system.js';
 import { OceanSystem } from './ocean-system.js';
 import { PanelScaleSystem } from './panel-scale-system.js';
 import { ShipMovementSystem } from './ship-movement-system.js';
 import { SpawnFadeSystem } from './spawn-fade-system.js';
+import { SplashSystem } from './splash-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { installXRButton } from './xr-button.js';
 
@@ -28,8 +32,12 @@ World.create(
   // Simulation tier: the director paces dispatch, movement runs the ships in
   // while the fade system materialises their hulls in parallel.
   world.registerSystem(LevelWaveSystem, { priority: 5 });
+  world.registerSystem(CannonAimSystem, { priority: 8 });
   world.registerSystem(ShipMovementSystem, { priority: 10 });
+  world.registerSystem(CannonFireSystem, { priority: 11 });
   world.registerSystem(SpawnFadeSystem, { priority: 12 });
+  world.registerSystem(BallisticSystem, { priority: 13 });
+  world.registerSystem(SplashSystem, { priority: 14 });
   // UI tier, after the camera updates so billboards track this frame's view.
   world.registerSystem(PanelScaleSystem, { priority: 30 });
   world.registerSystem(StartPanelSystem, { priority: 30 });

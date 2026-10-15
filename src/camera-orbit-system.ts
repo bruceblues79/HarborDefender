@@ -7,10 +7,13 @@
 
 import {
   createSystem,
+  Hovered,
+  Pressed,
   UIKitMLAsset,
   Vector3,
   VisibilityState,
 } from '@iwsdk/core';
+import { CannonAim } from './components.js';
 
 /**
  * Browser-mode (non-immersive) orbit camera rig.
@@ -44,7 +47,10 @@ const easeInOutCubic = (t: number): number =>
 
 type DragMode = 'none' | 'orbit' | 'pinch';
 
-export class CameraOrbitSystem extends createSystem({}) {
+export class CameraOrbitSystem extends createSystem({
+  // Watched so a drag that belongs to a cannon never also orbits the camera.
+  cannons: { required: [CannonAim] },
+}) {
   // Orbit state. Seed matches the welcome/loading pose from
   // iwsdk.config.json — camera (0,1.25,2) looking level at (0,1.25,-1.5) — so
   // the target starts 3.5 m ahead at zero yaw/pitch. Game-start transitions
@@ -154,6 +160,12 @@ export class CameraOrbitSystem extends createSystem({}) {
     }
     // Press started on a UI element: ignore this pointer for the gesture.
     if (this.blockedPointers.has(e.pointerId)) return;
+    // Press started on a cannon: the aim drag owns it (Hovered is already set
+    // for a mouse; touch gets Pressed one frame later, covered in onMove).
+    if (this.anyCannon(Hovered)) {
+      this.blockedPointers.add(e.pointerId);
+      return;
+    }
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (this.pointers.size === 1) {
@@ -177,6 +189,19 @@ export class CameraOrbitSystem extends createSystem({}) {
     // Always refresh the stored position, even outside 'orbit' mode, so
     // re-anchoring after a finger lifts never jumps from a stale coordinate.
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // A cannon press owns this gesture (covers the touch case where Pressed
+    // lands a frame after pointerdown): stay anchored on every anchor so
+    // resuming the camera after the drag never jumps.
+    if (this.anyCannon(Pressed)) {
+      this.orbitLast.x = e.clientX;
+      this.orbitLast.y = e.clientY;
+      if (this.pointers.size === 2) {
+        this.pinchStartDist = this.currentPinchDist();
+        this.pinchStartFov = this.currentFov;
+      }
+      return;
+    }
 
     if (this.mode === 'pinch' && this.pointers.size === 2) {
       // Spread fingers -> zoom in (FOV shrinks); pinch in -> zoom out.
@@ -265,6 +290,14 @@ export class CameraOrbitSystem extends createSystem({}) {
   private currentPinchDist(): number {
     const [a, b] = [...this.pointers.values()];
     return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  /** True while any cannon carries the given transient interaction tag. */
+  private anyCannon(tag: typeof Hovered | typeof Pressed): boolean {
+    for (const entity of this.queries.cannons.entities) {
+      if (entity.hasComponent(tag)) return true;
+    }
+    return false;
   }
 
   private clampAngle(value: number, center: number, range: number): number {

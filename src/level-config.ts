@@ -190,3 +190,53 @@ export const gameLevels: LevelSpec[] = [];
 
 /** The list the director runs. Flip to gameLevels to ship a campaign. */
 export const activeLevelList: LevelSpec[] = designList;
+
+/**
+ * Combat tuning: cannon fire, shell ballistics, splash ripples and aim drag.
+ * Every knob a designer touches lives here; the combat systems hold no numbers.
+ */
+export const COMBAT = {
+  /**
+   * Pooled shells shared by every cannon, player and (future) pirate alike.
+   * Sustained flight peaks at ~6 shells today and roughly triples once pirate
+   * ships return fire; 48 keeps ample headroom — idle shells are invisible
+   * meshes with shared geometry/material, so the pool costs nothing per frame.
+   */
+  shellPoolSize: 48,
+  /** Shell sphere radius (m) — reads as a ball for the 0.18 m-wide barrel. */
+  shellRadius: 0.0375,
+  /** Medieval black-iron cannonball tint (metalness/roughness stay 1 / 0.6). */
+  shellColor: 0x222222,
+  /** Seconds between two shots from one cannon. */
+  fireInterval: 1.0,
+  /** Gravity (m/s^2) for the parabolic flight. */
+  gravity: 9.8,
+  /**
+   * Muzzle speed (m/s), derived from the design constraint "at the maximum
+   * pitch (45°) the shell lands at z ≈ -6.15":
+   *   launch at 45° ≈ (x, 0.941, -0.941) — the muzzle swings up on its pivot;
+   *   splash y = surfaceY - splashMargin ≈ 0.625, travel Δz = 5.21
+   *   s = v/√2;  s·[s + √(s² + 2g·0.316)] / g = 5.21  ->  v ≈ 6.94
+   * Flat shots (0°) fall short at z ≈ -2.3: elevation is what buys range.
+   * A slow, lobbed cannonball arc (~24% of the original 29 m/s).
+   */
+  shellSpeed: 6.94,
+  /** Shells recycle this far (m) below the ocean surface. */
+  splashMargin: 0.05,
+  /** Splash ripple: strength 1 -> 0 over this many seconds, then disposed. */
+  splashDuration: 0.5,
+  /** Splash ripple shape: tighter and punchier than a ship wake. */
+  splashRadius: 0.6,
+  splashAmplitude: 0.04,
+  splashFrequency: 18,
+  splashSpeed: 4,
+  /** Whole-cannon traverse clamp, degrees (±). */
+  aimYawRange: 15,
+  /** Barrel elevation clamp, degrees; the default pitch is the lowest angle. */
+  aimPitchMin: 0,
+  aimPitchMax: 45,
+  /** Aim degrees per dragged pixel in the browser — retune by feel. */
+  aimDegreesPerPixel: 0.1,
+  /** Aim degrees per metre of hand-ray travel in XR — retune by feel. */
+  aimDegreesPerMeter: 75,
+};

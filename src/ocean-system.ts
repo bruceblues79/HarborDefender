@@ -8,8 +8,8 @@
 import { createSystem, Vector3 } from '@iwsdk/core';
 import type { Entity, Mesh, ShaderMaterial } from '@iwsdk/core';
 import { OceanTag, WakeSource } from './components.js';
+import { MAX_WAKE } from './scene-assets/ocean.scene-asset.js';
 
-const MAX_WAKE = 8;
 /** Seconds for strength / radius to ease from the current value to the target. */
 const WAKE_BLEND_TIME = 0.3;
 

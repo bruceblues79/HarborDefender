@@ -118,6 +118,61 @@ export const PanelScaleAnim = createComponent('PanelScaleAnim', {
   speed: { type: 'Float32', default: 4 },
 });
 
+/**
+ * Marks a pooled cannon shell. The pool lives in CannonFireSystem; a shell is
+ * free exactly while it does NOT carry `BallisticFlight` — presence of the
+ * flight component is the "airborne" tag, so no separate in-use flag exists.
+ */
+export const ShellTag = createComponent('ShellTag', {});
+
+/**
+ * Auto-fire ability of a cannon's muzzle: launch one pooled shell every
+ * `interval` seconds. When the pool is empty the shot is skipped and retried
+ * shortly, so a busy pool degrades to a slower fire rate, never a stall.
+ */
+export const CannonFire = createComponent('CannonFire', {
+  /** Seconds between two shots. */
+  interval: { type: 'Float32', default: 1.0 },
+  /** Countdown to the next shot; written only by CannonFireSystem. */
+  cooldown: { type: 'Float32', default: 0 },
+});
+
+/**
+ * Parabolic flight for a shell: carrying this *is* the tag "shell airborne".
+ * Plain scalars so a shell's velocity stays inspector-readable; BallisticSystem
+ * is the only writer. Removed on splash-down, returning the shell to the pool.
+ */
+export const BallisticFlight = createComponent('BallisticFlight', {
+  vx: { type: 'Float32', default: 0 },
+  vy: { type: 'Float32', default: 0 },
+  vz: { type: 'Float32', default: 0 },
+});
+
+/**
+ * Cannon aim state — the single truth for traverse and elevation.
+ * CannonAimSystem writes it from drag input (browser drag / XR pinch-drag via
+ * the native `Pressed` tag) and applies it every frame: yaw on the cannon
+ * root, pitch on the gun_rotate pivot.
+ */
+export const CannonAim = createComponent('CannonAim', {
+  /** Whole-cannon traverse, degrees, clamped ±COMBAT.aimYawRange. */
+  yawDeg: { type: 'Float32', default: 0 },
+  /** Barrel elevation, degrees, clamped [COMBAT.aimPitchMin, aimPitchMax]. */
+  pitchDeg: { type: 'Float32', default: 0 },
+});
+
+/**
+ * Splash ripple countdown. Carrying this *is* the tag "ripple still fading":
+ * SplashSystem drives the WakeSource strength 1 -> 0 over `duration`, then
+ * disposes the entity so it leaves OceanSystem's wake list for good.
+ */
+export const SplashFade = createComponent('SplashFade', {
+  /** Seconds the ripple takes to fade out. */
+  duration: { type: 'Float32', default: 0.5 },
+  /** Seconds elapsed so far. */
+  elapsed: { type: 'Float32', default: 0 },
+});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -127,4 +182,9 @@ export default defineComponents([
   SpawnFade,
   Billboard,
   PanelScaleAnim,
+  ShellTag,
+  CannonFire,
+  BallisticFlight,
+  CannonAim,
+  SplashFade,
 ]);

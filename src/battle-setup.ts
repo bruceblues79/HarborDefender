@@ -10,6 +10,7 @@ import {
   HalfFloatType,
   Mesh,
   Object3D,
+  RayInteractable,
   UIKitMLAsset,
   Vector3,
   WebGLCubeRenderTarget,
@@ -17,7 +18,7 @@ import {
   loadUIKitMLAsset,
 } from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
-import { OceanTag } from './components.js';
+import { CannonAim, CannonFire, OceanTag } from './components.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
 import { StartPanelSystem } from './start-panel-system.js';
 
@@ -117,13 +118,29 @@ export function startBattle(world: World): void {
           for (const x of [-1.2, -0.6, 0, 0.6, 1.2]) {
             const cannon = cannonPrototype.clone(true);
             cannon.position.set(x, 0.8, -0.8);
+            // Muzzle node on the gun_rotate pivot: the barrel geometry spans
+            // local z = -0.20..0.17 (GLB bounds), so the muzzle sits at the
+            // local -Z tip and inherits every aim rotation. CannonFireSystem
+            // launches shells along its world -Z.
+            const gunPivot = cannon.getObjectByName('gun_rotate');
+            if (gunPivot) {
+              const muzzle = new Object3D();
+              muzzle.name = 'muzzle';
+              muzzle.position.set(0, 0, -0.2);
+              gunPivot.add(muzzle);
+            }
             cannon.traverse((child: Object3D) => {
               if ((child as Mesh).isMesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
               }
             });
-            world.createTransformEntity(cannon);
+            const cannonEntity = world.createTransformEntity(cannon);
+            // RayInteractable makes the cannon pressable (mouse / touch / XR
+            // ray); CannonAim + CannonFire hand it to the combat systems.
+            cannonEntity.addComponent(RayInteractable);
+            cannonEntity.addComponent(CannonAim);
+            cannonEntity.addComponent(CannonFire);
           }
 
           // 4. Hide loading panel — game is ready, ease into the game view,
