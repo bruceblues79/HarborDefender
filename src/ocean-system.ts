@@ -6,12 +6,12 @@
  */
 
 import { createSystem, Vector3 } from '@iwsdk/core';
-import type { Mesh, ShaderMaterial } from '@iwsdk/core';
+import type { Entity, Mesh, ShaderMaterial } from '@iwsdk/core';
 import { OceanTag, WakeSource } from './components.js';
 
 const MAX_WAKE = 8;
-/** Strength lerp speed — ~0.5 s to fade from 0 to 1. */
-const FADE_SPEED = 2.0;
+/** Seconds for strength / radius to ease from the current value to the target. */
+const WAKE_BLEND_TIME = 0.3;
 
 /**
  * Drives the ocean surface shader clock for every entity tagged with
@@ -44,25 +44,17 @@ export class OceanSystem extends createSystem({
     for (const entity of this.queries.wakes.entities) {
       if (count >= MAX_WAKE) break;
 
-      // Lerp strength toward target for smooth fade in/out.
-      const strength = Number(entity.getValue(WakeSource, 'strength'));
-      const target = Number(entity.getValue(WakeSource, 'targetStrength'));
-      const newStrength =
-        strength + (target - strength) * Math.min(1, delta * FADE_SPEED);
-      entity.setValue(WakeSource, 'strength', newStrength);
+      const strength = this.blend(entity, 'strength', 'targetStrength', delta);
+      const radius = this.blend(entity, 'radius', 'targetRadius', delta);
 
-      if (newStrength < 0.001) continue;
+      if (strength < 0.001) continue;
       const obj = entity.object3D;
       if (!obj) continue;
       obj.getWorldPosition(this.scratch);
       // wakePos.y packs the ripple radius so both arrays stay vec3.
-      this.wakePos[count].set(
-        this.scratch.x,
-        Number(entity.getValue(WakeSource, 'radius')),
-        this.scratch.z,
-      );
+      this.wakePos[count].set(this.scratch.x, radius, this.scratch.z);
       this.wakeParams[count].set(
-        Number(entity.getValue(WakeSource, 'amplitude')) * newStrength,
+        Number(entity.getValue(WakeSource, 'amplitude')) * strength,
         Number(entity.getValue(WakeSource, 'frequency')),
         Number(entity.getValue(WakeSource, 'speed')),
       );
@@ -83,5 +75,29 @@ export class OceanSystem extends createSystem({
         }
       });
     }
+  }
+
+  /**
+   * Ease a running value toward its target at a fixed rate (full unit per
+   * WAKE_BLEND_TIME). Snaps exactly onto the target on arrival and, once the
+   * two agree, leaves the component untouched so settled sources cost no
+   * component writes.
+   */
+  private blend(
+    entity: Entity,
+    field: 'strength' | 'radius',
+    targetField: 'targetStrength' | 'targetRadius',
+    delta: number,
+  ): number {
+    const current = Number(entity.getValue(WakeSource, field));
+    const target = Number(entity.getValue(WakeSource, targetField));
+    if (current === target) return current;
+    const step = delta / WAKE_BLEND_TIME;
+    const next =
+      current < target
+        ? Math.min(target, current + step)
+        : Math.max(target, current - step);
+    entity.setValue(WakeSource, field, next);
+    return next;
   }
 }

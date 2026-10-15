@@ -17,8 +17,9 @@ import {
   loadUIKitMLAsset,
 } from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
-import { OceanTag, WakeSource } from './components.js';
+import { OceanTag } from './components.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
+import { StartPanelSystem } from './start-panel-system.js';
 
 let battleStarted = false;
 
@@ -45,6 +46,11 @@ export function startBattle(world: World): void {
     .find((system): system is CameraOrbitSystem =>
       system instanceof CameraOrbitSystem,
     );
+  const startPanelSystem = world
+    .getSystems()
+    .find((system): system is StartPanelSystem =>
+      system instanceof StartPanelSystem,
+    );
 
   // 1. Hide the welcome panel
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
@@ -65,11 +71,10 @@ export function startBattle(world: World): void {
           });
           cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
 
-          const [oceanGltf, wallGltf, cannonGltf, shipGltf] = await Promise.all([
+          const [oceanGltf, wallGltf, cannonGltf] = await Promise.all([
             AssetManager.loadGLTFById('ocean-body'),
             AssetManager.loadGLTFById('harbor-wall'),
             AssetManager.loadGLTFById('cannon'),
-            AssetManager.loadGLTFById('pirate-ship'),
           ]);
 
           // Swap the GLB's placeholder material for the wave shader
@@ -121,31 +126,15 @@ export function startBattle(world: World): void {
             world.createTransformEntity(cannon);
           }
 
-          // Visual acceptance ship: placed closer to the harbour for better
-          // visibility of wake ripples. Bow (and gun muzzle, -Z local) turned
-          // toward the harbour.
-          const shipObject = shipGltf.scene;
-          shipObject.traverse((child: Object3D) => {
-            if ((child as Mesh).isMesh) {
-              child.castShadow = true;
-              child.receiveShadow = true;
-            }
-          });
-          shipObject.position.set(0, 0.46, -4);
-          shipObject.rotation.y = Math.PI;
-          // Wake ripples: sailing by default (strength=1). To fade out,
-          // set targetStrength=0; OceanSystem lerps over ~0.5 s.
-          world.createTransformEntity(shipObject).addComponent(WakeSource, {
-            strength: 1,
-            targetStrength: 1,
-          });
-
-          // 4. Hide loading panel — game is ready, ease into the game view
+          // 4. Hide loading panel — game is ready, ease into the game view,
+          // then raise the START gates. Units are dispatched by
+          // LevelWaveSystem once the player presses START.
           loadingPanel.visible = false;
           cameraSystem?.moveToView(
             new Vector3(0, 2.55, 2.75),
             new Vector3(0, 1.497, -2),
           );
+          startPanelSystem?.show();
         })
         .catch((err: unknown) => {
           console.error('Failed to load game assets:', err);
