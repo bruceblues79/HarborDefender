@@ -527,8 +527,8 @@ const HULL_COLOR = 0x5c4430;
 const DECK_COLOR = 0x8a6c49;
 const CABIN_COLOR = 0x6b4f34;
 const MAST_COLOR = 0x74583a;
-const SAIL_COLOR = 0xc0a279;
-const FLAG_COLOR = 0x8c3b2e;
+const SAIL_COLOR = 0x2a0808;
+const FLAG_COLOR = 0xd40000;
 
 interface HullStation {
   z: number; // station position, stern +Z -> bow -Z
@@ -752,8 +752,12 @@ function buildShipSuperstructure(rand: () => number): BufferGeometry {
   paint(flag, FLAG_COLOR, 0.02, rand);
   parts.push(flag);
 
-  // Bowsprit leaning up-forward from the stem.
-  const bowsprit = new CylinderGeometry(0.007, 0.011, 0.3, 6);
+  // Bowsprit leaning up-forward from the stem. Shortened to 1/4 of the
+  // original 0.3 m (now 0.075 m); the centre is shifted toward the base
+  // before rotation so the stem-anchored root stays put and only the tip
+  // recedes.
+  const bowsprit = new CylinderGeometry(0.007, 0.011, 0.075, 6);
+  bowsprit.translate(0, -0.1125, 0);
   bowsprit.rotateX(-Math.PI / 5);
   bowsprit.translate(0, 0.37, -0.688);
   paint(bowsprit, MAST_COLOR, 0.03, rand);

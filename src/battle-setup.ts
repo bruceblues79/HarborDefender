@@ -59,7 +59,7 @@ export function startBattle(world: World): void {
   // 2. Show loading panel (1 m × 0.5 m, faces +Z)
   loadUIKitMLAsset('loading-panel')
     .then((loadingPanel) => {
-      loadingPanel.position.set(0, 1.05, -1.5);
+      loadingPanel.position.set(0, 1.25, -1.5);
       world.createTransformEntity(loadingPanel);
 
       // 3. Load game assets: HDR env + solidified GLB models
@@ -93,12 +93,12 @@ export function startBattle(world: World): void {
 
           // Ocean extended to 10 m: near edge stays at z = -1 (against the
           // wall), centre shifts back from -4 to -6.
-          oceanObject.position.set(0, 0.35, -6);
+          oceanObject.position.set(0, 0.55, -6);
           world.createTransformEntity(oceanObject).addComponent(OceanTag);
 
           // Place harbor wall at the ocean body's maxZ edge
           const wallObject = wallGltf.scene;
-          wallObject.position.set(0, 0.35, -0.8);
+          wallObject.position.set(0, 0.55, -0.8);
           // Runtime-instantiated GLB meshes keep three.js defaults
           // (both false); scene-JSON assets get these via content flags.
           wallObject.traverse((child: Object3D) => {
@@ -116,7 +116,7 @@ export function startBattle(world: World): void {
           const cannonPrototype = cannonGltf.scene;
           for (const x of [-1.2, -0.6, 0, 0.6, 1.2]) {
             const cannon = cannonPrototype.clone(true);
-            cannon.position.set(x, 0.6, -0.8);
+            cannon.position.set(x, 0.8, -0.8);
             cannon.traverse((child: Object3D) => {
               if ((child as Mesh).isMesh) {
                 child.castShadow = true;
@@ -131,8 +131,8 @@ export function startBattle(world: World): void {
           // LevelWaveSystem once the player presses START.
           loadingPanel.visible = false;
           cameraSystem?.moveToView(
-            new Vector3(0, 2.55, 2.75),
-            new Vector3(0, 1.497, -2),
+            new Vector3(0, 2.75, 2.75),
+            new Vector3(0, 1.697, -2),
           );
           startPanelSystem?.show();
         })

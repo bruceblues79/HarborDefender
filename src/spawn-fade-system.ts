@@ -14,10 +14,12 @@ import { SpawnFade } from './components.js';
  * state during a fade.
  *
  * Presence of `SpawnFade` *is* the tag: while an entity carries it, the hull
- * is still fading in. Opacity ramps 0..1 over `duration`, then the hull goes
- * opaque, starts casting shadows, and the component is removed so the entity
- * leaves this query for good. Movement is a separate system and starts on the
- * same frame, so a ship is already under way while it materialises.
+ * is still fading in. Opacity ramps 0..1 over `duration`, then shadows turn on
+ * and the component is removed so the entity leaves this query for good. The
+ * material stays `transparent` with opacity 1 rather than flipping to opaque —
+ * at opacity 1 the alpha blend is a no-op, so there is no render-pass switch
+ * and no colour pop. Movement is a separate system and starts on the same
+ * frame, so a ship is already under way while it materialises.
  */
 export class SpawnFadeSystem extends createSystem({
   fading: { required: [SpawnFade] },
@@ -43,7 +45,6 @@ export class SpawnFadeSystem extends createSystem({
           : [mesh.material];
         for (const material of materials) {
           material.opacity = fade;
-          if (done) material.transparent = false;
         }
         if (done) mesh.castShadow = true;
       });

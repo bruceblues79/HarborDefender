@@ -69,7 +69,7 @@ export const PACING = {
 
 /**
  * Ocean body footprint in world space. Kept in step with the ocean GLB
- * placement in battle-setup.ts (10 m body centred at z = -6, lifted 0.35).
+ * placement in battle-setup.ts (10 m body centred at z = -6, lifted 0.55).
  */
 export const OCEAN = {
   /** Body width along x (m). */
@@ -78,8 +78,8 @@ export const OCEAN = {
   length: 10,
   /** Body centre z (m). */
   centerZ: -6,
-  /** Top-surface y (m): 0.35 lift + half of the 0.25 m thickness. */
-  surfaceY: 0.475,
+  /** Top-surface y (m): 0.55 lift + half of the 0.25 m thickness. */
+  surfaceY: 0.675,
 };
 
 /** World z of the ocean's far edge — where attackers emerge. */
@@ -119,7 +119,7 @@ export const SHIP_STOP_Z_MIN: number = OCEAN.centerZ;
 export const SHIP_STOP_Z_MAX: number =
   WALL_SEA_FACE_Z - SHIP_HALF_LENGTH - SHIP_STOP_MARGIN;
 /** Ships float just below the wave crest at the surface. */
-export const SHIP_Y = 0.46;
+export const SHIP_Y = 0.66;
 
 /**
  * Ripples a moving unit drags across the surface. Strength is the wake's

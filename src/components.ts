@@ -75,7 +75,7 @@ export const ShipMovement = createComponent('ShipMovement', {
   /** World z of the sail target, rolled between SHIP_STOP_Z_MIN and _MAX. */
   targetZ: { type: 'Float32', default: 0 },
   /** Forward speed (m/s). */
-  speed: { type: 'Float32', default: 0.5 },
+  speed: { type: 'Float32', default: 0.4 },
   /** Gap (m) kept behind a same-type ship ahead along the travel direction. */
   stopDistance: { type: 'Float32', default: 1.1 },
   /** Lateral half-width (m) used for "ahead of me" obstacle checks. */

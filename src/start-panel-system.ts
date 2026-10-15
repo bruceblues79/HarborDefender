@@ -16,7 +16,7 @@ import { PACING } from './level-config.js';
 import { LevelWaveSystem } from './level-wave-system.js';
 
 /** Panel anchor: above the ocean's near edge, clear of the wall and cannons. */
-const PANEL_POSITION = { x: 0, y: 1.7, z: -2.1 };
+const PANEL_POSITION = { x: 0, y: 1.9, z: -2.1 };
 /** Panel is a 1 m square; the hidden state is the small end of the scale. */
 const PANEL_SCALE = 1;
 const PANEL_HIDDEN_SCALE = 0.5;

@@ -6,7 +6,7 @@
  */
 
 import { AssetManager, createSystem, Mesh } from '@iwsdk/core';
-import type { Entity, Object3D } from '@iwsdk/core';
+import type { Entity, MeshStandardMaterial, Object3D } from '@iwsdk/core';
 import {
   LevelDirector,
   ShipMovement,
@@ -228,9 +228,25 @@ export class LevelWaveSystem extends createSystem({
       const solid = Array.isArray(original)
         ? original.map((material) => material.clone())
         : original.clone();
-      for (const material of Array.isArray(solid) ? solid : [solid]) {
+      for (let i = 0; i < (Array.isArray(solid) ? solid.length : 1); i++) {
+        const material = Array.isArray(solid) ? solid[i] : solid;
+        const src = Array.isArray(original) ? original[i] : original;
         material.transparent = true;
         material.opacity = 0;
+        // Keep depth writes on during the fade so DoubleSide meshes (hull,
+        // sail) don't render front + back faces blended together — that
+        // stacking darkened the colour while translucent and made it snap
+        // lighter the moment the material flipped back to opaque.
+        material.depthWrite = true;
+        // IWSDK's EnvironmentSystem may attach the IBL directly onto the
+        // prototype's materials (not only scene.environment); clone() drops
+        // that reference, so re-link it or the PBR ship spawns without
+        // environment reflections and looks unlit until something re-applies.
+        const srcStd = src as MeshStandardMaterial;
+        const matStd = material as MeshStandardMaterial;
+        if (!matStd.envMap && srcStd.envMap) {
+          matStd.envMap = srcStd.envMap;
+        }
       }
       mesh.material = solid;
       mesh.castShadow = false;

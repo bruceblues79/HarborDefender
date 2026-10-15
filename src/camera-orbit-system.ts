@@ -46,10 +46,10 @@ type DragMode = 'none' | 'orbit' | 'pinch';
 
 export class CameraOrbitSystem extends createSystem({}) {
   // Orbit state. Seed matches the welcome/loading pose from
-  // iwsdk.config.json — camera (0,1.05,2) looking level at (0,1.05,-1.5) — so
+  // iwsdk.config.json — camera (0,1.25,2) looking level at (0,1.25,-1.5) — so
   // the target starts 3.5 m ahead at zero yaw/pitch. Game-start transitions
   // re-seed through moveToView() and are eased in update().
-  private readonly target = new Vector3(0, 1.05, -1.5);
+  private readonly target = new Vector3(0, 1.25, -1.5);
   private radius = 3.5;
   private yaw = 0;
   private pitch = 0;

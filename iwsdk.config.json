@@ -25,8 +25,8 @@
       "far": 200,
       "fov": 50,
       "camera": {
-        "position": [0, 1.05, 2],
-        "lookAt": [0, 1.05, -1.5]
+        "position": [0, 1.25, 2],
+        "lookAt": [0, 1.25, -1.5]
       }
     },
     "features": {
