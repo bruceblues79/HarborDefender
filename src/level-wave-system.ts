@@ -22,14 +22,14 @@ import {
   SHIP_STOP_Z_MIN,
   SHIP_Y,
   UNIT_TYPES,
+  WAKE_RADIUS,
+  WAKE_STRENGTH_HALTED,
 } from './level-config.js';
 
 /** Ships emerge this far inside the ocean's far edge. */
 const SPAWN_Z = OCEAN_FAR_Z + 0.1;
 /** Keep a lane clear of the ocean edge. */
 const SPAWN_MARGIN = 0.3;
-/** Ripple radius a sailing ship carries; ShipMovementSystem halves it when stopped. */
-const WAKE_RADIUS = 1.25;
 
 type DirectorPhase =
   | 'waiting-start'
@@ -180,7 +180,8 @@ export class LevelWaveSystem extends createSystem({
     });
     entity.addComponent(WakeSource, {
       strength: 0,
-      targetStrength: 0.5,
+      // Fading in, the ship is stationary: wake at the halted strength.
+      targetStrength: WAKE_STRENGTH_HALTED,
       radius: WAKE_RADIUS,
       targetRadius: WAKE_RADIUS * 0.5,
     });

@@ -62,7 +62,7 @@ export const PACING = {
   /** Gap after a level is cleared before the next level starts. */
   postLevelDelay: 5.0,
   /** Units the director may keep on the water at once, of any type. */
-  maxConcurrentUnits: 6,
+  maxConcurrentUnits: 5,
   /** Gap between dismissing the START panel and the first level. */
   postStartDelay: 1.0,
 };
@@ -99,9 +99,14 @@ export const WALL_SEA_FACE_Z: number = WALL_CENTER_Z - WALL_DEPTH_Z / 2;
  * Pirate hull envelope is ~1.2 m long with the bow on local -Z, so the bow
  * reaches 0.6 m ahead of the ship's origin.
  */
-export const SHIP_HALF_LENGTH = 0.6;
-/** Gap (m) left between a stopped ship's bow and the wall's seaward face. */
-export const SHIP_STOP_MARGIN = 0.1;
+export const SHIP_LENGTH = 1.2;
+export const SHIP_HALF_LENGTH: number = SHIP_LENGTH / 2;
+/**
+ * Clear water (m) kept between a stopped ship's bow and the wall's seaward
+ * face — a full hull length of open water, so the wall never reads as a
+ * bumping post. This is the knob to turn when attackers should close in.
+ */
+export const SHIP_STOP_MARGIN: number = SHIP_LENGTH;
 
 /**
  * Attackers stop in the wall-side half of the ocean: from the midpoint
@@ -116,14 +121,27 @@ export const SHIP_STOP_Z_MAX: number =
 /** Ships float just below the wave crest at the surface. */
 export const SHIP_Y = 0.46;
 
-/** Designer's sandbox: one level, tuned by hand. */
+/**
+ * Ripples a moving unit drags across the surface. Strength is the wake's
+ * amplitude multiplier; the ship halves its radius while it is not under way.
+ */
+export const WAKE_STRENGTH_MOVING = 1.0;
+export const WAKE_STRENGTH_HALTED = 0.75;
+export const WAKE_RADIUS = 1.25;
+
+/**
+ * Designer's sandbox: one level, tuned by hand.
+ *
+ * The wave is capped at PACING.maxConcurrentUnits ships: with no combat yet,
+ * units never leave the water, so a longer wave would strand its overflow
+ * units forever and the level could never be declared defended.
+ */
 export const designList: LevelSpec[] = [
   {
     name: 'design',
     waves: [
       {
         units: [
-          'pirate-ship',
           'pirate-ship',
           'pirate-ship',
           'pirate-ship',

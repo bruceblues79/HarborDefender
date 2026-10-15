@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -8,25 +8,25 @@
 import { createSystem } from '@iwsdk/core';
 import type { Entity, Mesh, Object3D } from '@iwsdk/core';
 import { ShipMovement, UnitTag, WakeSource } from './components.js';
-import { SHIP_Y } from './level-config.js';
-
-/** Ripple radius a sailing ship carries. */
-const WAKE_RADIUS = 1.25;
-/** Wake strength while sailing vs. halted, per the design brief (1 vs 1/2). */
-const WAKE_MOVING = 1;
-const WAKE_HALTED = 0.5;
+import {
+  SHIP_Y,
+  WAKE_RADIUS,
+  WAKE_STRENGTH_HALTED,
+  WAKE_STRENGTH_MOVING,
+} from './level-config.js';
 
 /**
  * Runs the `default-ship` movement pattern.
  *
- * Spawning: a wireframe overlay dissolves while the hull fades from
- * transparent to solid; shadows switch on once the ship is fully real.
+ * Spawning: the hull fades in from transparent; shadows switch on once the
+ * ship is fully materialised.
  * Moving: sail the straight line from the spawn point to the rolled target;
  * a ship keeps `stopDistance` behind a same-type ship ahead along its travel
  * direction and waits for it to clear.
- * Stopped: hold at the target, ripples halved.
+ * Stopped: hold at the target, wake eased down.
  *
- * The wake is bound to motion: full while running, halved while halted.
+ * The wake is bound to motion: WAKE_STRENGTH_MOVING while under way,
+ * WAKE_STRENGTH_HALTED while stopped or waiting.
  * WakeSource targets are only rewritten when they change; OceanSystem eases
  * the running values toward them.
  */
@@ -70,7 +70,7 @@ export class ShipMovementSystem extends createSystem({
     if (!done) return;
 
     entity.setValue(ShipMovement, 'state', 'moving');
-    this.setWake(entity, WAKE_MOVING, WAKE_RADIUS);
+    this.setWake(entity, WAKE_STRENGTH_MOVING, WAKE_RADIUS);
   }
 
   /**
@@ -94,16 +94,16 @@ export class ShipMovementSystem extends createSystem({
     entity.setValue(ShipMovement, 'blocked', blocked);
     if (blocked) {
       // Waiting for the way to clear reads as halted: ripples halved.
-      this.setWake(entity, WAKE_HALTED, WAKE_RADIUS * 0.5);
+      this.setWake(entity, WAKE_STRENGTH_HALTED, WAKE_RADIUS * 0.5);
       return;
     }
-    this.setWake(entity, WAKE_MOVING, WAKE_RADIUS);
+    this.setWake(entity, WAKE_STRENGTH_MOVING, WAKE_RADIUS);
 
     const step = Number(entity.getValue(ShipMovement, 'speed')) * delta;
     if (step >= remaining) {
       object.position.set(targetX, SHIP_Y, targetZ);
       entity.setValue(ShipMovement, 'state', 'stopped');
-      this.setWake(entity, WAKE_HALTED, WAKE_RADIUS * 0.5);
+      this.setWake(entity, WAKE_STRENGTH_HALTED, WAKE_RADIUS * 0.5);
       return;
     }
     object.position.set(x + (dx / remaining) * step, SHIP_Y, z + (dz / remaining) * step);
