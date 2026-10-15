@@ -23,6 +23,9 @@ import {
   SHIP_STOP_Z_MIN,
   SHIP_Y,
   SPAWN_FADE_DURATION,
+  STOP_MIN_GAP_X,
+  STOP_MIN_GAP_Z,
+  STOP_ROLL_TRIES,
   UNIT_TYPES,
   WAKE_RADIUS,
   WAKE_STRENGTH_MOVING,
@@ -126,6 +129,69 @@ export class LevelWaveSystem extends createSystem({
     if (pending <= 0) this.setPhase('clearing');
   }
 
+  /** World x a ship may emerge at: anywhere across the ocean minus edge margin. */
+  private rollX(): number {
+    return (Math.random() * 2 - 1) * (OCEAN.width / 2 - SPAWN_MARGIN);
+  }
+
+  private rollZ(): number {
+    return SHIP_STOP_Z_MIN + Math.random() * (SHIP_STOP_Z_MAX - SHIP_STOP_Z_MIN);
+  }
+
+  /**
+   * Choose where the next attacker drops anchor: roll a handful of candidates
+   * and keep the roomiest.
+   *
+   * A single uniform roll clusters badly, because the stop zone is only 2.4 m
+   * by 3.2 m — wide enough for roughly six ships at the spacing below, so
+   * unconstrained rolls keep landing on top of each other. Rolling several
+   * candidates and keeping the one furthest from every existing claim keeps
+   * the fleet spread without any placement table to maintain.
+   *
+   * A claim is both the destination another ship is still sailing toward and
+   * its present position, so an inbound ship reserves its own arrival point —
+   * and because claims are read from *live* attackers, a stop is released the
+   * moment its ship leaves the water, with no cleanup anywhere.
+   *
+   * This runs once per dispatch (about every two seconds), never per frame.
+   */
+  private pickTarget(): { x: number; z: number } {
+    let best = { x: this.rollX(), z: this.rollZ() };
+    let bestRoom = this.roominess(best.x, best.z);
+    for (let attempt = 1; attempt < STOP_ROLL_TRIES && bestRoom < 1; attempt += 1) {
+      const x = this.rollX();
+      const z = this.rollZ();
+      const room = this.roominess(x, z);
+      if (room < bestRoom) continue;
+      best = { x, z };
+      bestRoom = room;
+    }
+    return best;
+  }
+
+  /**
+   * Distance from a candidate stop to the nearest existing claim, normalised
+   * so 1 means "exactly at the required spacing" and anything below it means
+   * the hulls would be closer than intended.
+   */
+  private roominess(x: number, z: number): number {
+    let room = Number.POSITIVE_INFINITY;
+    for (const entity of this.queries.attackers.entities) {
+      const object = entity.object3D;
+      if (object) {
+        const px = (x - object.position.x) / STOP_MIN_GAP_X;
+        const pz = (z - object.position.z) / STOP_MIN_GAP_Z;
+        room = Math.min(room, Math.hypot(px, pz));
+      }
+      const dx =
+        (x - Number(entity.getValue(ShipMovement, 'targetX'))) / STOP_MIN_GAP_X;
+      const dz =
+        (z - Number(entity.getValue(ShipMovement, 'targetZ'))) / STOP_MIN_GAP_Z;
+      room = Math.min(room, Math.hypot(dx, dz));
+    }
+    return room;
+  }
+
   /** Spawn the next unit of the current wave. False when it cannot spawn yet. */
   private spawnUnit(pending: number): boolean {
     const units = this.currentWaveUnits();
@@ -140,16 +206,16 @@ export class LevelWaveSystem extends createSystem({
 
     const object = prototype.clone(true);
 
-    // Spawn point: rolled x on the far edge; sail target: rolled x and z.
-    const rollX = () =>
-      (Math.random() * 2 - 1) * (OCEAN.width / 2 - SPAWN_MARGIN);
-    const spawnX = rollX();
-    const targetX = rollX();
-    const targetZ =
-      SHIP_STOP_Z_MIN + Math.random() * (SHIP_STOP_Z_MAX - SHIP_STOP_Z_MIN);
+    // Spawn point: rolled x on the far edge. The stop target comes from the
+    // berth cascade, which is why it is resolved before anything is committed.
+    const spawnX = this.rollX();
+    const target = this.pickTarget();
     object.position.set(spawnX, SHIP_Y, SPAWN_Z);
     // Bow is the hull's local -Z; yaw it onto the spawn -> target direction.
-    object.rotation.y = Math.atan2(-(targetX - spawnX), -(targetZ - SPAWN_Z));
+    object.rotation.y = Math.atan2(
+      -(target.x - spawnX),
+      -(target.z - SPAWN_Z),
+    );
 
     // Instancing setup for the fade: hull materials are shared across clones,
     // so each ship gets its own clones starting fully transparent. Driving that
@@ -178,8 +244,8 @@ export class LevelWaveSystem extends createSystem({
     entity.addComponent(ShipMovement, {
       pattern: def.movement,
       spawnX,
-      targetX,
-      targetZ,
+      targetX: target.x,
+      targetZ: target.z,
     });
     entity.addComponent(SpawnFade, { duration: SPAWN_FADE_DURATION });
     entity.addComponent(WakeSource, {

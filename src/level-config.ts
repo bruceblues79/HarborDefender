@@ -62,7 +62,7 @@ export const PACING = {
   /** Gap after a level is cleared before the next level starts. */
   postLevelDelay: 5.0,
   /** Units the director may keep on the water at once, of any type. */
-  maxConcurrentUnits: 5,
+  maxConcurrentUnits: 6,
   /** Gap between dismissing the START panel and the first level. */
   postStartDelay: 1.0,
 };
@@ -133,13 +133,31 @@ export const WAKE_RADIUS = 1.25;
 export const SPAWN_FADE_DURATION = 0.9;
 
 /**
+ * Separation a new stop must clear of every stop already claimed, measured as
+ * an ellipse rather than a circle because a hull is about 0.4 m across but
+ * 1.2 m long: 0.8 m across the beam, 1.5 m along the keel. An elliptical test
+ * packs this small patch of water noticeably tighter than one isotropic radius.
+ *
+ * Note the stop zone is 2.4 m by 3.2 m, so six simultaneous stops at this
+ * spacing is close to the limit — the last ships out will settle a little
+ * inside the minimum, which is expected behaviour, not a fault. Loosen these
+ * two numbers to let the fleet cluster more freely.
+ */
+export const STOP_MIN_GAP_X = 0.8;
+export const STOP_MIN_GAP_Z = 1.5;
+
+/**
+ * Random candidates rolled per dispatch. The roomiest one is kept, so more
+ * tries means a better spread — and a denser fleet needs more of them.
+ */
+export const STOP_ROLL_TRIES = 8;
+
+/**
  * Designer's sandbox: one level, tuned by hand.
  *
- * The wave lists more ships than `PACING.maxConcurrentUnits`: the director
- * simply holds the overflow units until slots free up, which is what keeps
- * the field from flooding. Nothing leaves the water until combat exists, so
- * the last ship waits indefinitely for now — that resolves itself once units
- * can be sunk, and is not a defect of the pacing.
+ * The wave is as long as `PACING.maxConcurrentUnits`, so the level runs to
+ * completion. A longer wave would simply queue: the director holds units until
+ * slots free up, which is what keeps the water from flooding.
  */
 export const designList: LevelSpec[] = [
   {
