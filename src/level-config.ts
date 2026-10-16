@@ -273,8 +273,8 @@ export const COMBAT = {
   hitFlashPoolSize: 8,
   /** Seconds for one hit flash to expand and fade. */
   hitFlashDuration: 0.5,
-  /** Base sphere radius (m) at scale 1. */
-  hitFlashRadius: 0.14,
+  /** Base sphere radius (m) at scale 1 — unit-scale bloom, ~5x the first pass. */
+  hitFlashRadius: 0.7,
   /** Starting fraction of full size ("initial 0.5 volume"). */
   hitFlashStartScale: 0.5,
   /** Fresnel centre colour (hot yellow, sRGB hex). */

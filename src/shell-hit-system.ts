@@ -24,8 +24,10 @@ import { COMBAT } from './level-config.js';
  * are removed and the mesh hides, returning the shell to the shared pool
  * exactly like a splash-down — but no ripple is spawned, because the ball
  * struck a solid target. Instead a pooled hit-flash sphere blooms at the
- * impact point: claiming one is a thin spawn command (position + starting
- * state + HitFlash component); HitFlashSystem owns the animation.
+ * struck core's centre — not the contact point, which sits inside the
+ * core radius and reads as a dented hull edge rather than a clean hit.
+ * Claiming one is a thin spawn command (position + starting state +
+ * HitFlash component); HitFlashSystem owns the animation.
  *
  * Runs after BallisticSystem so each frame's motion is tested at its end
  * position. Hits are collected during the sweep and recycled afterwards.
@@ -41,6 +43,8 @@ export class ShellHitSystem extends createSystem({
   private readonly corePositions = new Map<number, Vector3>();
   /** Shells consumed this frame; recycled after the sweep, not inside it. */
   private readonly hit: Entity[] = [];
+  /** Core entity index per `hit` entry; its cached world position feeds the flash. */
+  private readonly hitCores: number[] = [];
   /** Flashes handed out this frame; the free-flash query refreshes next frame. */
   private readonly claimedFlashes = new Set<number>();
 
@@ -55,6 +59,7 @@ export class ShellHitSystem extends createSystem({
 
   update(): void {
     this.hit.length = 0;
+    this.hitCores.length = 0;
     this.claimedFlashes.clear();
 
     // Core world positions once per frame (pirate ships yaw after stopping).
@@ -79,28 +84,34 @@ export class ShellHitSystem extends createSystem({
         const dz = sz - position.z;
         if (dx * dx + dy * dy + dz * dz <= radius * radius) {
           this.hit.push(shell);
+          this.hitCores.push(core.index);
           break;
         }
       }
     }
 
-    for (const shell of this.hit) {
+    for (let i = 0; i < this.hit.length; i++) {
+      const shell = this.hit[i];
       // BallisticSystem may have recycled it this same frame; never double-remove.
       if (!shell.hasComponent(BallisticFlight)) continue;
       shell.removeComponent(BallisticFlight);
       shell.removeComponent(ShellFaction);
       if (shell.object3D) {
-        this.spawnHitFlash(shell.object3D.position);
+        // Bloom at the struck core's centre: positions were refreshed at the
+        // top of this frame, so the map is current for every hit this sweep.
+        const at =
+          this.corePositions.get(this.hitCores[i]) ?? shell.object3D.position;
+        this.spawnHitFlash(at);
         shell.object3D.visible = false;
       }
     }
   }
 
   /**
-   * Claim a free pooled flash and land its starting state at the impact
-   * point: position, start scale, visible, then the HitFlash tag that hands
-   * animation to HitFlashSystem. Pool empty: skip silently — a busy battle
-   * loses the odd bloom, never a hit.
+   * Claim a free pooled flash and land its starting state at the struck
+   * core's centre: position, start scale, visible, then the HitFlash tag
+   * that hands animation to HitFlashSystem. Pool empty: skip silently — a
+   * busy battle loses the odd bloom, never a hit.
    */
   private spawnHitFlash(position: Vector3): void {
     for (const flash of this.queries.freeFlashes.entities) {
