@@ -13,7 +13,13 @@ import {
   Vector3,
 } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
-import { BallisticFlight, CannonFire, LevelDirector, ShellTag } from './components.js';
+import {
+  BallisticFlight,
+  CannonFire,
+  LevelDirector,
+  ShellFaction,
+  ShellTag,
+} from './components.js';
 import { COMBAT } from './level-config.js';
 
 /**
@@ -104,16 +110,23 @@ export class CannonFireSystem extends createSystem({
       vy: this.muzzleDir.y * COMBAT.shellSpeed,
       vz: this.muzzleDir.z * COMBAT.shellSpeed,
     });
+    // City batteries fight for the defender side; ShellHitSystem uses this
+    // to decide which hit cores may consume the shell.
+    shell.addComponent(ShellFaction, { faction: 'defender' });
     return true;
   }
 
-  /** First pooled shell that is neither airborne nor already claimed this frame. */
+  /**
+   * First pooled shell that is neither airborne nor already claimed this
+   * frame. The live hasComponent check also guards against PirateFireSystem
+   * claiming the same shell on this frame, since queries refresh next frame.
+   */
   private firstFreeShell(): Entity | undefined {
     for (const shell of this.queries.freeShells.entities) {
-      if (!this.claimed.has(shell.index)) {
-        this.claimed.add(shell.index);
-        return shell;
-      }
+      if (this.claimed.has(shell.index)) continue;
+      if (shell.hasComponent(BallisticFlight)) continue;
+      this.claimed.add(shell.index);
+      return shell;
     }
     return undefined;
   }

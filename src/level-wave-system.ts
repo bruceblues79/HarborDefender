@@ -5,10 +5,19 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { AssetManager, createSystem, Mesh } from '@iwsdk/core';
-import type { Entity, MeshStandardMaterial, Object3D } from '@iwsdk/core';
 import {
+  AssetManager,
+  Box3,
+  createSystem,
+  Mesh,
+  Object3D,
+  Vector3,
+} from '@iwsdk/core';
+import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
+import {
+  HitCore,
   LevelDirector,
+  PirateCannon,
   ShipMovement,
   SpawnFade,
   UnitTag,
@@ -16,6 +25,7 @@ import {
 } from './components.js';
 import {
   activeLevelList,
+  COMBAT,
   OCEAN,
   OCEAN_FAR_Z,
   PACING,
@@ -31,6 +41,31 @@ import {
   WAKE_RADIUS,
   WAKE_STRENGTH_MOVING,
 } from './level-config.js';
+
+/** Local z of the muzzle helper under a gun_rotate pivot (barrel -Z tip). */
+const MUZZLE_LOCAL_Z = -0.2;
+
+/**
+ * Hang the pirate ship's combat helpers on its prototype once: a `muzzle`
+ * under the embedded gun_rotate pivot (identical placement to the city
+ * cannon) and a `hit_core` at the model's bounding-box centre.
+ */
+function decorateShipPrototype(prototype: Object3D): void {
+  const gunPivot = prototype.getObjectByName('gun_rotate');
+  if (gunPivot && !gunPivot.getObjectByName('muzzle')) {
+    const muzzle = new Object3D();
+    muzzle.name = 'muzzle';
+    muzzle.position.set(0, 0, MUZZLE_LOCAL_Z);
+    gunPivot.add(muzzle);
+  }
+  if (!prototype.getObjectByName('hit_core')) {
+    const center = new Box3().setFromObject(prototype).getCenter(new Vector3());
+    const hitCore = new Object3D();
+    hitCore.name = 'hit_core';
+    hitCore.position.copy(center);
+    prototype.add(hitCore);
+  }
+}
 
 /** Ships emerge this far inside the ocean's far edge. */
 const SPAWN_Z = OCEAN_FAR_Z + 0.1;
@@ -71,7 +106,10 @@ export class LevelWaveSystem extends createSystem({
 
     for (const [type, def] of Object.entries(UNIT_TYPES)) {
       AssetManager.loadGLTFById(def.assetId)
-        .then((gltf) => this.prototypes.set(type, gltf.scene))
+        .then((gltf) => {
+          decorateShipPrototype(gltf.scene);
+          this.prototypes.set(type, gltf.scene);
+        })
         .catch((err: unknown) =>
           console.error(`LevelWaveSystem: failed to load unit "${type}"`, err),
         );
@@ -312,6 +350,13 @@ export class LevelWaveSystem extends createSystem({
       radius: WAKE_RADIUS,
       targetRadius: WAKE_RADIUS,
     });
+    // Combat: attacker hit core (defender shells are consumed inside it)
+    // and the ship's cannon ability (fires only once anchored).
+    entity.addComponent(HitCore, {
+      radius: COMBAT.attackerCoreRadius,
+      faction: def.faction,
+    });
+    entity.addComponent(PirateCannon);
     return true;
   }
 

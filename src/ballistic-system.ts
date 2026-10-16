@@ -9,6 +9,7 @@ import { createSystem, Object3D } from '@iwsdk/core';
 import type { Entity } from '@iwsdk/core';
 import {
   BallisticFlight,
+  ShellFaction,
   ShellTag,
   SplashFade,
   WakeSource,
@@ -50,6 +51,8 @@ export class BallisticSystem extends createSystem({
     const object = shell.object3D;
     if (!object) return;
     shell.removeComponent(BallisticFlight);
+    // Drop the faction tag too, so the pooled shell carries no stale side.
+    shell.removeComponent(ShellFaction);
     object.visible = false;
 
     const ripple = new Object3D();

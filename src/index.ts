@@ -17,6 +17,8 @@ import { Billboard } from './components.js';
 import { LevelWaveSystem } from './level-wave-system.js';
 import { OceanSystem } from './ocean-system.js';
 import { PanelScaleSystem } from './panel-scale-system.js';
+import { PirateFireSystem } from './pirate-fire-system.js';
+import { ShellHitSystem } from './shell-hit-system.js';
 import { ShipMovementSystem } from './ship-movement-system.js';
 import { SpawnFadeSystem } from './spawn-fade-system.js';
 import { SplashSystem } from './splash-system.js';
@@ -34,10 +36,16 @@ World.create(
   world.registerSystem(LevelWaveSystem, { priority: 5 });
   world.registerSystem(CannonAimSystem, { priority: 8 });
   world.registerSystem(ShipMovementSystem, { priority: 10 });
+  // Both fire systems draw from one shell pool at the same priority; pirate
+  // is registered second and its live hasComponent guard keeps the two from
+  // ever handing out the same shell in a frame.
   world.registerSystem(CannonFireSystem, { priority: 11 });
+  world.registerSystem(PirateFireSystem, { priority: 11 });
   world.registerSystem(SpawnFadeSystem, { priority: 12 });
+  // Move first, then consume solid-target hits, then handle water splashes.
   world.registerSystem(BallisticSystem, { priority: 13 });
-  world.registerSystem(SplashSystem, { priority: 14 });
+  world.registerSystem(ShellHitSystem, { priority: 14 });
+  world.registerSystem(SplashSystem, { priority: 15 });
   // UI tier, after the camera updates so billboards track this frame's view.
   world.registerSystem(PanelScaleSystem, { priority: 30 });
   world.registerSystem(StartPanelSystem, { priority: 30 });

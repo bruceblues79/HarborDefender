@@ -7,6 +7,7 @@
 
 import {
   AssetManager,
+  Box3,
   HalfFloatType,
   Mesh,
   Object3D,
@@ -18,9 +19,33 @@ import {
   loadUIKitMLAsset,
 } from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
-import { CannonAim, CannonFire, OceanTag } from './components.js';
+import { CannonAim, CannonFire, HitCore, OceanTag } from './components.js';
+import { COMBAT } from './level-config.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
 import { StartPanelSystem } from './start-panel-system.js';
+
+/**
+ * Hang the two invisible combat helpers on the cannon prototype once, so
+ * every clone inherits them: the `muzzle` on the gun_rotate pivot (shells
+ * launch down its world -Z) and the `hit_core` at the model's bounding-box
+ * centre (opposing shells within its radius get consumed).
+ */
+function decorateCannonPrototype(prototype: Object3D): void {
+  const gunPivot = prototype.getObjectByName('gun_rotate');
+  if (gunPivot && !gunPivot.getObjectByName('muzzle')) {
+    const muzzle = new Object3D();
+    muzzle.name = 'muzzle';
+    muzzle.position.set(0, 0, -0.2);
+    gunPivot.add(muzzle);
+  }
+  if (!prototype.getObjectByName('hit_core')) {
+    const center = new Box3().setFromObject(prototype).getCenter(new Vector3());
+    const hitCore = new Object3D();
+    hitCore.name = 'hit_core';
+    hitCore.position.copy(center);
+    prototype.add(hitCore);
+  }
+}
 
 let battleStarted = false;
 
@@ -113,22 +138,13 @@ export function startBattle(world: World): void {
           // Five cannons evenly spaced across the central 3 m of the
           // 3.4 m wall (0.2 m margin each side), muzzles facing the
           // sea (-Z). One prototype is cloned so geometry/materials
-          // stay shared while each gun_rotate pivot stays independent.
+          // stay shared while each gun_rotate pivot stays independent;
+          // the muzzle and hit_core helpers live on that prototype.
           const cannonPrototype = cannonGltf.scene;
+          decorateCannonPrototype(cannonPrototype);
           for (const x of [-1.2, -0.6, 0, 0.6, 1.2]) {
             const cannon = cannonPrototype.clone(true);
             cannon.position.set(x, 0.8, -0.8);
-            // Muzzle node on the gun_rotate pivot: the barrel geometry spans
-            // local z = -0.20..0.17 (GLB bounds), so the muzzle sits at the
-            // local -Z tip and inherits every aim rotation. CannonFireSystem
-            // launches shells along its world -Z.
-            const gunPivot = cannon.getObjectByName('gun_rotate');
-            if (gunPivot) {
-              const muzzle = new Object3D();
-              muzzle.name = 'muzzle';
-              muzzle.position.set(0, 0, -0.2);
-              gunPivot.add(muzzle);
-            }
             cannon.traverse((child: Object3D) => {
               if ((child as Mesh).isMesh) {
                 child.castShadow = true;
@@ -141,6 +157,12 @@ export function startBattle(world: World): void {
             cannonEntity.addComponent(RayInteractable);
             cannonEntity.addComponent(CannonAim);
             cannonEntity.addComponent(CannonFire);
+            // Defender hit core: pirate shells arriving within this radius
+            // are consumed by ShellHitSystem.
+            cannonEntity.addComponent(HitCore, {
+              radius: COMBAT.defenderCoreRadius,
+              faction: 'defender',
+            });
           }
 
           // 4. Hide loading panel — game is ready, ease into the game view,

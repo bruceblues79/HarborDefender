@@ -174,6 +174,47 @@ export const SplashFade = createComponent('SplashFade', {
   elapsed: { type: 'Float32', default: 0 },
 });
 
+/**
+ * The hittable core of a combatant (pirate ship, city cannon). An invisible
+ * `hit_core` helper sits at the model's bounding-box centre; ShellHitSystem
+ * consumes any airborne shell of a different faction that comes within
+ * `radius` (3D distance). Presence of this component *is* the "can be hit"
+ * tag.
+ */
+export const HitCore = createComponent('HitCore', {
+  /** Consume distance (m) from the hit_core centre. */
+  radius: { type: 'Float32', default: 0.5 },
+  /** 'attacker' | 'defender' — only opposing-faction shells are consumed. */
+  faction: { type: 'String', default: 'attacker' },
+});
+
+/**
+ * Faction carried by an airborne shell. Added on fire, removed on every
+ * recycle path (splash or hit) so a pooled shell can never keep a stale side.
+ */
+export const ShellFaction = createComponent('ShellFaction', {
+  /** 'attacker' | 'defender'. */
+  faction: { type: 'String', default: 'defender' },
+});
+
+/**
+ * Pirate-ship cannon ability. A stopped ship picks one random defender
+ * HitCore as its target, yaws onto it, and lobs guaranteed-hit shells on a
+ * cooldown. PirateFireSystem is the only writer.
+ */
+export const PirateCannon = createComponent('PirateCannon', {
+  /** Seconds between two shots. */
+  interval: { type: 'Float32', default: COMBAT.pirateFireInterval },
+  /** Countdown to the next shot; ticks only while stopped and the game runs. */
+  cooldown: { type: 'Float32', default: 0 },
+  /** Set once a defender target has been acquired. */
+  hasTarget: { type: 'Boolean', default: false },
+  /** Target hit_core world position snapshot (city cannons never move). */
+  targetX: { type: 'Float32', default: 0 },
+  targetY: { type: 'Float32', default: 0 },
+  targetZ: { type: 'Float32', default: 0 },
+});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -188,4 +229,7 @@ export default defineComponents([
   BallisticFlight,
   CannonAim,
   SplashFade,
+  HitCore,
+  ShellFaction,
+  PirateCannon,
 ]);

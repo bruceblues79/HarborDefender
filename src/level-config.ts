@@ -246,4 +246,22 @@ export const COMBAT = {
   aimDegreesPerPixel: 0.1,
   /** Aim degrees per metre of hand-ray travel in XR — retune by feel. */
   aimDegreesPerMeter: 75,
+  /**
+   * Hit-core radii (m): a shell within this 3D distance of an opposing
+   * faction's hit_core is consumed. The pirate core sits at bounding-box
+   * centre (hull + sail, ~0.38 m above the waterline), so 0.5 reaches down
+   * to the hull and most of its 1.25 m length; the defender core covers a
+   * city cannon's carriage-and-barrel half-diagonal (~0.22 m).
+   */
+  attackerCoreRadius: 0.5,
+  defenderCoreRadius: 0.22,
+  /** Seconds between two shots from one anchored pirate ship. */
+  pirateFireInterval: 3.0,
+  /**
+   * Pirate shells keep a constant horizontal speed (m/s); flight time is
+   * distance / this and the vertical velocity is solved for an exact hit,
+   * so the arc stays flat (~0.2-0.35 m apex) while mathematically landing
+   * on the target core. Shares BallisticSystem's gravity.
+   */
+  pirateShellSpeed: 8,
 };

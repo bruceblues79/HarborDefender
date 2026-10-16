@@ -1,0 +1,191 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+import { createSystem, Vector3 } from '@iwsdk/core';
+import type { Entity, Object3D } from '@iwsdk/core';
+import {
+  BallisticFlight,
+  HitCore,
+  LevelDirector,
+  PirateCannon,
+  ShellFaction,
+  ShellTag,
+  ShipMovement,
+  UnitTag,
+} from './components.js';
+import { COMBAT } from './level-config.js';
+
+/**
+ * Anchored pirate-ship fire. A ship does nothing while sailing; once
+ * ShipMovement marks it 'stopped' (it has reached its berth z) and the
+ * battle has started it:
+ *
+ * 1. picks one random defender hit core (a city cannon) and snapshots its
+ *    world position as the target — city cannons never move;
+ * 2. yaws the hull so the bow / embedded cannon (local -Z) faces it, using
+ *    the same yaw convention as the spawn heading;
+ * 3. fires on a jittered cooldown out of the shared shell pool.
+ *
+ * Every shot is a mathematically guaranteed hit: horizontal velocity is
+ * distance / flight time and vertical velocity is solved against
+ * BallisticSystem's gravity, so at t = flightTime the shell is exactly at
+ * the target core. The arc stays flat because the horizontal speed is high
+ * (COMBAT.pirateShellSpeed); no second flight model exists.
+ */
+export class PirateFireSystem extends createSystem({
+  ships: { required: [UnitTag, ShipMovement, PirateCannon] },
+  cores: { required: [HitCore] },
+  freeShells: { required: [ShellTag], excluded: [BallisticFlight] },
+  directors: { required: [LevelDirector] },
+}) {
+  /** Muzzle object per ship entity index, resolved once on qualify. */
+  private readonly muzzles = new Map<number, Object3D>();
+  /** Defender hit_core nodes per core entity index, resolved once on qualify. */
+  private readonly coreNodes = new Map<number, Object3D>();
+  /** Shells handed out this frame; the free-shell query only refreshes next frame. */
+  private readonly claimed = new Set<number>();
+  private readonly muzzlePos = new Vector3();
+  private readonly corePos = new Vector3();
+
+  init(): void {
+    this.queries.ships.subscribe('qualify', (entity) => {
+      const muzzle = entity.object3D?.getObjectByName('muzzle');
+      if (muzzle) this.muzzles.set(entity.index, muzzle);
+      // Roll the first cooldown too, so the fleet's opening volley staggers.
+      entity.setValue(PirateCannon, 'cooldown', this.rollInterval());
+    });
+    this.queries.cores.subscribe('qualify', (entity) => {
+      if (entity.getValue(HitCore, 'faction') !== 'defender') return;
+      const node = entity.object3D?.getObjectByName('hit_core');
+      if (node) this.coreNodes.set(entity.index, node);
+    });
+  }
+
+  update(delta: number): void {
+    // Same START gate as the city battery: no shots before the game runs.
+    if (!this.gameRunning()) return;
+    this.claimed.clear();
+    for (const ship of this.queries.ships.entities) {
+      // Movement is the gate: only an anchored ship picks targets and fires.
+      if (ship.getValue(ShipMovement, 'state') !== 'stopped') continue;
+      if (!ship.getValue(PirateCannon, 'hasTarget')) {
+        if (!this.acquireTarget(ship)) continue;
+      }
+      this.aim(ship);
+      let cooldown = Number(ship.getValue(PirateCannon, 'cooldown')) - delta;
+      if (cooldown <= 0) {
+        // Pool empty: retry shortly instead of banking negative time.
+        cooldown = this.fire(ship) ? this.rollInterval() : 0.1;
+      }
+      ship.setValue(PirateCannon, 'cooldown', cooldown);
+    }
+  }
+
+  /** Pick one random city-cannon core and snapshot its world position. */
+  private acquireTarget(ship: Entity): boolean {
+    // Two passes over the query (count, then pick) keep update() allocation
+    // free; this runs once per ship, when it first drops anchor.
+    let defenderCount = 0;
+    for (const core of this.queries.cores.entities) {
+      if (core.getValue(HitCore, 'faction') === 'defender') defenderCount += 1;
+    }
+    if (defenderCount === 0) return false;
+    let pick = Math.floor(Math.random() * defenderCount);
+    for (const core of this.queries.cores.entities) {
+      if (core.getValue(HitCore, 'faction') !== 'defender') continue;
+      if (pick > 0) {
+        pick -= 1;
+        continue;
+      }
+      const node = this.coreNodes.get(core.index);
+      if (!node) return false;
+      node.getWorldPosition(this.corePos);
+      ship.setValue(PirateCannon, 'targetX', this.corePos.x);
+      ship.setValue(PirateCannon, 'targetY', this.corePos.y);
+      ship.setValue(PirateCannon, 'targetZ', this.corePos.z);
+      ship.setValue(PirateCannon, 'hasTarget', true);
+      return true;
+    }
+    return false;
+  }
+
+  /** Yaw the hull onto the target, matching the spawn-heading convention. */
+  private aim(ship: Entity): void {
+    const object = ship.object3D;
+    if (!object) return;
+    const dx = Number(ship.getValue(PirateCannon, 'targetX')) - object.position.x;
+    const dz = Number(ship.getValue(PirateCannon, 'targetZ')) - object.position.z;
+    // Local -Z is the bow / muzzle forward: yaw = atan2(-dirX, -dirZ).
+    object.rotation.y = Math.atan2(-dx, -dz);
+  }
+
+  /**
+   * Launch one free shell on the closed-form intercept. With constant
+   * horizontal speed v, flight time tau = d / v and
+   *   vy = (ty - my) / tau + 0.5 * g * tau
+   * makes the shell arrive exactly at (tx, ty, tz) under BallisticSystem.
+   */
+  private fire(ship: Entity): boolean {
+    const muzzle = this.muzzles.get(ship.index);
+    const shell = this.firstFreeShell();
+    const shellObject = shell?.object3D;
+    if (!muzzle || !shell || !shellObject) return false;
+
+    muzzle.getWorldPosition(this.muzzlePos);
+    const tx = Number(ship.getValue(PirateCannon, 'targetX'));
+    const ty = Number(ship.getValue(PirateCannon, 'targetY'));
+    const tz = Number(ship.getValue(PirateCannon, 'targetZ'));
+    const dx = tx - this.muzzlePos.x;
+    const dz = tz - this.muzzlePos.z;
+    const horizontal = Math.hypot(dx, dz);
+    if (horizontal < 1e-6) return false;
+    const tau = horizontal / COMBAT.pirateShellSpeed;
+
+    shellObject.position.copy(this.muzzlePos);
+    shellObject.visible = true;
+    shell.addComponent(BallisticFlight, {
+      vx: dx / tau,
+      vy: (ty - this.muzzlePos.y) / tau + 0.5 * COMBAT.gravity * tau,
+      vz: dz / tau,
+    });
+    shell.addComponent(ShellFaction, {
+      faction: String(ship.getValue(UnitTag, 'faction')),
+    });
+    return true;
+  }
+
+  /** Every cooldown is a fresh roll: interval plus the shared jitter. */
+  private rollInterval(): number {
+    return (
+      COMBAT.pirateFireInterval +
+      COMBAT.fireJitterMin +
+      Math.random() * (COMBAT.fireJitterMax - COMBAT.fireJitterMin)
+    );
+  }
+
+  /** First pooled shell neither airborne nor already claimed this frame. */
+  private firstFreeShell(): Entity | undefined {
+    for (const shell of this.queries.freeShells.entities) {
+      if (this.claimed.has(shell.index)) continue;
+      // Live guard: CannonFireSystem may have claimed it earlier this frame.
+      if (shell.hasComponent(BallisticFlight)) continue;
+      this.claimed.add(shell.index);
+      return shell;
+    }
+    return undefined;
+  }
+
+  /** True once the START hand-off has moved the director past waiting-start. */
+  private gameRunning(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return (
+        String(director.getValue(LevelDirector, 'phase')) !== 'waiting-start'
+      );
+    }
+    return false;
+  }
+}
