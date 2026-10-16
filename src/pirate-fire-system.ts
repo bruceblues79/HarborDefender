@@ -28,11 +28,11 @@ import { COMBAT, SHIP_STOP_Z_MIN } from './level-config.js';
  *
  * 1. picks one random defender hit core (a city cannon) and snapshots its
  *    world position as the target — city cannons never move;
- * 2. only after dropping anchor, yaws the hull so the bow / embedded cannon
- *    (local -Z) faces the target (same convention as the spawn heading);
- *    while still sailing the hull keeps its travel heading, because turning
- *    it mid-translation would look like sliding sideways;
- * 3. fires on a jittered cooldown out of the shared shell pool.
+ * 2. yaws only the ship's embedded gun_rotate pivot onto the target, never
+ *    the hull: the ship keeps its travel heading while its deck gun tracks
+ *    the target, the same pivot the city cannons aim with;
+ * 3. the first shot leaves immediately when permission is granted (cooldown
+ *    starts at 0); later shots follow a jittered cooldown.
  *
  * Every shot is a mathematically guaranteed hit: horizontal velocity is
  * distance / flight time and vertical velocity is solved against
@@ -48,19 +48,25 @@ export class PirateFireSystem extends createSystem({
 }) {
   /** Muzzle object per ship entity index, resolved once on qualify. */
   private readonly muzzles = new Map<number, Object3D>();
+  /** Embedded deck-gun pivot (gun_rotate) per ship, resolved on qualify. */
+  private readonly gunPivots = new Map<number, Object3D>();
   /** Defender hit_core nodes per core entity index, resolved once on qualify. */
   private readonly coreNodes = new Map<number, Object3D>();
   /** Shells handed out this frame; the free-shell query only refreshes next frame. */
   private readonly claimed = new Set<number>();
   private readonly muzzlePos = new Vector3();
   private readonly corePos = new Vector3();
+  private readonly pivotPos = new Vector3();
 
   init(): void {
     this.queries.ships.subscribe('qualify', (entity) => {
       const muzzle = entity.object3D?.getObjectByName('muzzle');
       if (muzzle) this.muzzles.set(entity.index, muzzle);
-      // Roll the first cooldown too, so the fleet's opening volley staggers.
-      entity.setValue(PirateCannon, 'cooldown', this.rollInterval());
+      const gunPivot = entity.object3D?.getObjectByName('gun_rotate');
+      if (gunPivot) this.gunPivots.set(entity.index, gunPivot);
+      // First shot fires the moment the fire line is crossed; the cooldown
+      // only ticks inside the fire-range gate, so 0 here costs nothing early.
+      entity.setValue(PirateCannon, 'cooldown', 0);
     });
     this.queries.cores.subscribe('qualify', (entity) => {
       if (entity.getValue(HitCore, 'faction') !== 'defender') return;
@@ -80,10 +86,8 @@ export class PirateFireSystem extends createSystem({
       if (!ship.getValue(PirateCannon, 'hasTarget')) {
         if (!this.acquireTarget(ship)) continue;
       }
-      // Hull yaw only at anchor; while sailing the hull keeps its heading.
-      if (ship.getValue(ShipMovement, 'state') === 'stopped') {
-        this.aim(ship);
-      }
+      // The deck gun tracks the target from permission on; the hull never turns.
+      this.aimCannon(ship);
       let cooldown = Number(ship.getValue(PirateCannon, 'cooldown')) - delta;
       if (cooldown <= 0) {
         // Pool empty: retry shortly instead of banking negative time.
@@ -121,14 +125,22 @@ export class PirateFireSystem extends createSystem({
     return false;
   }
 
-  /** Yaw the hull onto the target, matching the spawn-heading convention. */
-  private aim(ship: Entity): void {
+  /**
+   * Yaw only the embedded gun_rotate pivot so its local -Z barrel points at
+   * the target. The target yaw is computed in world space (pivot origin ->
+   * target, same atan2(-dx, -dz) convention as the city guns) and converted
+   * to the pivot's local frame by subtracting the hull's world yaw, so the
+   * deck gun can track while the ship keeps sailing on its own heading.
+   */
+  private aimCannon(ship: Entity): void {
     const object = ship.object3D;
-    if (!object) return;
-    const dx = Number(ship.getValue(PirateCannon, 'targetX')) - object.position.x;
-    const dz = Number(ship.getValue(PirateCannon, 'targetZ')) - object.position.z;
-    // Local -Z is the bow / muzzle forward: yaw = atan2(-dirX, -dirZ).
-    object.rotation.y = Math.atan2(-dx, -dz);
+    const pivot = this.gunPivots.get(ship.index);
+    if (!object || !pivot) return;
+    pivot.getWorldPosition(this.pivotPos);
+    const dx = Number(ship.getValue(PirateCannon, 'targetX')) - this.pivotPos.x;
+    const dz = Number(ship.getValue(PirateCannon, 'targetZ')) - this.pivotPos.z;
+    const worldYaw = Math.atan2(-dx, -dz);
+    pivot.rotation.y = worldYaw - object.rotation.y;
   }
 
   /**
