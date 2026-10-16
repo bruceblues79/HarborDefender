@@ -255,7 +255,7 @@ export const COMBAT = {
    */
   attackerCoreRadius: 0.5,
   defenderCoreRadius: 0.22,
-  /** Seconds between two shots from one anchored pirate ship. */
+  /** Seconds between two shots from one pirate ship that is in fire range. */
   pirateFireInterval: 3.0,
   /**
    * Pirate shells keep a constant horizontal speed (m/s); flight time is

@@ -17,17 +17,21 @@ import {
   ShipMovement,
   UnitTag,
 } from './components.js';
-import { COMBAT } from './level-config.js';
+import { COMBAT, SHIP_STOP_Z_MIN } from './level-config.js';
 
 /**
- * Anchored pirate-ship fire. A ship does nothing while sailing; once
- * ShipMovement marks it 'stopped' (it has reached its berth z) and the
- * battle has started it:
+ * Pirate-ship fire. Firing permission is a positional fact owned by this
+ * attack ability, deliberately separate from ShipMovement's termination:
+ * the moment a ship crosses the outermost (seaward) berthing line
+ * SHIP_STOP_Z_MIN, it may shoot — it does not need to have stopped yet.
+ * Once in range and the battle has started it:
  *
  * 1. picks one random defender hit core (a city cannon) and snapshots its
  *    world position as the target — city cannons never move;
- * 2. yaws the hull so the bow / embedded cannon (local -Z) faces it, using
- *    the same yaw convention as the spawn heading;
+ * 2. only after dropping anchor, yaws the hull so the bow / embedded cannon
+ *    (local -Z) faces the target (same convention as the spawn heading);
+ *    while still sailing the hull keeps its travel heading, because turning
+ *    it mid-translation would look like sliding sideways;
  * 3. fires on a jittered cooldown out of the shared shell pool.
  *
  * Every shot is a mathematically guaranteed hit: horizontal velocity is
@@ -70,12 +74,16 @@ export class PirateFireSystem extends createSystem({
     if (!this.gameRunning()) return;
     this.claimed.clear();
     for (const ship of this.queries.ships.entities) {
-      // Movement is the gate: only an anchored ship picks targets and fires.
-      if (ship.getValue(ShipMovement, 'state') !== 'stopped') continue;
+      // Fire permission: crossing the outermost berthing line, not stopping.
+      const object = ship.object3D;
+      if (!object || object.position.z < SHIP_STOP_Z_MIN) continue;
       if (!ship.getValue(PirateCannon, 'hasTarget')) {
         if (!this.acquireTarget(ship)) continue;
       }
-      this.aim(ship);
+      // Hull yaw only at anchor; while sailing the hull keeps its heading.
+      if (ship.getValue(ShipMovement, 'state') === 'stopped') {
+        this.aim(ship);
+      }
       let cooldown = Number(ship.getValue(PirateCannon, 'cooldown')) - delta;
       if (cooldown <= 0) {
         // Pool empty: retry shortly instead of banking negative time.
@@ -88,7 +96,7 @@ export class PirateFireSystem extends createSystem({
   /** Pick one random city-cannon core and snapshot its world position. */
   private acquireTarget(ship: Entity): boolean {
     // Two passes over the query (count, then pick) keep update() allocation
-    // free; this runs once per ship, when it first drops anchor.
+    // free; this runs once per ship, when it first crosses the fire line.
     let defenderCount = 0;
     for (const core of this.queries.cores.entities) {
       if (core.getValue(HitCore, 'faction') === 'defender') defenderCount += 1;
