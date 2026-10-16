@@ -50,12 +50,11 @@ const MUZZLE_LOCAL_Z = -0.2;
  *
  * - a `muzzle` under the embedded gun_rotate pivot (identical placement to
  *   the city cannon, local z = -0.2 at the barrel tip);
- * - a `cannon_mount` yaw wrapper that owns the WHOLE deck gun. In the GLB,
- *   `ship-carriage` and `gun_rotate` (barrel) are siblings: yawing
- *   gun_rotate alone swings just the barrel and visibly snaps it off the
- *   carriage. Both are reparented under one shared pivot (Object3D.attach
- *   keeps their world transforms), so PirateFireSystem rotates carriage and
- *   barrel together as a rigid gun while the hull stays put;
+ * - a `cannon_mount` yaw wrapper that owns the WHOLE deck gun. The GLB's
+ *   gun_rotate pivot sits on the fixed pedestal's central axis, and the
+ *   wrapper copies that position before attach(), so yawing the mount spins
+ *   turntable + barrel around the pedestal's own axis — the hull stays put
+ *   and the gun never sweeps around the ship centre;
  * - a `hit_core` at the model's bounding-box centre.
  */
 function decorateShipPrototype(prototype: Object3D): void {
@@ -66,17 +65,15 @@ function decorateShipPrototype(prototype: Object3D): void {
     muzzle.position.set(0, 0, MUZZLE_LOCAL_Z);
     gunPivot.add(muzzle);
   }
-  if (!prototype.getObjectByName('cannon_mount')) {
-    const carriage = prototype.getObjectByName('ship-carriage');
-    if (carriage && gunPivot) {
-      const mount = new Object3D();
-      mount.name = 'cannon_mount';
-      prototype.add(mount);
-      // attach() reparents while preserving world position/rotation, so the
-      // gun looks identical until the mount actually yaws.
-      mount.attach(carriage);
-      mount.attach(gunPivot);
-    }
+  if (gunPivot && !prototype.getObjectByName('cannon_mount')) {
+    const mount = new Object3D();
+    mount.name = 'cannon_mount';
+    // Yaw pivot ON the pedestal axis: the gun spins around its own base,
+    // not around the hull origin. attach() preserves world transforms, so
+    // the gun looks identical until the mount actually yaws.
+    mount.position.copy(gunPivot.position);
+    prototype.add(mount);
+    mount.attach(gunPivot);
   }
   if (!prototype.getObjectByName('hit_core')) {
     const center = new Box3().setFromObject(prototype).getCenter(new Vector3());

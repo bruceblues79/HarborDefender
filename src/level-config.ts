@@ -264,4 +264,21 @@ export const COMBAT = {
    * on the target core. Shares BallisticSystem's gravity.
    */
   pirateShellSpeed: 8,
+  /**
+   * Hit-flash pool shared by every impact: spheres bloom from `startScale`
+   * to full size while fading out with an EaseOut curve over `duration`.
+   * Pool entities share one geometry; each carries its own material so the
+   * opacity animation stays per-instance.
+   */
+  hitFlashPoolSize: 8,
+  /** Seconds for one hit flash to expand and fade. */
+  hitFlashDuration: 0.5,
+  /** Base sphere radius (m) at scale 1. */
+  hitFlashRadius: 0.14,
+  /** Starting fraction of full size ("initial 0.5 volume"). */
+  hitFlashStartScale: 0.5,
+  /** Fresnel centre colour (hot yellow, sRGB hex). */
+  hitFlashCenterColor: 0xffd84d,
+  /** Fresnel rim colour (dark red, sRGB hex). */
+  hitFlashEdgeColor: 0x8a1400,
 };

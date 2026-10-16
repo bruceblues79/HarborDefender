@@ -7,7 +7,15 @@
 
 import { createSystem, Vector3 } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
-import { BallisticFlight, HitCore, ShellFaction, ShellTag } from './components.js';
+import {
+  BallisticFlight,
+  HitCore,
+  HitFlash,
+  HitFlashTag,
+  ShellFaction,
+  ShellTag,
+} from './components.js';
+import { COMBAT } from './level-config.js';
 
 /**
  * Distance-based hit resolution between airborne shells and combatants'
@@ -15,7 +23,9 @@ import { BallisticFlight, HitCore, ShellFaction, ShellTag } from './components.j
  * moment its centre comes within the core radius: flight and faction tags
  * are removed and the mesh hides, returning the shell to the shared pool
  * exactly like a splash-down — but no ripple is spawned, because the ball
- * struck a solid target rather than the water.
+ * struck a solid target. Instead a pooled hit-flash sphere blooms at the
+ * impact point: claiming one is a thin spawn command (position + starting
+ * state + HitFlash component); HitFlashSystem owns the animation.
  *
  * Runs after BallisticSystem so each frame's motion is tested at its end
  * position. Hits are collected during the sweep and recycled afterwards.
@@ -23,6 +33,7 @@ import { BallisticFlight, HitCore, ShellFaction, ShellTag } from './components.j
 export class ShellHitSystem extends createSystem({
   shells: { required: [ShellTag, BallisticFlight, ShellFaction] },
   cores: { required: [HitCore] },
+  freeFlashes: { required: [HitFlashTag], excluded: [HitFlash] },
 }) {
   /** hit_core node per core entity index, resolved once on qualify. */
   private readonly coreNodes = new Map<number, Object3D>();
@@ -30,6 +41,8 @@ export class ShellHitSystem extends createSystem({
   private readonly corePositions = new Map<number, Vector3>();
   /** Shells consumed this frame; recycled after the sweep, not inside it. */
   private readonly hit: Entity[] = [];
+  /** Flashes handed out this frame; the free-flash query refreshes next frame. */
+  private readonly claimedFlashes = new Set<number>();
 
   init(): void {
     this.queries.cores.subscribe('qualify', (entity) => {
@@ -42,6 +55,7 @@ export class ShellHitSystem extends createSystem({
 
   update(): void {
     this.hit.length = 0;
+    this.claimedFlashes.clear();
 
     // Core world positions once per frame (pirate ships yaw after stopping).
     for (const [index, node] of this.coreNodes) {
@@ -75,7 +89,33 @@ export class ShellHitSystem extends createSystem({
       if (!shell.hasComponent(BallisticFlight)) continue;
       shell.removeComponent(BallisticFlight);
       shell.removeComponent(ShellFaction);
-      if (shell.object3D) shell.object3D.visible = false;
+      if (shell.object3D) {
+        this.spawnHitFlash(shell.object3D.position);
+        shell.object3D.visible = false;
+      }
+    }
+  }
+
+  /**
+   * Claim a free pooled flash and land its starting state at the impact
+   * point: position, start scale, visible, then the HitFlash tag that hands
+   * animation to HitFlashSystem. Pool empty: skip silently — a busy battle
+   * loses the odd bloom, never a hit.
+   */
+  private spawnHitFlash(position: Vector3): void {
+    for (const flash of this.queries.freeFlashes.entities) {
+      if (this.claimedFlashes.has(flash.index)) continue;
+      // Live guard: another spawn this frame may have claimed it already,
+      // since the free-flash query only refreshes next frame.
+      if (flash.hasComponent(HitFlash)) continue;
+      this.claimedFlashes.add(flash.index);
+      const object = flash.object3D;
+      if (!object) return;
+      object.position.copy(position);
+      object.scale.setScalar(COMBAT.hitFlashStartScale);
+      object.visible = true;
+      flash.addComponent(HitFlash, { duration: COMBAT.hitFlashDuration });
+      return;
     }
   }
 }

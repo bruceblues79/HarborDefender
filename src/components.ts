@@ -215,6 +215,26 @@ export const PirateCannon = createComponent('PirateCannon', {
   targetZ: { type: 'Float32', default: 0 },
 });
 
+/**
+ * Marks a pooled hit-flash sphere. The pool lives in HitFlashSystem; a flash
+ * is free exactly while it does NOT carry `HitFlash` — presence of the state
+ * component is the "playing" tag, so no separate in-use flag exists.
+ */
+export const HitFlashTag = createComponent('HitFlashTag', {});
+
+/**
+ * Playing state of a pooled hit-flash sphere. ShellHitSystem claims a free
+ * flash by adding this component (the thin spawn command); HitFlashSystem is
+ * the only writer afterwards, deriving scale and opacity from `elapsed`.
+ * Removal returns the sphere to the pool.
+ */
+export const HitFlash = createComponent('HitFlash', {
+  /** Seconds the bloom-and-fade takes. */
+  duration: { type: 'Float32', default: COMBAT.hitFlashDuration },
+  /** Seconds elapsed so far. */
+  elapsed: { type: 'Float32', default: 0 },
+});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -232,4 +252,6 @@ export default defineComponents([
   HitCore,
   ShellFaction,
   PirateCannon,
+  HitFlashTag,
+  HitFlash,
 ]);

@@ -14,6 +14,7 @@ import { CameraOrbitSystem } from './camera-orbit-system.js';
 import { CannonAimSystem } from './cannon-aim-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
 import { Billboard } from './components.js';
+import { HitFlashSystem } from './hit-flash-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
 import { OceanSystem } from './ocean-system.js';
 import { PanelScaleSystem } from './panel-scale-system.js';
@@ -45,6 +46,7 @@ World.create(
   // Move first, then consume solid-target hits, then handle water splashes.
   world.registerSystem(BallisticSystem, { priority: 13 });
   world.registerSystem(ShellHitSystem, { priority: 14 });
+  world.registerSystem(HitFlashSystem, { priority: 15 });
   world.registerSystem(SplashSystem, { priority: 15 });
   // UI tier, after the camera updates so billboards track this frame's view.
   world.registerSystem(PanelScaleSystem, { priority: 30 });
