@@ -28,9 +28,9 @@ import { COMBAT, SHIP_STOP_Z_MIN } from './level-config.js';
  *
  * 1. picks one random defender hit core (a city cannon) and snapshots its
  *    world position as the target — city cannons never move;
- * 2. yaws only the ship's embedded gun_rotate pivot onto the target, never
- *    the hull: the ship keeps its travel heading while its deck gun tracks
- *    the target, the same pivot the city cannons aim with;
+ * 2. yaws the whole deck gun — carriage plus barrel on one cannon_mount
+ *    pivot — onto the target, never the hull: the ship keeps its travel
+ *    heading while its gun tracks the target;
  * 3. the first shot leaves immediately when permission is granted (cooldown
  *    starts at 0); later shots follow a jittered cooldown.
  *
@@ -48,7 +48,7 @@ export class PirateFireSystem extends createSystem({
 }) {
   /** Muzzle object per ship entity index, resolved once on qualify. */
   private readonly muzzles = new Map<number, Object3D>();
-  /** Embedded deck-gun pivot (gun_rotate) per ship, resolved on qualify. */
+  /** Whole-gun yaw pivot (cannon_mount: carriage + barrel) per ship. */
   private readonly gunPivots = new Map<number, Object3D>();
   /** Defender hit_core nodes per core entity index, resolved once on qualify. */
   private readonly coreNodes = new Map<number, Object3D>();
@@ -62,7 +62,7 @@ export class PirateFireSystem extends createSystem({
     this.queries.ships.subscribe('qualify', (entity) => {
       const muzzle = entity.object3D?.getObjectByName('muzzle');
       if (muzzle) this.muzzles.set(entity.index, muzzle);
-      const gunPivot = entity.object3D?.getObjectByName('gun_rotate');
+      const gunPivot = entity.object3D?.getObjectByName('cannon_mount');
       if (gunPivot) this.gunPivots.set(entity.index, gunPivot);
       // First shot fires the moment the fire line is crossed; the cooldown
       // only ticks inside the fire-range gate, so 0 here costs nothing early.
@@ -126,11 +126,12 @@ export class PirateFireSystem extends createSystem({
   }
 
   /**
-   * Yaw only the embedded gun_rotate pivot so its local -Z barrel points at
-   * the target. The target yaw is computed in world space (pivot origin ->
-   * target, same atan2(-dx, -dz) convention as the city guns) and converted
-   * to the pivot's local frame by subtracting the hull's world yaw, so the
-   * deck gun can track while the ship keeps sailing on its own heading.
+   * Yaw the cannon_mount pivot (carriage + barrel as one rigid unit) so its
+   * local -Z barrel points at the target. The target yaw is computed in
+   * world space (pivot origin -> target, same atan2(-dx, -dz) convention as
+   * the city guns) and converted to the pivot's local frame by subtracting
+   * the hull's world yaw, so the whole gun can track while the ship keeps
+   * sailing on its own heading.
    */
   private aimCannon(ship: Entity): void {
     const object = ship.object3D;

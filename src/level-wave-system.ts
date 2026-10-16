@@ -46,9 +46,17 @@ import {
 const MUZZLE_LOCAL_Z = -0.2;
 
 /**
- * Hang the pirate ship's combat helpers on its prototype once: a `muzzle`
- * under the embedded gun_rotate pivot (identical placement to the city
- * cannon) and a `hit_core` at the model's bounding-box centre.
+ * Hang the pirate ship's combat helpers on its prototype once:
+ *
+ * - a `muzzle` under the embedded gun_rotate pivot (identical placement to
+ *   the city cannon, local z = -0.2 at the barrel tip);
+ * - a `cannon_mount` yaw wrapper that owns the WHOLE deck gun. In the GLB,
+ *   `ship-carriage` and `gun_rotate` (barrel) are siblings: yawing
+ *   gun_rotate alone swings just the barrel and visibly snaps it off the
+ *   carriage. Both are reparented under one shared pivot (Object3D.attach
+ *   keeps their world transforms), so PirateFireSystem rotates carriage and
+ *   barrel together as a rigid gun while the hull stays put;
+ * - a `hit_core` at the model's bounding-box centre.
  */
 function decorateShipPrototype(prototype: Object3D): void {
   const gunPivot = prototype.getObjectByName('gun_rotate');
@@ -57,6 +65,18 @@ function decorateShipPrototype(prototype: Object3D): void {
     muzzle.name = 'muzzle';
     muzzle.position.set(0, 0, MUZZLE_LOCAL_Z);
     gunPivot.add(muzzle);
+  }
+  if (!prototype.getObjectByName('cannon_mount')) {
+    const carriage = prototype.getObjectByName('ship-carriage');
+    if (carriage && gunPivot) {
+      const mount = new Object3D();
+      mount.name = 'cannon_mount';
+      prototype.add(mount);
+      // attach() reparents while preserving world position/rotation, so the
+      // gun looks identical until the mount actually yaws.
+      mount.attach(carriage);
+      mount.attach(gunPivot);
+    }
   }
   if (!prototype.getObjectByName('hit_core')) {
     const center = new Box3().setFromObject(prototype).getCenter(new Vector3());
