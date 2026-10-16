@@ -6,10 +6,10 @@
  */
 
 import {
+  AdditiveBlending,
   Color,
   createSystem,
   Mesh,
-  NormalBlending,
   ShaderMaterial,
   SphereGeometry,
 } from '@iwsdk/core';
@@ -70,10 +70,11 @@ export class HitFlashSystem extends createSystem({
           uEdgeColor: { value: rawSrgbColor(COMBAT.hitFlashEdgeColor) },
         },
         transparent: true,
-        // Normal blending keeps the dark-red rim visible; additive would add
-        // near-nothing for it. No depth write: a transient glow must never
-        // occlude anything behind it.
-        blending: NormalBlending,
+        // Additive blending: the bloom adds light over the scene — the hot
+        // yellow centre flares, the dark-red rim contributes subtle heat
+        // instead of occluding, and overlapping flashes brighten into a
+        // sustained-fire look. No depth write, as any transient glow.
+        blending: AdditiveBlending,
         depthWrite: false,
       });
       const mesh = new Mesh(geometry, material);
