@@ -16,6 +16,7 @@ import { CannonFireSystem } from './cannon-fire-system.js';
 import { Billboard } from './components.js';
 import { HitFlashSystem } from './hit-flash-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
+import { MenuSystem } from './menu-system.js';
 import { OceanSystem } from './ocean-system.js';
 import { PanelScaleSystem } from './panel-scale-system.js';
 import { PirateFireSystem } from './pirate-fire-system.js';
@@ -51,6 +52,9 @@ World.create(
   // UI tier, after the camera updates so billboards track this frame's view.
   world.registerSystem(PanelScaleSystem, { priority: 30 });
   world.registerSystem(StartPanelSystem, { priority: 30 });
+  // Pause-menu orchestrator: watches GameStarted, owns the pause tag and the
+  // head-following call button / menu panels.
+  world.registerSystem(MenuSystem, { priority: 32 });
   world.registerSystem(BillboardSystem, { priority: 31 });
   installXRButton(world);
 

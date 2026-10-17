@@ -216,6 +216,20 @@ export const PirateCannon = createComponent('PirateCannon', {
 });
 
 /**
+ * Explicit tag: the START gate has opened and the level flow is live. Added
+ * by LevelWaveSystem.beginLevel, removed by resetToWelcome — MenuSystem
+ * watches its qualify/dismiss to show and hide the call-menu button.
+ */
+export const GameStarted = createComponent('GameStarted', {});
+
+/**
+ * Explicit pause tag on the director entity. MenuSystem is the only writer;
+ * every simulation system early-returns while it is present. UI, camera,
+ * billboard and follower systems ignore it, so pausing never blocks input.
+ */
+export const GamePaused = createComponent('GamePaused', {});
+
+/**
  * Marks a pooled hit-flash sphere. The pool lives in HitFlashSystem; a flash
  * is free exactly while it does NOT carry `HitFlash` — presence of the state
  * component is the "playing" tag, so no separate in-use flag exists.
@@ -258,6 +272,8 @@ export default defineComponents([
   HitCore,
   ShellFaction,
   PirateCannon,
+  GameStarted,
+  GamePaused,
   HitFlashTag,
   HitFlash,
 ]);

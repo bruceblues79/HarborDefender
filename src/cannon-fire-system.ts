@@ -16,6 +16,7 @@ import type { Entity, Object3D } from '@iwsdk/core';
 import {
   BallisticFlight,
   CannonFire,
+  GamePaused,
   LevelDirector,
   ShellFaction,
   ShellTag,
@@ -36,12 +37,15 @@ import { COMBAT } from './level-config.js';
 export class CannonFireSystem extends createSystem({
   cannons: { required: [CannonFire] },
   freeShells: { required: [ShellTag], excluded: [BallisticFlight] },
+  airborne: { required: [ShellTag, BallisticFlight] },
   directors: { required: [LevelDirector] },
 }) {
   /** Muzzle object per cannon entity index, resolved once on qualify. */
   private readonly muzzles = new Map<number, Object3D>();
   /** Shells handed out this frame; the free-shell query only refreshes next frame. */
   private readonly claimed = new Set<number>();
+  /** Snapshot buffer for bulk recall; allocated once, reused per call. */
+  private readonly retiring: Entity[] = [];
   private readonly muzzlePos = new Vector3();
   private readonly muzzleDir = new Vector3();
 
@@ -69,8 +73,9 @@ export class CannonFireSystem extends createSystem({
   update(delta: number): void {
     // Hold fire until the START gate opens: LevelDirector.phase is the single
     // truth for game flow. Cooldowns were rolled at mount time and tick only
-    // once the level begins.
-    if (!this.gameRunning()) return;
+    // once the level begins. GamePaused freezes the rhythm without touching
+    // any cooldown value.
+    if (this.paused() || !this.gameRunning()) return;
     this.claimed.clear();
     for (const entity of this.queries.cannons.entities) {
       let cooldown = Number(entity.getValue(CannonFire, 'cooldown')) - delta;
@@ -139,5 +144,30 @@ export class CannonFireSystem extends createSystem({
       );
     }
     return false;
+  }
+
+  /** True while the pause-menu tag sits on the director entity. */
+  private paused(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return director.hasComponent(GamePaused);
+    }
+    return false;
+  }
+
+  /**
+   * Recall every airborne shell to the pool (RESTART / MAIN reset): hide the
+   * mesh and drop the flight + faction tags so the shell is free again. The
+   * pool itself is never rebuilt.
+   */
+  recycleAirborneShells(): void {
+    this.retiring.length = 0;
+    for (const shell of this.queries.airborne.entities) {
+      this.retiring.push(shell);
+    }
+    for (const shell of this.retiring) {
+      shell.removeComponent(BallisticFlight);
+      shell.removeComponent(ShellFaction);
+      if (shell.object3D) shell.object3D.visible = false;
+    }
   }
 }

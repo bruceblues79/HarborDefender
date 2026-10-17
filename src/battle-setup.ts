@@ -18,6 +18,7 @@ import {
   World,
   loadUIKitMLAsset,
 } from '@iwsdk/core';
+import type { Entity } from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
 import { CannonAim, CannonFire, HitCore, OceanTag } from './components.js';
 import { COMBAT } from './level-config.js';
@@ -47,12 +48,25 @@ function decorateCannonPrototype(prototype: Object3D): void {
   }
 }
 
+/**
+ * Battlefield persistence: the ocean, wall and cannons are built once per
+ * page load and kept alive across MAIN-menu round trips (hidden, never
+ * disposed — their geometry/materials are shared with the cached GLTF
+ * prototypes, so disposing them would poison the AssetManager cache). Their
+ * runtime state resets on every (re)entry: cannon aim returns to level.
+ */
+let battlefieldReady = false;
+/** Whether a battle entry is currently in flight (guards double ENTER). */
 let battleStarted = false;
+const battlefieldObjects: Object3D[] = [];
+const cannonEntities: Entity[] = [];
 
 /**
  * One-shot battle start flow: hide the welcome panel, show the loading
  * panel, instantiate the solidified GLB models and the ocean reflection
  * cubemap, place them into the world, then ease into the battle view.
+ * Re-entry after a MAIN-menu return skips straight to the view change —
+ * the battlefield is already built.
  *
  * All game assets are preloaded with `background` priority while the
  * welcome screen is up, so these loads are warm cache hits and the loading
@@ -81,6 +95,26 @@ export function startBattle(world: World): void {
   // 1. Hide the welcome panel
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
   if (panel) panel.visible = false;
+
+  const proceed = (): void => {
+    cameraSystem?.moveToView(
+      new Vector3(0, 2.75, 2.75),
+      new Vector3(0, 1.697, -2),
+    );
+    startPanelSystem?.show();
+  };
+
+  // Round trip: the battlefield persists across MAIN-menu returns — reveal
+  // it, level the cannons, and go straight to the view change.
+  if (battlefieldReady) {
+    for (const object of battlefieldObjects) object.visible = true;
+    for (const entity of cannonEntities) {
+      entity.setValue(CannonAim, 'yawDeg', 0);
+      entity.setValue(CannonAim, 'pitchDeg', 0);
+    }
+    proceed();
+    return;
+  }
 
   // 2. Show loading panel (1 m × 0.5 m, faces +Z)
   loadUIKitMLAsset('loading-panel')
@@ -121,6 +155,7 @@ export function startBattle(world: World): void {
           // wall), centre shifts back from -4 to -6.
           oceanObject.position.set(0, 0.55, -6);
           world.createTransformEntity(oceanObject).addComponent(OceanTag);
+          battlefieldObjects.push(oceanObject);
 
           // Place harbor wall at the ocean body's maxZ edge
           const wallObject = wallGltf.scene;
@@ -134,6 +169,7 @@ export function startBattle(world: World): void {
             }
           });
           world.createTransformEntity(wallObject);
+          battlefieldObjects.push(wallObject);
 
           // Five cannons evenly spaced across the central 3 m of the
           // 3.4 m wall (0.2 m margin each side), muzzles facing the
@@ -163,17 +199,16 @@ export function startBattle(world: World): void {
               radius: COMBAT.defenderCoreRadius,
               faction: 'defender',
             });
+            cannonEntities.push(cannonEntity);
+            battlefieldObjects.push(cannon);
           }
+          battlefieldReady = true;
 
           // 4. Hide loading panel — game is ready, ease into the game view,
           // then raise the START gates. Units are dispatched by
           // LevelWaveSystem once the player presses START.
           loadingPanel.visible = false;
-          cameraSystem?.moveToView(
-            new Vector3(0, 2.75, 2.75),
-            new Vector3(0, 1.697, -2),
-          );
-          startPanelSystem?.show();
+          proceed();
         })
         .catch((err: unknown) => {
           console.error('Failed to load game assets:', err);
@@ -182,4 +217,22 @@ export function startBattle(world: World): void {
     .catch((err: unknown) => {
       console.error('Failed to load loading panel:', err);
     });
+}
+
+/**
+ * MAIN-menu hand-off: hide the battlefield (it is never disposed — see the
+ * persistence note above), bring the welcome panel back and ease the camera
+ * to its authored welcome pose. A later ENTER GAME rebuilds nothing.
+ */
+export function returnToWelcome(world: World): void {
+  battleStarted = false;
+  for (const object of battlefieldObjects) object.visible = false;
+  const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
+  if (panel) panel.visible = true;
+  world
+    .getSystems()
+    .find((system): system is CameraOrbitSystem =>
+      system instanceof CameraOrbitSystem,
+    )
+    ?.returnToWelcome();
 }

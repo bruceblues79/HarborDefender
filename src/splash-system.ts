@@ -7,7 +7,7 @@
 
 import { createSystem } from '@iwsdk/core';
 import type { Entity } from '@iwsdk/core';
-import { SplashFade, WakeSource } from './components.js';
+import { GamePaused, LevelDirector, SplashFade, WakeSource } from './components.js';
 
 /**
  * Fades splash ripples out and disposes them — the only owner of a splash
@@ -18,11 +18,15 @@ import { SplashFade, WakeSource } from './components.js';
  */
 export class SplashSystem extends createSystem({
   splashes: { required: [SplashFade, WakeSource] },
+  directors: { required: [LevelDirector] },
 }) {
   /** Ripples that reached zero this frame; disposed after the sweep. */
   private readonly expired: Entity[] = [];
+  /** Snapshot buffer for bulk disposal; allocated once, reused per call. */
+  private readonly retiring: Entity[] = [];
 
   update(delta: number): void {
+    if (this.paused()) return;
     this.expired.length = 0;
     for (const entity of this.queries.splashes.entities) {
       const duration = Number(entity.getValue(SplashFade, 'duration'));
@@ -35,5 +39,22 @@ export class SplashSystem extends createSystem({
     }
     // dispose(), never destroy(): destroy leaks GPU memory.
     for (const entity of this.expired) entity.dispose();
+  }
+
+  /** True while the pause-menu tag sits on the director entity. */
+  private paused(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return director.hasComponent(GamePaused);
+    }
+    return false;
+  }
+
+  /** Dispose every live splash node (RESTART / MAIN reset). */
+  disposeAll(): void {
+    this.retiring.length = 0;
+    for (const entity of this.queries.splashes.entities) {
+      this.retiring.push(entity);
+    }
+    for (const entity of this.retiring) entity.dispose();
   }
 }

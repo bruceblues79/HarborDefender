@@ -8,6 +8,7 @@
 import {
   createSystem,
   Hovered,
+  Object3D,
   Pressed,
   UIKitMLAsset,
   Vector3,
@@ -134,10 +135,7 @@ export class CameraOrbitSystem extends createSystem({
     const enterGameButton = this.world
       .getSceneObject<UIKitMLAsset>('welcome-panel')
       ?.getElementById('enter-game-button');
-    const onUiPointerDown = (e: { pointerId: number }): void => {
-      this.blockedPointers.add(e.pointerId);
-    };
-    enterGameButton?.addEventListener('pointerdown', onUiPointerDown);
+    if (enterGameButton) this.addUiBlocker(enterGameButton);
 
     this.cleanupFuncs.push(
       () => canvas.removeEventListener('pointerdown', this.onPointerDown),
@@ -149,10 +147,24 @@ export class CameraOrbitSystem extends createSystem({
       () => window.removeEventListener('pointercancel', this.onPointerUp),
       () => document.removeEventListener('gesturestart', blockGesture),
       () => document.removeEventListener('gesturechange', blockGesture),
-      () =>
-        enterGameButton?.removeEventListener('pointerdown', onUiPointerDown),
     );
   }
+
+  /**
+   * Register a UIKitML button whose presses must never reach the camera rig —
+   * the same contract the welcome button gets at init. Systems owning runtime
+   * panels (pause menu) call this once per button when the panel resolves.
+   */
+  addUiBlocker(element: Object3D): void {
+    element.addEventListener('pointerdown', this.onUiPointerDown);
+    this.cleanupFuncs.push(() =>
+      element.removeEventListener('pointerdown', this.onUiPointerDown),
+    );
+  }
+
+  private readonly onUiPointerDown = (e: { pointerId: number }): void => {
+    this.blockedPointers.add(e.pointerId);
+  };
 
   private onPointerDown = (e: PointerEvent): void => {
     if (this.world.visibilityState.peek() !== VisibilityState.NonImmersive) {
@@ -285,6 +297,19 @@ export class CameraOrbitSystem extends createSystem({
     this.toPitch = Math.asin(dy / this.toRadius);
     this.viewElapsed = 0;
     this.viewDuration = duration;
+  }
+
+  /**
+   * Ease back to the authored welcome pose — the same camera/target pair the
+   * world starts with (0,1.25,2) looking level at (0,1.25,-1.5). Called on the
+   * MAIN-menu hand-off; the welcome view becomes the clamp window center on
+   * arrival, exactly like any other completed tween.
+   */
+  returnToWelcome(): void {
+    this.moveToView(
+      new Vector3(0, 1.25, 2),
+      new Vector3(0, 1.25, -1.5),
+    );
   }
 
   private currentPinchDist(): number {

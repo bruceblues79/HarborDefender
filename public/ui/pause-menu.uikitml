@@ -1,0 +1,55 @@
+<!--
+  Pause menu, expanded downward from the call button: 150 × 100 UIKit units
+  = 1.5 m × 1 m at scale 1. Three dark buttons in a column, each filling the
+  full width inside the root padding (space-between distributes the rows).
+  Styling matches the welcome / start panels' dark-button treatment.
+-->
+<style>
+  .menu-root {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    width: 150;
+    height: 100;
+    border-radius: 6;
+    padding-top: 8;
+    padding-right: 8;
+    padding-bottom: 8;
+    padding-left: 8;
+  }
+
+  .menu-button {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    width: 134;
+    height: 24;
+    background-color: #26262b;
+    color: #ffffff;
+    font-size: 7;
+    font-weight: 700;
+    text-align: center;
+    border-radius: 3;
+    padding-top: 0;
+    padding-right: 0;
+    padding-bottom: 0;
+    padding-left: 0;
+    cursor: pointer;
+  }
+
+  .menu-button:hover {
+    background-color: #3a3a42;
+  }
+
+  .menu-button:active {
+    background-color: #1c1c21;
+  }
+</style>
+
+<Panel class="menu-root">
+  <button id="menu-main-button" class="menu-button">MAIN</button>
+  <button id="menu-restart-button" class="menu-button">RESTART</button>
+  <button id="menu-resume-button" class="menu-button">RESUME</button>
+</Panel>
