@@ -7,7 +7,7 @@
 
 import { createSystem } from '@iwsdk/core';
 import type { Entity, Mesh } from '@iwsdk/core';
-import { SpawnFade } from './components.js';
+import { GamePaused, LevelDirector, SpawnFade } from './components.js';
 
 /**
  * Materialises freshly dispatched units — the only owner of hull material
@@ -23,11 +23,13 @@ import { SpawnFade } from './components.js';
  */
 export class SpawnFadeSystem extends createSystem({
   fading: { required: [SpawnFade] },
+  directors: { required: [LevelDirector] },
 }) {
   /** Entities that finished this frame; removed after the sweep, not inside it. */
   private readonly finished: Entity[] = [];
 
   update(delta: number): void {
+    if (this.paused()) return;
     this.finished.length = 0;
     for (const entity of this.queries.fading.entities) {
       const object = entity.object3D;
@@ -53,5 +55,13 @@ export class SpawnFadeSystem extends createSystem({
       else entity.setValue(SpawnFade, 'elapsed', elapsed);
     }
     for (const entity of this.finished) entity.removeComponent(SpawnFade);
+  }
+
+  /** True while the pause-menu tag sits on the director entity. */
+  private paused(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return director.hasComponent(GamePaused);
+    }
+    return false;
   }
 }

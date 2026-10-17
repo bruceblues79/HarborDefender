@@ -9,6 +9,7 @@ import { createSystem, Vector3 } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
 import {
   BallisticFlight,
+  GamePaused,
   HitCore,
   LevelDirector,
   PirateCannon,
@@ -76,8 +77,9 @@ export class PirateFireSystem extends createSystem({
   }
 
   update(delta: number): void {
-    // Same START gate as the city battery: no shots before the game runs.
-    if (!this.gameRunning()) return;
+    // Same START gate as the city battery, plus the pause tag: no shots
+    // before the game runs or while the pause menu holds the game.
+    if (this.paused() || !this.gameRunning()) return;
     this.claimed.clear();
     for (const ship of this.queries.ships.entities) {
       // Fire permission: crossing the outermost berthing line, not stopping.
@@ -206,6 +208,14 @@ export class PirateFireSystem extends createSystem({
       return (
         String(director.getValue(LevelDirector, 'phase')) !== 'waiting-start'
       );
+    }
+    return false;
+  }
+
+  /** True while the pause-menu tag sits on the director entity. */
+  private paused(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return director.hasComponent(GamePaused);
     }
     return false;
   }

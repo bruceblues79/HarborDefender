@@ -1,0 +1,71 @@
+<!--
+  Call-menu (pause) trigger: a small circular button carrying a three-bar
+  menu glyph (the same reading as mdi:menu). 22 × 22 UIKit units = 0.22 m
+  at scale 1. The kit's opaque Panel surface wins over a root background,
+  so the dark circle is the <button> itself; the glyph is three bars laid
+  out with space-between inside a fixed-height column.
+-->
+<style>
+  .call-root {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    width: 22;
+    height: 22;
+    padding-top: 0;
+    padding-right: 0;
+    padding-bottom: 0;
+    padding-left: 0;
+  }
+
+  .call-circle {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    width: 22;
+    height: 22;
+    background-color: #26262b;
+    border-radius: 11;
+    padding-top: 0;
+    padding-right: 0;
+    padding-bottom: 0;
+    padding-left: 0;
+    cursor: pointer;
+  }
+
+  .call-circle:hover {
+    background-color: #3a3a42;
+  }
+
+  .call-circle:active {
+    background-color: #1c1c21;
+  }
+
+  .call-glyph {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    width: 10;
+    height: 10;
+  }
+
+  .call-bar {
+    width: 10;
+    height: 2;
+    background-color: #ffffff;
+    border-radius: 1;
+  }
+</style>
+
+<Panel class="call-root">
+  <button id="menu-call-button" class="call-circle">
+    <div class="call-glyph">
+      <div class="call-bar"></div>
+      <div class="call-bar"></div>
+      <div class="call-bar"></div>
+    </div>
+  </button>
+</Panel>

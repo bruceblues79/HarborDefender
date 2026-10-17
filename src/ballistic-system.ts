@@ -9,6 +9,8 @@ import { createSystem, Object3D } from '@iwsdk/core';
 import type { Entity } from '@iwsdk/core';
 import {
   BallisticFlight,
+  GamePaused,
+  LevelDirector,
   ShellFaction,
   ShellTag,
   SplashFade,
@@ -25,11 +27,13 @@ import { COMBAT, OCEAN } from './level-config.js';
  */
 export class BallisticSystem extends createSystem({
   flying: { required: [ShellTag, BallisticFlight] },
+  directors: { required: [LevelDirector] },
 }) {
   /** Shells splashing this frame; recycled after the sweep, not inside it. */
   private readonly landed: Entity[] = [];
 
   update(delta: number): void {
+    if (this.paused()) return;
     this.landed.length = 0;
     const splashY = OCEAN.surfaceY - COMBAT.splashMargin;
     for (const entity of this.queries.flying.entities) {
@@ -44,6 +48,14 @@ export class BallisticSystem extends createSystem({
       if (object.position.y <= splashY) this.landed.push(entity);
     }
     for (const entity of this.landed) this.splashDown(entity);
+  }
+
+  /** True while the pause-menu tag sits on the director entity. */
+  private paused(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return director.hasComponent(GamePaused);
+    }
+    return false;
   }
 
   /** Recycle the shell and leave a fading ripple where it met the water. */

@@ -14,7 +14,7 @@ import {
   SphereGeometry,
 } from '@iwsdk/core';
 import type { Entity } from '@iwsdk/core';
-import { HitFlash, HitFlashTag } from './components.js';
+import { GamePaused, HitFlash, HitFlashTag, LevelDirector } from './components.js';
 import { COMBAT } from './level-config.js';
 
 /**
@@ -33,9 +33,12 @@ import { COMBAT } from './level-config.js';
  */
 export class HitFlashSystem extends createSystem({
   flashes: { required: [HitFlash] },
+  directors: { required: [LevelDirector] },
 }) {
   /** Flashes that reached zero this frame; recycled after the sweep. */
   private readonly expired: Entity[] = [];
+  /** Snapshot buffer for bulk recall; allocated once, reused per call. */
+  private readonly retiring: Entity[] = [];
 
   init(): void {
     const geometry = new SphereGeometry(COMBAT.hitFlashRadius, 16, 12);
@@ -91,6 +94,7 @@ export class HitFlashSystem extends createSystem({
   }
 
   update(delta: number): void {
+    if (this.paused()) return;
     this.expired.length = 0;
     for (const entity of this.queries.flashes.entities) {
       const duration = Number(entity.getValue(HitFlash, 'duration'));
@@ -111,6 +115,26 @@ export class HitFlashSystem extends createSystem({
     }
     // Recycle, never dispose(): pooled entities return to the free list.
     for (const entity of this.expired) {
+      entity.removeComponent(HitFlash);
+      if (entity.object3D) entity.object3D.visible = false;
+    }
+  }
+
+  /** True while the pause-menu tag sits on the director entity. */
+  private paused(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return director.hasComponent(GamePaused);
+    }
+    return false;
+  }
+
+  /** Recall every playing flash to the pool (RESTART / MAIN reset). */
+  recycleAll(): void {
+    this.retiring.length = 0;
+    for (const entity of this.queries.flashes.entities) {
+      this.retiring.push(entity);
+    }
+    for (const entity of this.retiring) {
       entity.removeComponent(HitFlash);
       if (entity.object3D) entity.object3D.visible = false;
     }

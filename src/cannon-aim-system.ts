@@ -15,7 +15,7 @@ import {
   VisibilityState,
 } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
-import { CannonAim } from './components.js';
+import { GamePaused, LevelDirector, CannonAim } from './components.js';
 import { COMBAT } from './level-config.js';
 
 const DEG2RAD = Math.PI / 180;
@@ -46,6 +46,7 @@ const clamp = (value: number, min: number, max: number): number =>
 export class CannonAimSystem extends createSystem({
   cannons: { required: [CannonAim] },
   pressed: { required: [CannonAim, Pressed] },
+  directors: { required: [LevelDirector] },
 }) {
   /** gun_rotate pivot per cannon entity index, resolved once on qualify. */
   private readonly gunPivots = new Map<number, Object3D>();
@@ -107,7 +108,18 @@ export class CannonAimSystem extends createSystem({
     }
   };
 
+  /** True while the pause-menu tag sits on the director entity. */
+  private paused(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return director.hasComponent(GamePaused);
+    }
+    return false;
+  }
+
   update(): void {
+    // Pause freezes new drags and transform application; an in-flight drag is
+    // simply never updated further (its pointer-up cleanup still runs).
+    if (this.paused()) return;
     if (this.world.visibilityState.peek() === VisibilityState.NonImmersive) {
       this.updateBrowserDrag();
     } else {

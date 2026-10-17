@@ -7,7 +7,13 @@
 
 import { createSystem } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
-import { ShipMovement, UnitTag, WakeSource } from './components.js';
+import {
+  GamePaused,
+  LevelDirector,
+  ShipMovement,
+  UnitTag,
+  WakeSource,
+} from './components.js';
 import {
   SHIP_Y,
   WAKE_RADIUS,
@@ -33,8 +39,10 @@ import {
  */
 export class ShipMovementSystem extends createSystem({
   movers: { required: [ShipMovement, UnitTag, WakeSource] },
+  directors: { required: [LevelDirector] },
 }) {
   update(delta: number): void {
+    if (this.paused()) return;
     for (const entity of this.queries.movers.entities) {
       const object = entity.object3D;
       if (!object) continue;
@@ -42,6 +50,14 @@ export class ShipMovementSystem extends createSystem({
         this.advance(entity, object, delta);
       }
     }
+  }
+
+  /** True while the pause-menu tag sits on the director entity. */
+  private paused(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return director.hasComponent(GamePaused);
+    }
+    return false;
   }
 
   /**

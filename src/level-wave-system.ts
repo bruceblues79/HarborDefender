@@ -15,6 +15,8 @@ import {
 } from '@iwsdk/core';
 import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
 import {
+  GamePaused,
+  GameStarted,
   HitCore,
   LevelDirector,
   PirateCannon,
@@ -114,6 +116,8 @@ export class LevelWaveSystem extends createSystem({
 }) {
   /** Unit prototypes keyed by unitType; clones share geometry and materials. */
   private readonly prototypes = new Map<string, Object3D>();
+  /** Snapshot buffer for bulk disposal; allocated once, reused per call. */
+  private readonly retiring: Entity[] = [];
   private director!: Entity;
 
   init(): void {
@@ -135,10 +139,50 @@ export class LevelWaveSystem extends createSystem({
 
   /** Hand control to the first level. Called after the START panel dismisses. */
   beginLevel(): void {
+    // Explicit "game running" tag: MenuSystem shows the call button on its
+    // qualify and hides everything on its dismiss.
+    this.director.addComponent(GameStarted);
     this.enterLevel(0);
   }
 
+  /**
+   * MAIN-menu hand-off: clear the field, park the director back at the START
+   * gate. The GameStarted tag drops here, which dismisses the pause-menu UI.
+   */
+  resetToWelcome(): void {
+    this.disposeAttackers();
+    this.director.removeComponent(GameStarted);
+    this.director.setValue(LevelDirector, 'levelIndex', 0);
+    this.director.setValue(LevelDirector, 'waveIndex', 0);
+    this.director.setValue(LevelDirector, 'pendingUnits', 0);
+    this.director.setValue(LevelDirector, 'timer', 0);
+    this.setPhase('waiting-start');
+  }
+
+  /**
+   * RESTART command: clear the field and rerun the current level from its
+   * first wave. Caller removes GamePaused first (MenuSystem owns that tag).
+   */
+  restartLevel(): void {
+    this.disposeAttackers();
+    const index = Math.min(
+      Math.max(0, this.levelIndex()),
+      activeLevelList.length - 1,
+    );
+    this.enterLevel(index);
+  }
+
+  /** Dispose every unit on the water; their materials are per-ship clones. */
+  private disposeAttackers(): void {
+    this.retiring.length = 0;
+    for (const entity of this.queries.attackers.entities) {
+      this.retiring.push(entity);
+    }
+    for (const entity of this.retiring) entity.dispose();
+  }
+
   update(delta: number): void {
+    if (this.paused()) return;
     const phase = this.director.getValue(
       LevelDirector,
       'phase',
@@ -467,6 +511,11 @@ export class LevelWaveSystem extends createSystem({
 
   private setPhase(phase: DirectorPhase): void {
     this.director.setValue(LevelDirector, 'phase', phase);
+  }
+
+  /** True while the pause-menu tag sits on the director entity. */
+  private paused(): boolean {
+    return this.director.hasComponent(GamePaused);
   }
 
   /** Returns true on the frame the countdown reaches zero. */

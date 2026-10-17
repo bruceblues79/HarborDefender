@@ -9,9 +9,11 @@ import { createSystem, Vector3 } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
 import {
   BallisticFlight,
+  GamePaused,
   HitCore,
   HitFlash,
   HitFlashTag,
+  LevelDirector,
   ShellFaction,
   ShellTag,
 } from './components.js';
@@ -36,6 +38,7 @@ export class ShellHitSystem extends createSystem({
   shells: { required: [ShellTag, BallisticFlight, ShellFaction] },
   cores: { required: [HitCore] },
   freeFlashes: { required: [HitFlashTag], excluded: [HitFlash] },
+  directors: { required: [LevelDirector] },
 }) {
   /** hit_core node per core entity index, resolved once on qualify. */
   private readonly coreNodes = new Map<number, Object3D>();
@@ -59,7 +62,16 @@ export class ShellHitSystem extends createSystem({
     });
   }
 
+  /** True while the pause-menu tag sits on the director entity. */
+  private paused(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return director.hasComponent(GamePaused);
+    }
+    return false;
+  }
+
   update(): void {
+    if (this.paused()) return;
     this.hit.length = 0;
     this.hitCores.length = 0;
     this.hitPeakScales.length = 0;

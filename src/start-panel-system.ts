@@ -50,6 +50,19 @@ export class StartPanelSystem extends createSystem({}) {
   /** Reveal the START panel. Called once the loading panel has hidden. */
   show(): void {
     if (this.phase !== 'idle') return;
+    // Round-trip reuse: after a MAIN-menu return the panel entity still
+    // exists, so reset its animation and grow it back in — no second load.
+    if (this.panel && this.panelEntity) {
+      this.panel.visible = true;
+      this.panelEntity.setValue(
+        PanelScaleAnim,
+        'currentScale',
+        PANEL_HIDDEN_SCALE,
+      );
+      this.panelEntity.setValue(PanelScaleAnim, 'targetScale', PANEL_SCALE);
+      this.phase = 'appearing';
+      return;
+    }
     loadUIKitMLAsset('start-panel')
       .then((panel) => {
         panel.position.set(PANEL_POSITION.x, PANEL_POSITION.y, PANEL_POSITION.z);
@@ -85,6 +98,23 @@ export class StartPanelSystem extends createSystem({}) {
       PANEL_HIDDEN_SCALE,
     );
     this.phase = 'dismissing';
+  }
+
+  /**
+   * MAIN-menu hand-off: park the START gate back in its pre-battle state.
+   * The panel entity is kept (hidden) so the next ENTER GAME reuses it.
+   */
+  reset(): void {
+    if (this.phase === 'idle') return;
+    if (this.panel) this.panel.visible = false;
+    this.panelEntity?.setValue(
+      PanelScaleAnim,
+      'currentScale',
+      PANEL_HIDDEN_SCALE,
+    );
+    this.panelEntity?.setValue(PanelScaleAnim, 'targetScale', PANEL_HIDDEN_SCALE);
+    this.phase = 'idle';
+    this.timer = 0;
   }
 
   update(delta: number): void {

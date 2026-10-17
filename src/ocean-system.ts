@@ -7,7 +7,7 @@
 
 import { createSystem, Vector3 } from '@iwsdk/core';
 import type { Entity, Mesh, ShaderMaterial } from '@iwsdk/core';
-import { OceanTag, WakeSource } from './components.js';
+import { GamePaused, LevelDirector, OceanTag, WakeSource } from './components.js';
 import { MAX_WAKE } from './scene-assets/ocean.scene-asset.js';
 
 /** Seconds for strength / radius to ease from the current value to the target. */
@@ -21,10 +21,16 @@ const WAKE_BLEND_TIME = 0.3;
  * Fade in/out: set `targetStrength` to 0 or 1; OceanSystem lerps the
  * running `strength` toward it each frame. Sources with strength < 0.001
  * are skipped so fully faded wakes don't waste shader uniform slots.
+ *
+ * Pausing: the wave clock keeps rolling (time comes from the world clock, so
+ * the sea never freezes visually), but wake blending halts and the uniform
+ * feed holds its last value — ripples stop animating, the swell keeps its
+ * float, matching a frozen battlefield.
  */
 export class OceanSystem extends createSystem({
   oceans: { required: [OceanTag] },
   wakes: { required: [WakeSource] },
+  directors: { required: [LevelDirector] },
 }) {
   /** Pre-allocated wake data; the shader uniform points into these arrays. */
   private readonly wakePos = Array.from(
@@ -39,6 +45,9 @@ export class OceanSystem extends createSystem({
   private readonly scratch = new Vector3();
 
   update(delta: number, time: number): void {
+    // Wake feed keeps its last frame's value while paused — no blending, no
+    // re-upload — and the clock keeps the sea visually alive.
+    if (this.paused()) return;
     // --- collect active wake sources (pre-allocated, no allocation per frame) ---
     let count = 0;
     for (const entity of this.queries.wakes.entities) {
@@ -75,6 +84,14 @@ export class OceanSystem extends createSystem({
         }
       });
     }
+  }
+
+  /** True while the pause-menu tag sits on the director entity. */
+  private paused(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return director.hasComponent(GamePaused);
+    }
+    return false;
   }
 
   /**
