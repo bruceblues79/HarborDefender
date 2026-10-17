@@ -40,6 +40,17 @@ const CALL_BUTTON_RADIUS = 0.11;
 const MENU_HEIGHT = 1.0;
 /** Seconds for the expand / collapse animation. */
 const MENU_ANIM_TIME = 0.25;
+/** XR: anchor distance ahead of the head along head yaw, metres. */
+const MENU_XR_FORWARD = 2.5;
+/** XR: anchor drop below head height, metres. */
+const MENU_XR_DROP = 0.3;
+/**
+ * Flat mode: fixed world anchor over the water, ahead of the wall. The orbit
+ * camera moves on every pitch change, so a camera-relative anchor made the
+ * menu bob vertically; a world anchor + Billboard(lockY) keeps it perfectly
+ * still while still facing the camera.
+ */
+const MENU_FLAT_ANCHOR = { x: 0, y: 1.75, z: -3.5 };
 
 type MenuMode = 'closed' | 'opening' | 'open' | 'closing';
 
@@ -54,11 +65,12 @@ type MenuMode = 'closed' | 'opening' | 'open' | 'closing';
  *   level), RESUME (unpause).
  *
  * Placement follows the spatial-UI guidance for compact global UI: a
- * world-space `Follower` keeps the rig at a fixed anchor in front of the
- * viewer (1.5 m forward, 0.5 m below), so the menu never head-locks. The
- * anchor pose source is the live tracked head in immersive XR and the orbit
- * camera in flat desktop mode — one code path serves both, and the rig's
- * own Billboard(lockY) yaw keeps the panels faced toward the viewer.
+ * world-space `Follower` holds the rig at a stable anchor — head-relative
+ * in immersive XR (2.5 m ahead, 0.3 m below the tracked head), a fixed
+ * world spot in flat desktop mode (the orbit camera moves with pitch, so a
+ * camera-derived anchor would make the menu bob). The rig's own
+ * Billboard(lockY) yaw keeps the panels faced toward the viewer in both
+ * modes; the menu never head-locks.
  *
  * Pausing is the `GamePaused` tag on the director entity: every simulation
  * system early-returns while it is present (added on open, removed on MAIN /
@@ -113,7 +125,7 @@ export class MenuSystem extends createSystem({
 
         this.panelEntity = this.world.createTransformEntity(rig);
         // Native position follow: MenuSystem drives anchorObject each frame
-        // (head pose in XR, orbit-camera pose in flat mode); FollowSystem
+        // (head-relative in XR, fixed world spot in flat mode); FollowSystem
         // eases the rig toward it with mild smoothing, so the panels float
         // in space instead of head-locking. Rotation is Billboard's job.
         this.panelEntity.addComponent(Follower, {
@@ -250,27 +262,36 @@ export class MenuSystem extends createSystem({
   }
 
   /**
-   * Drive the follow anchor from the viewer's pose: the tracked head in
-   * immersive XR, the orbit camera in flat desktop mode. The anchor sits
-   * 1.5 m ahead (yaw-only, so pitch never swings it into the ground) and
-   * 0.5 m below the viewer. In XR this is the live head-relative spot; in
-   * flat mode the camera is the viewer, so the menu stays in view while
-   * orbiting — FollowSystem eases the rig toward whatever this writes.
+   * Drive the follow anchor. Immersive XR: the tracked head's pose — the
+   * anchor sits `MENU_XR_FORWARD` ahead along head yaw (flattened, so pitch
+   * never swings it into the ground) and `MENU_XR_DROP` below head height,
+   * keeping the menu at a stable head-relative spot. Flat desktop mode: a
+   * fixed world anchor — the orbit camera changes position on every pitch,
+   * so deriving the anchor from the camera made the menu bob vertically;
+   * Billboard(lockY) alone keeps it faced toward the camera there.
    */
   private updateAnchor(): void {
     const immersive =
       this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
-    const viewer = immersive ? this.world.player.head : this.world.camera;
-    viewer.getWorldPosition(this.headPos);
-    viewer.getWorldQuaternion(this.headQuat);
+    if (!immersive) {
+      this.anchorObject.position.set(
+        MENU_FLAT_ANCHOR.x,
+        MENU_FLAT_ANCHOR.y,
+        MENU_FLAT_ANCHOR.z,
+      );
+      return;
+    }
+    const head = this.world.player.head;
+    head.getWorldPosition(this.headPos);
+    head.getWorldQuaternion(this.headQuat);
     this.headDir.set(0, 0, -1).applyQuaternion(this.headQuat);
     this.headDir.y = 0;
     if (this.headDir.lengthSq() < 0.0001) this.headDir.set(0, 0, -1);
     this.headDir.normalize();
     this.anchorObject.position
       .copy(this.headPos)
-      .addScaledVector(this.headDir, 1.5);
-    this.anchorObject.position.y = this.headPos.y - 0.5;
+      .addScaledVector(this.headDir, MENU_XR_FORWARD);
+    this.anchorObject.position.y = this.headPos.y - MENU_XR_DROP;
   }
 
   /**
