@@ -42,16 +42,17 @@ const MENU_HEIGHT = 1.0;
 const MENU_ANIM_TIME = 0.25;
 /** XR: anchor distance ahead of the head along head yaw, metres. */
 const MENU_XR_FORWARD = 2.5;
-/** XR: anchor lift above head centre — roughly forehead height, metres. */
-const MENU_XR_LIFT = 0.1;
+/** XR: anchor lift above head centre — floats clearly above the forehead. */
+const MENU_XR_LIFT = 0.35;
 /**
- * Flat mode: fixed world anchor over the water, ahead of the wall, at
- * forehead height for the default battle view. The orbit camera moves on
+ * Flat mode: fixed world anchor over the water, ahead of the wall, high
+ * enough that the default battle view projects it near the DOM ENTER-XR
+ * button's screen spot (upper edge of the frame). The orbit camera moves on
  * every pitch change, so a camera-relative anchor made the menu bob
  * vertically; a world anchor + Billboard(lockY) keeps it perfectly still
  * while still facing the camera.
  */
-const MENU_FLAT_ANCHOR = { x: 0, y: 2.6, z: -3.5 };
+const MENU_FLAT_ANCHOR = { x: 0, y: 3.45, z: -3.5 };
 
 type MenuMode = 'closed' | 'opening' | 'open' | 'closing';
 
@@ -67,8 +68,8 @@ type MenuMode = 'closed' | 'opening' | 'open' | 'closing';
  *
  * Placement follows the spatial-UI guidance for compact global UI: a
  * world-space `Follower` holds the rig at a stable anchor — head-relative
- * in immersive XR (2.5 m ahead, forehead height above the tracked head), a
- * fixed world spot in flat desktop mode (the orbit camera moves with pitch,
+ * in immersive XR (2.5 m ahead, floating above the tracked head), a fixed
+ * world spot in flat desktop mode (the orbit camera moves with pitch,
  * so a camera-derived anchor would make the menu bob). The rig's own
  * Billboard(lockY) yaw keeps the panels faced toward the viewer in both
  * modes; the menu never head-locks.
@@ -266,11 +267,11 @@ export class MenuSystem extends createSystem({
    * Drive the follow anchor. Immersive XR: the tracked head's pose — the
    * anchor sits `MENU_XR_FORWARD` ahead along head yaw (flattened, so pitch
    * never swings it into the ground) at `MENU_XR_LIFT` above head centre
-   * (forehead height), keeping the menu at a stable head-relative spot.
-   * Flat desktop mode: a fixed world anchor — the orbit camera changes
-   * position on every pitch, so deriving the anchor from the camera made
-   * the menu bob vertically; Billboard(lockY) alone keeps it faced toward
-   * the camera there.
+   * (floating above the forehead), keeping the menu at a stable
+   * head-relative spot. Flat desktop mode: a fixed world anchor — the orbit
+   * camera changes position on every pitch, so deriving the anchor from the
+   * camera made the menu bob vertically; Billboard(lockY) alone keeps it
+   * faced toward the camera there.
    */
   private updateAnchor(): void {
     const immersive =
