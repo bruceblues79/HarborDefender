@@ -23,7 +23,7 @@
       "id": "sun-light",
       "name": "Sun Light",
       "transform": {
-        "position": [0, 5.55, -5.5],
+        "position": [0, 5.75, -5.5],
         "rotationDeg": [-90, 0, 0]
       },
       "components": {
@@ -44,7 +44,7 @@
         "asset": "welcome-panel"
       },
       "transform": {
-        "position": [0, 1.05, -1.5],
+        "position": [0, 1.25, -1.5],
         "scale": 1
       },
       "components": {

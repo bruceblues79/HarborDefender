@@ -1,0 +1,56 @@
+<!--
+  START gate panel.
+  100 × 100 UIKit units = 1 m × 1 m at scale 1. Faces +Z by default; the
+  Billboard component keeps it turned toward the viewer.
+
+  The kit's opaque white Panel surface wins over a custom root background,
+  so the button carries the dark fill with light text for contrast, matching
+  the welcome panel's button treatment.
+-->
+<style>
+  .panel-root {
+    display: flex;
+    flex-direction: column;
+    width: 100;
+    height: 100;
+    justify-content: center;
+    align-items: center;
+    border-radius: 4;
+    padding-top: 4;
+    padding-right: 4;
+    padding-bottom: 4;
+    padding-left: 4;
+  }
+
+  .start-button {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    width: 60;
+    height: 16;
+    background-color: #26262b;
+    color: #ffffff;
+    font-size: 6;
+    font-weight: 700;
+    text-align: center;
+    border-radius: 3;
+    padding-top: 0;
+    padding-right: 0;
+    padding-bottom: 0;
+    padding-left: 0;
+    cursor: pointer;
+  }
+
+  .start-button:hover {
+    background-color: #3a3a42;
+  }
+
+  .start-button:active {
+    background-color: #1c1c21;
+  }
+</style>
+
+<Panel class="panel-root">
+  <button id="start-button" class="start-button">START</button>
+</Panel>

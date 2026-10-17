@@ -23,6 +23,12 @@ export default defineAssets({
     name: 'Loading Panel',
     priority: 'critical',
   },
+  'start-panel': {
+    url: publicAssetUrl('ui/start.uikitml'),
+    type: AssetType.UIKitML,
+    name: 'Start Panel',
+    priority: 'critical',
+  },
   // Key must end with ".hdr": IWSDK's EnvironmentSystem sniffs the file type
   // from the raw src suffix BEFORE resolving manifest keys, so a key without
   // the extension would be loaded as a plain (non-decodable) texture.
@@ -51,7 +57,7 @@ export default defineAssets({
     priority: 'background',
   },
   'pirate-ship': {
-    url: publicAssetUrl('gltf/pirate-ship.glb'),
+    url: publicAssetUrl('gltf/pirate-ship-v2.glb'),
     type: AssetType.GLTF,
     name: 'Pirate Ship',
     priority: 'background',

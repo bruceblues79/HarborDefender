@@ -7,9 +7,11 @@
 
 import {
   AssetManager,
+  Box3,
   HalfFloatType,
   Mesh,
   Object3D,
+  RayInteractable,
   UIKitMLAsset,
   Vector3,
   WebGLCubeRenderTarget,
@@ -17,8 +19,33 @@ import {
   loadUIKitMLAsset,
 } from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
-import { OceanTag, WakeSource } from './components.js';
+import { CannonAim, CannonFire, HitCore, OceanTag } from './components.js';
+import { COMBAT } from './level-config.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
+import { StartPanelSystem } from './start-panel-system.js';
+
+/**
+ * Hang the two invisible combat helpers on the cannon prototype once, so
+ * every clone inherits them: the `muzzle` on the gun_rotate pivot (shells
+ * launch down its world -Z) and the `hit_core` at the model's bounding-box
+ * centre (opposing shells within its radius get consumed).
+ */
+function decorateCannonPrototype(prototype: Object3D): void {
+  const gunPivot = prototype.getObjectByName('gun_rotate');
+  if (gunPivot && !gunPivot.getObjectByName('muzzle')) {
+    const muzzle = new Object3D();
+    muzzle.name = 'muzzle';
+    muzzle.position.set(0, 0, -0.2);
+    gunPivot.add(muzzle);
+  }
+  if (!prototype.getObjectByName('hit_core')) {
+    const center = new Box3().setFromObject(prototype).getCenter(new Vector3());
+    const hitCore = new Object3D();
+    hitCore.name = 'hit_core';
+    hitCore.position.copy(center);
+    prototype.add(hitCore);
+  }
+}
 
 let battleStarted = false;
 
@@ -45,6 +72,11 @@ export function startBattle(world: World): void {
     .find((system): system is CameraOrbitSystem =>
       system instanceof CameraOrbitSystem,
     );
+  const startPanelSystem = world
+    .getSystems()
+    .find((system): system is StartPanelSystem =>
+      system instanceof StartPanelSystem,
+    );
 
   // 1. Hide the welcome panel
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
@@ -53,7 +85,7 @@ export function startBattle(world: World): void {
   // 2. Show loading panel (1 m × 0.5 m, faces +Z)
   loadUIKitMLAsset('loading-panel')
     .then((loadingPanel) => {
-      loadingPanel.position.set(0, 1.05, -1.5);
+      loadingPanel.position.set(0, 1.25, -1.5);
       world.createTransformEntity(loadingPanel);
 
       // 3. Load game assets: HDR env + solidified GLB models
@@ -65,11 +97,10 @@ export function startBattle(world: World): void {
           });
           cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
 
-          const [oceanGltf, wallGltf, cannonGltf, shipGltf] = await Promise.all([
+          const [oceanGltf, wallGltf, cannonGltf] = await Promise.all([
             AssetManager.loadGLTFById('ocean-body'),
             AssetManager.loadGLTFById('harbor-wall'),
             AssetManager.loadGLTFById('cannon'),
-            AssetManager.loadGLTFById('pirate-ship'),
           ]);
 
           // Swap the GLB's placeholder material for the wave shader
@@ -88,12 +119,12 @@ export function startBattle(world: World): void {
 
           // Ocean extended to 10 m: near edge stays at z = -1 (against the
           // wall), centre shifts back from -4 to -6.
-          oceanObject.position.set(0, 0.35, -6);
+          oceanObject.position.set(0, 0.55, -6);
           world.createTransformEntity(oceanObject).addComponent(OceanTag);
 
           // Place harbor wall at the ocean body's maxZ edge
           const wallObject = wallGltf.scene;
-          wallObject.position.set(0, 0.35, -0.8);
+          wallObject.position.set(0, 0.55, -0.8);
           // Runtime-instantiated GLB meshes keep three.js defaults
           // (both false); scene-JSON assets get these via content flags.
           wallObject.traverse((child: Object3D) => {
@@ -107,45 +138,42 @@ export function startBattle(world: World): void {
           // Five cannons evenly spaced across the central 3 m of the
           // 3.4 m wall (0.2 m margin each side), muzzles facing the
           // sea (-Z). One prototype is cloned so geometry/materials
-          // stay shared while each gun_rotate pivot stays independent.
+          // stay shared while each gun_rotate pivot stays independent;
+          // the muzzle and hit_core helpers live on that prototype.
           const cannonPrototype = cannonGltf.scene;
+          decorateCannonPrototype(cannonPrototype);
           for (const x of [-1.2, -0.6, 0, 0.6, 1.2]) {
             const cannon = cannonPrototype.clone(true);
-            cannon.position.set(x, 0.6, -0.8);
+            cannon.position.set(x, 0.8, -0.8);
             cannon.traverse((child: Object3D) => {
               if ((child as Mesh).isMesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
               }
             });
-            world.createTransformEntity(cannon);
+            const cannonEntity = world.createTransformEntity(cannon);
+            // RayInteractable makes the cannon pressable (mouse / touch / XR
+            // ray); CannonAim + CannonFire hand it to the combat systems.
+            cannonEntity.addComponent(RayInteractable);
+            cannonEntity.addComponent(CannonAim);
+            cannonEntity.addComponent(CannonFire);
+            // Defender hit core: pirate shells arriving within this radius
+            // are consumed by ShellHitSystem.
+            cannonEntity.addComponent(HitCore, {
+              radius: COMBAT.defenderCoreRadius,
+              faction: 'defender',
+            });
           }
 
-          // Visual acceptance ship: placed closer to the harbour for better
-          // visibility of wake ripples. Bow (and gun muzzle, -Z local) turned
-          // toward the harbour.
-          const shipObject = shipGltf.scene;
-          shipObject.traverse((child: Object3D) => {
-            if ((child as Mesh).isMesh) {
-              child.castShadow = true;
-              child.receiveShadow = true;
-            }
-          });
-          shipObject.position.set(0, 0.46, -4);
-          shipObject.rotation.y = Math.PI;
-          // Wake ripples: sailing by default (strength=1). To fade out,
-          // set targetStrength=0; OceanSystem lerps over ~0.5 s.
-          world.createTransformEntity(shipObject).addComponent(WakeSource, {
-            strength: 1,
-            targetStrength: 1,
-          });
-
-          // 4. Hide loading panel — game is ready, ease into the game view
+          // 4. Hide loading panel — game is ready, ease into the game view,
+          // then raise the START gates. Units are dispatched by
+          // LevelWaveSystem once the player presses START.
           loadingPanel.visible = false;
           cameraSystem?.moveToView(
-            new Vector3(0, 2.55, 2.75),
-            new Vector3(0, 1.497, -2),
+            new Vector3(0, 2.75, 2.75),
+            new Vector3(0, 1.697, -2),
           );
+          startPanelSystem?.show();
         })
         .catch((err: unknown) => {
           console.error('Failed to load game assets:', err);
