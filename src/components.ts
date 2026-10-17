@@ -159,7 +159,7 @@ export const CannonAim = createComponent('CannonAim', {
   /** Whole-cannon traverse, degrees, clamped ±COMBAT.aimYawRange. */
   yawDeg: { type: 'Float32', default: 0 },
   /** Barrel elevation, degrees, clamped [COMBAT.aimPitchMin, aimPitchMax]. */
-  pitchDeg: { type: 'Float32', default: 0 },
+  pitchDeg: { type: 'Float32', default: COMBAT.aimPitchDefault },
 });
 
 /**

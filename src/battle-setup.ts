@@ -108,10 +108,7 @@ export function startBattle(world: World): void {
   // it, level the cannons, and go straight to the view change.
   if (battlefieldReady) {
     for (const object of battlefieldObjects) object.visible = true;
-    for (const entity of cannonEntities) {
-      entity.setValue(CannonAim, 'yawDeg', 0);
-      entity.setValue(CannonAim, 'pitchDeg', 0);
-    }
+    resetCannonAim();
     proceed();
     return;
   }
@@ -235,4 +232,18 @@ export function returnToWelcome(world: World): void {
       system instanceof CameraOrbitSystem,
     )
     ?.returnToWelcome();
+}
+
+/**
+ * Spawn-pose reset for every gun: turret yaw back to centre, barrel pitch
+ * back to the configured spawn elevation. `CannonAim` stays the single
+ * truth — CannonAimSystem re-applies the pose to the transforms on its next
+ * frame. Shared by the MAIN-menu battlefield re-entry and the pause menu's
+ * RESTART.
+ */
+export function resetCannonAim(): void {
+  for (const entity of cannonEntities) {
+    entity.setValue(CannonAim, 'yawDeg', 0);
+    entity.setValue(CannonAim, 'pitchDeg', COMBAT.aimPitchDefault);
+  }
 }
