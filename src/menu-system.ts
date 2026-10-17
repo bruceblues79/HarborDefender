@@ -30,7 +30,7 @@ import { LevelWaveSystem } from './level-wave-system.js';
 import { HitFlashSystem } from './hit-flash-system.js';
 import { SplashSystem } from './splash-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
-import { returnToWelcome } from './battle-setup.js';
+import { resetCannonAim, returnToWelcome } from './battle-setup.js';
 
 /** Scale the call button shrinks to while the menu is open (hidden, not removed). */
 const CALL_HIDDEN_SCALE = 0.001;
@@ -335,11 +335,12 @@ export class MenuSystem extends createSystem({
     returnToWelcome(this.world);
   }
 
-  /** RESTART: clear the field and rerun the current level. */
+  /** RESTART: clear the field, rerun the current level, restore the guns. */
   private runRestart(): void {
     this.findByClass(CannonFireSystem)?.recycleAirborneShells();
     this.findByClass(HitFlashSystem)?.recycleAll();
     this.findByClass(SplashSystem)?.disposeAll();
+    resetCannonAim();
     this.findByClass(LevelWaveSystem)?.restartLevel();
   }
 

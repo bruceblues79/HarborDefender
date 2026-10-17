@@ -239,9 +239,15 @@ export const COMBAT = {
   splashSpeed: 4,
   /** Whole-cannon traverse clamp, degrees (±). */
   aimYawRange: 15,
-  /** Barrel elevation clamp, degrees; the default pitch is the lowest angle. */
+  /** Barrel elevation clamp, degrees. */
   aimPitchMin: 0,
   aimPitchMax: 45,
+  /**
+   * Spawn/reset barrel elevation, degrees — guns enter the battle (and
+   * RESTART / MAIN re-entry) already half-raised, midway through the
+   * 0–45 elevation travel, so the battery reads ready rather than parked.
+   */
+  aimPitchDefault: 22.5,
   /** Aim degrees per dragged pixel in the browser — retune by feel. */
   aimDegreesPerPixel: 0.1,
   /** Aim degrees per metre of hand-ray travel in XR — retune by feel. */

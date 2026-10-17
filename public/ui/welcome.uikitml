@@ -8,6 +8,11 @@
   the title takes 4 (flex-grow: 4), the button takes the bottom 1 (flex-grow: 1).
   The lowercase <button> is a plain HTML-like element, so its size is fully
   controlled by the styles below instead of the Horizon kit Button defaults.
+
+  Panel surface: stock glass preset over a light-grey background; the hex8
+  alpha channel (0.75) doubles as the panel surface opacity (0.25 see-through)
+  and overrides the Horizon Panel's black default. (UIKitML style blocks do
+  not support CSS comments.)
 -->
 <style>
   .panel-root {
@@ -20,6 +25,8 @@
     padding-right: 4;
     padding-bottom: 4;
     padding-left: 4;
+    panel-material-class: glass;
+    background-color: #ffffffaa;
   }
 
   .title-section {
