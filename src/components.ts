@@ -233,6 +233,12 @@ export const HitFlash = createComponent('HitFlash', {
   duration: { type: 'Float32', default: COMBAT.hitFlashDuration },
   /** Seconds elapsed so far. */
   elapsed: { type: 'Float32', default: 0 },
+  /**
+   * Full-size multiplier over the shared base geometry: defender cores play
+   * at 1 (hitFlashRadius), attacker ships at hitFlashShipRadius /
+   * hitFlashRadius. Set by the spawner, read-only for the animator.
+   */
+  peakScale: { type: 'Float32', default: 1 },
 });
 
 export default defineComponents([

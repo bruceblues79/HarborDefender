@@ -273,8 +273,10 @@ export const COMBAT = {
   hitFlashPoolSize: 8,
   /** Seconds for one hit flash to expand and fade. */
   hitFlashDuration: 0.5,
-  /** Base sphere radius (m) at scale 1. */
+  /** Base sphere radius (m) at scale 1 — defender cores (harbour cannons). */
   hitFlashRadius: 0.3,
+  /** Attacker cores (pirate ships) bloom larger to cover the whole hull. */
+  hitFlashShipRadius: 0.35,
   /** Starting fraction of full size ("initial 0.5 volume"). */
   hitFlashStartScale: 0.5,
   /** Fresnel centre colour (hot yellow, sRGB hex). */

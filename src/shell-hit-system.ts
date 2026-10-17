@@ -45,6 +45,8 @@ export class ShellHitSystem extends createSystem({
   private readonly hit: Entity[] = [];
   /** Core entity index per `hit` entry; its cached world position feeds the flash. */
   private readonly hitCores: number[] = [];
+  /** Peak scale per `hit` entry: defender cores at base size, ships larger. */
+  private readonly hitPeakScales: number[] = [];
   /** Flashes handed out this frame; the free-flash query refreshes next frame. */
   private readonly claimedFlashes = new Set<number>();
 
@@ -60,6 +62,7 @@ export class ShellHitSystem extends createSystem({
   update(): void {
     this.hit.length = 0;
     this.hitCores.length = 0;
+    this.hitPeakScales.length = 0;
     this.claimedFlashes.clear();
 
     // Core world positions once per frame (pirate ships yaw after stopping).
@@ -85,6 +88,13 @@ export class ShellHitSystem extends createSystem({
         if (dx * dx + dy * dy + dz * dz <= radius * radius) {
           this.hit.push(shell);
           this.hitCores.push(core.index);
+          // Ship cores bloom larger than harbour-cannon cores; the shared
+          // pool geometry is the defender size, so scale is a ratio.
+          this.hitPeakScales.push(
+            core.getValue(HitCore, 'faction') === 'attacker'
+              ? COMBAT.hitFlashShipRadius / COMBAT.hitFlashRadius
+              : 1,
+          );
           break;
         }
       }
@@ -101,7 +111,7 @@ export class ShellHitSystem extends createSystem({
         // top of this frame, so the map is current for every hit this sweep.
         const at =
           this.corePositions.get(this.hitCores[i]) ?? shell.object3D.position;
-        this.spawnHitFlash(at);
+        this.spawnHitFlash(at, this.hitPeakScales[i]);
         shell.object3D.visible = false;
       }
     }
@@ -113,7 +123,7 @@ export class ShellHitSystem extends createSystem({
    * that hands animation to HitFlashSystem. Pool empty: skip silently — a
    * busy battle loses the odd bloom, never a hit.
    */
-  private spawnHitFlash(position: Vector3): void {
+  private spawnHitFlash(position: Vector3, peakScale: number): void {
     for (const flash of this.queries.freeFlashes.entities) {
       if (this.claimedFlashes.has(flash.index)) continue;
       // Live guard: another spawn this frame may have claimed it already,
@@ -123,9 +133,12 @@ export class ShellHitSystem extends createSystem({
       const object = flash.object3D;
       if (!object) return;
       object.position.copy(position);
-      object.scale.setScalar(COMBAT.hitFlashStartScale);
+      object.scale.setScalar(COMBAT.hitFlashStartScale * peakScale);
       object.visible = true;
-      flash.addComponent(HitFlash, { duration: COMBAT.hitFlashDuration });
+      flash.addComponent(HitFlash, {
+        duration: COMBAT.hitFlashDuration,
+        peakScale,
+      });
       return;
     }
   }

@@ -79,6 +79,13 @@ export class HitFlashSystem extends createSystem({
       });
       const mesh = new Mesh(geometry, material);
       mesh.visible = false;
+      // Draw after every default-order transparent object. Ships spawn with
+      // an alpha-blended hull (SpawnFade); three sorts transparents back to
+      // front and the flash sits at a hull's centre, so without this the
+      // hull can draw after the flash and wash it out. Additive after alpha
+      // keeps the bloom fully added on top; depthTest stays on so opaque
+      // walls still occlude it.
+      mesh.renderOrder = 10;
       this.world.createTransformEntity(mesh).addComponent(HitFlashTag);
     }
   }
@@ -88,12 +95,13 @@ export class HitFlashSystem extends createSystem({
     for (const entity of this.queries.flashes.entities) {
       const duration = Number(entity.getValue(HitFlash, 'duration'));
       const elapsed = Number(entity.getValue(HitFlash, 'elapsed')) + delta;
+      const peak = Number(entity.getValue(HitFlash, 'peakScale'));
       const t = Math.min(1, elapsed / duration);
       const ease = 1 - (1 - t) ** 3; // EaseOutCubic
       const object = entity.object3D;
       if (object) {
         object.scale.setScalar(
-          COMBAT.hitFlashStartScale + (1 - COMBAT.hitFlashStartScale) * ease,
+          peak * (COMBAT.hitFlashStartScale + (1 - COMBAT.hitFlashStartScale) * ease),
         );
         const material = (object as Mesh).material as ShaderMaterial;
         material.uniforms.uOpacity.value = 1 - ease;
