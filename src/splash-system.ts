@@ -37,8 +37,12 @@ export class SplashSystem extends createSystem({
       if (remaining <= 0) this.expired.push(entity);
       else entity.setValue(SplashFade, 'elapsed', elapsed);
     }
-    // dispose(), never destroy(): destroy leaks GPU memory.
-    for (const entity of this.expired) entity.dispose();
+    // dispose(), never destroy(): destroy leaks GPU memory. Resources stay
+    // shared with the splash prototype (pooled geometry/material cut draw
+    // calls), so the sweep must not free them — see disposeAll.
+    for (const entity of this.expired) {
+      entity.dispose({ disposeResources: false });
+    }
   }
 
   /** True while the pause-menu tag sits on the director entity. */
@@ -49,12 +53,17 @@ export class SplashSystem extends createSystem({
     return false;
   }
 
-  /** Dispose every live splash node (RESTART / MAIN reset). */
+  /** Dispose every live splash node (RESTART / MAIN reset). The pooled
+   * geometry/material are shared with every future ripple, so this must run
+   * with disposeResources:false — a full sweep mass-frees those shared GPU
+   * resources right before the next round spawns from the same prototypes. */
   disposeAll(): void {
     this.retiring.length = 0;
     for (const entity of this.queries.splashes.entities) {
       this.retiring.push(entity);
     }
-    for (const entity of this.retiring) entity.dispose();
+    for (const entity of this.retiring) {
+      entity.dispose({ disposeResources: false });
+    }
   }
 }

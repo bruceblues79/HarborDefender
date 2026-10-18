@@ -20,6 +20,7 @@ import { MenuSystem } from './menu-system.js';
 import { OceanSystem } from './ocean-system.js';
 import { PanelScaleSystem } from './panel-scale-system.js';
 import { PirateFireSystem } from './pirate-fire-system.js';
+import { ResultPanelSystem } from './result-panel-system.js';
 import { ShellHitSystem } from './shell-hit-system.js';
 import { ShipMovementSystem } from './ship-movement-system.js';
 import { SpawnFadeSystem } from './spawn-fade-system.js';
@@ -55,6 +56,9 @@ World.create(
   // Pause-menu orchestrator: watches GameStarted, owns the pause tag and the
   // head-following call button / menu panels.
   world.registerSystem(MenuSystem, { priority: 32 });
+  // End-of-run result panel: qualifies on GameOver (victory / defeat) and
+  // hands RESTART / MAIN to MenuSystem's shared reset sequences.
+  world.registerSystem(ResultPanelSystem, { priority: 33 });
   world.registerSystem(BillboardSystem, { priority: 31 });
   installXRButton(world);
 

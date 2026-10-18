@@ -20,10 +20,20 @@ import {
 } from '@iwsdk/core';
 import type { Entity } from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
-import { CannonAim, CannonFire, HitCore, OceanTag } from './components.js';
+import {
+  CannonAim,
+  CannonFire,
+  Destroyed,
+  Health,
+  HitCore,
+  OceanTag,
+} from './components.js';
 import { COMBAT } from './level-config.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
 import { StartPanelSystem } from './start-panel-system.js';
+import { CannonFireSystem } from './cannon-fire-system.js';
+import { HitFlashSystem } from './hit-flash-system.js';
+import { SplashSystem } from './splash-system.js';
 
 /**
  * Hang the two invisible combat helpers on the cannon prototype once, so
@@ -105,9 +115,10 @@ export function startBattle(world: World): void {
   };
 
   // Round trip: the battlefield persists across MAIN-menu returns — reveal
-  // it, level the cannons, and go straight to the view change.
+  // it, un-destroy and level the cannons, and go straight to the view change.
   if (battlefieldReady) {
     for (const object of battlefieldObjects) object.visible = true;
+    restoreCannons();
     resetCannonAim();
     proceed();
     return;
@@ -191,10 +202,15 @@ export function startBattle(world: World): void {
             cannonEntity.addComponent(CannonAim);
             cannonEntity.addComponent(CannonFire);
             // Defender hit core: pirate shells arriving within this radius
-            // are consumed by ShellHitSystem.
+            // are consumed by ShellHitSystem, which charges the cannon's
+            // health pool per hit (knockout = Destroyed tag + hidden).
             cannonEntity.addComponent(HitCore, {
               radius: COMBAT.defenderCoreRadius,
               faction: 'defender',
+            });
+            cannonEntity.addComponent(Health, {
+              current: COMBAT.unitHealth,
+              max: COMBAT.unitHealth,
             });
             cannonEntities.push(cannonEntity);
             battlefieldObjects.push(cannon);
@@ -246,4 +262,42 @@ export function resetCannonAim(): void {
     entity.setValue(CannonAim, 'yawDeg', 0);
     entity.setValue(CannonAim, 'pitchDeg', COMBAT.aimPitchDefault);
   }
+}
+
+/**
+ * Undo every knockout: the Destroyed tag drops, the hidden cannon object is
+ * revealed and its health pool refills. Cannons persist across rounds (see
+ * the battlefield-persistence note above), so a RESTART restores rather than
+ * rebuilds the battery. Shared by the pause menu's RESTART and the MAIN-menu
+ * battlefield re-entry.
+ */
+export function restoreCannons(): void {
+  for (const entity of cannonEntities) {
+    entity.removeComponent(Destroyed);
+    if (entity.object3D) entity.object3D.visible = true;
+    entity.setValue(Health, 'current', Number(entity.getValue(Health, 'max')));
+  }
+}
+
+/**
+ * Recall everything the last round left flying or blooming: airborne shells
+ * back to the pool, hit flashes and splash ripples disposed. Shared by the
+ * pause menu's MAIN / RESTART and the result panel's equivalents, so every
+ * reset path clears the exact same effect set.
+ */
+export function recycleCombatEffects(world: World): void {
+  world
+    .getSystems()
+    .find((system): system is CannonFireSystem =>
+      system instanceof CannonFireSystem,
+    )
+    ?.recycleAirborneShells();
+  world
+    .getSystems()
+    .find((system): system is HitFlashSystem => system instanceof HitFlashSystem)
+    ?.recycleAll();
+  world
+    .getSystems()
+    .find((system): system is SplashSystem => system instanceof SplashSystem)
+    ?.disposeAll();
 }

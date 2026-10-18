@@ -1,0 +1,78 @@
+<!--
+  Result panel, raised over the battlefield when the run ends: 150 × 100
+  UIKit units = 1.5 m × 1 m at scale 1. Same surface recipe as the pause
+  menu (stock glass over #ffffffaa). Column layout: outcome title (text and
+  colour are set at runtime — VICTORY green / DEFEAT red), one-line verdict,
+  then RESTART and MAIN buttons in the pause-menu button geometry (112 × 22
+  centered, 3 vertical padding; space-between distributes the rows over the
+  80-unit inner column). No CSS comments inside the style block.
+-->
+<style>
+  .result-root {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    width: 150;
+    height: 100;
+    border-radius: 6;
+    padding-top: 10;
+    padding-right: 10;
+    padding-bottom: 10;
+    padding-left: 10;
+    panel-material-class: glass;
+    background-color: #ffffffaa;
+  }
+
+  .result-title {
+    display: flex;
+    width: 112;
+    font-size: 12;
+    font-weight: 700;
+    text-align: center;
+    color: #26262b;
+  }
+
+  .result-subtitle {
+    display: flex;
+    width: 112;
+    font-size: 5;
+    text-align: center;
+    color: #26262b;
+  }
+
+  .result-button {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    width: 112;
+    height: 22;
+    background-color: #26262b;
+    color: #ffffff;
+    font-size: 7;
+    font-weight: 700;
+    text-align: center;
+    border-radius: 3;
+    padding-top: 3;
+    padding-right: 0;
+    padding-bottom: 3;
+    padding-left: 0;
+    cursor: pointer;
+  }
+
+  .result-button:hover {
+    background-color: #3a3a42;
+  }
+
+  .result-button:active {
+    background-color: #1c1c21;
+  }
+</style>
+
+<Panel class="result-root">
+  <span id="result-title" class="result-title">VICTORY</span>
+  <span id="result-subtitle" class="result-subtitle">ALL RAIDERS SUNK</span>
+  <button id="result-restart-button" class="result-button">RESTART</button>
+  <button id="result-main-button" class="result-button">MAIN</button>
+</Panel>
