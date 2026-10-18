@@ -116,14 +116,30 @@ export class CannonAimSystem extends createSystem({
     return false;
   }
 
+  /** True once the START hand-off has moved the director past waiting-start. */
+  private gameRunning(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return (
+        String(director.getValue(LevelDirector, 'phase')) !== 'waiting-start'
+      );
+    }
+    return false;
+  }
+
   update(): void {
     // Pause freezes new drags and transform application; an in-flight drag is
     // simply never updated further (its pointer-up cleanup still runs).
     if (this.paused()) return;
-    if (this.world.visibilityState.peek() === VisibilityState.NonImmersive) {
-      this.updateBrowserDrag();
-    } else {
-      this.updateXRDrag();
+    // The START gate blocks new aim drags exactly like the fire rhythm is
+    // held: before beginLevel() the guns are scenery, not controls. The
+    // transform pass below still runs, so resetCannonAim() re-applies the
+    // levelled pose while the START panel is up.
+    if (this.gameRunning()) {
+      if (this.world.visibilityState.peek() === VisibilityState.NonImmersive) {
+        this.updateBrowserDrag();
+      } else {
+        this.updateXRDrag();
+      }
     }
     // Single truth -> transforms, applied every frame whether dragging or not.
     for (const entity of this.queries.cannons.entities) {
