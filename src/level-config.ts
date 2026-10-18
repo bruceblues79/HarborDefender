@@ -261,6 +261,16 @@ export const COMBAT = {
    */
   attackerCoreRadius: 0.5,
   defenderCoreRadius: 0.22,
+  /**
+   * Normalised combat numbers: every unit's health pool is 100 points, and
+   * all damage is a percentage of that pool — 20 = 20% of a hull.
+   */
+  /** City-cannon shell damage (20% of a 100-point health pool). */
+  shellDamage: 20,
+  /** Pirate-ship shell damage (15% of a 100-point health pool). */
+  pirateShellDamage: 15,
+  /** Health pool every combatant shares (ships and cannons alike). */
+  unitHealth: 100,
   /** Seconds between two shots from one pirate ship that is in fire range. */
   pirateFireInterval: 3.0,
   /**

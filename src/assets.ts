@@ -41,6 +41,12 @@ export default defineAssets({
     name: 'Pause Menu',
     priority: 'critical',
   },
+  'result-panel': {
+    url: publicAssetUrl('ui/result.uikitml'),
+    type: AssetType.UIKitML,
+    name: 'Result Panel',
+    priority: 'critical',
+  },
   // Key must end with ".hdr": IWSDK's EnvironmentSystem sniffs the file type
   // from the raw src suffix BEFORE resolving manifest keys, so a key without
   // the extension would be loaded as a plain (non-decodable) texture.

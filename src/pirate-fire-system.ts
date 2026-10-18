@@ -9,6 +9,8 @@ import { createSystem, Vector3 } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
 import {
   BallisticFlight,
+  Destroyed,
+  GameOver,
   GamePaused,
   HitCore,
   LevelDirector,
@@ -28,7 +30,9 @@ import { COMBAT, SHIP_STOP_Z_MIN } from './level-config.js';
  * Once in range and the battle has started it:
  *
  * 1. picks one random defender hit core (a city cannon) and snapshots its
- *    world position as the target — city cannons never move;
+ *    world position as the target — city cannons never move; a locked target
+ *    that gets knocked out is re-acquired the same way on the next frame, and
+ *    with no survivor the ship holds fire until the defeat outcome lands;
  * 2. yaws the whole deck gun — carriage plus barrel on one cannon_mount
  *    pivot — onto the target, never the hull: the ship keeps its travel
  *    heading while its gun tracks the target;
@@ -43,7 +47,7 @@ import { COMBAT, SHIP_STOP_Z_MIN } from './level-config.js';
  */
 export class PirateFireSystem extends createSystem({
   ships: { required: [UnitTag, ShipMovement, PirateCannon] },
-  cores: { required: [HitCore] },
+  cores: { required: [HitCore], excluded: [Destroyed] },
   freeShells: { required: [ShellTag], excluded: [BallisticFlight] },
   directors: { required: [LevelDirector] },
 }) {
@@ -77,14 +81,26 @@ export class PirateFireSystem extends createSystem({
   }
 
   update(delta: number): void {
-    // Same START gate as the city battery, plus the pause tag: no shots
-    // before the game runs or while the pause menu holds the game.
-    if (this.paused() || !this.gameRunning()) return;
+    // Same START gate as the city battery, plus the pause tag and the
+    // GameOver hold: no shots before the game runs, while the pause menu
+    // holds the game, or after the run has ended.
+    if (this.paused() || this.over() || !this.gameRunning()) return;
     this.claimed.clear();
     for (const ship of this.queries.ships.entities) {
       // Fire permission: crossing the outermost berthing line, not stopping.
       const object = ship.object3D;
       if (!object || object.position.z < SHIP_STOP_Z_MIN) continue;
+      // Re-validate the locked target every frame: the cores query drops
+      // Destroyed cannons, so a missing index means the target died and the
+      // gun re-acquires a random surviving one. With no survivor at all the
+      // ship simply holds fire — LevelWaveSystem's defeat check settles the
+      // run (GameOver flips every consumer silent) on the same frame.
+      if (
+        ship.getValue(PirateCannon, 'hasTarget') &&
+        !this.targetAlive(ship)
+      ) {
+        ship.setValue(PirateCannon, 'hasTarget', false);
+      }
       if (!ship.getValue(PirateCannon, 'hasTarget')) {
         if (!this.acquireTarget(ship)) continue;
       }
@@ -102,7 +118,8 @@ export class PirateFireSystem extends createSystem({
   /** Pick one random city-cannon core and snapshot its world position. */
   private acquireTarget(ship: Entity): boolean {
     // Two passes over the query (count, then pick) keep update() allocation
-    // free; this runs once per ship, when it first crosses the fire line.
+    // free; this runs on first acquisition and again whenever the previous
+    // target's cannon was knocked out.
     let defenderCount = 0;
     for (const core of this.queries.cores.entities) {
       if (core.getValue(HitCore, 'faction') === 'defender') defenderCount += 1;
@@ -118,11 +135,27 @@ export class PirateFireSystem extends createSystem({
       const node = this.coreNodes.get(core.index);
       if (!node) return false;
       node.getWorldPosition(this.corePos);
+      ship.setValue(PirateCannon, 'targetCoreIndex', core.index);
       ship.setValue(PirateCannon, 'targetX', this.corePos.x);
       ship.setValue(PirateCannon, 'targetY', this.corePos.y);
       ship.setValue(PirateCannon, 'targetZ', this.corePos.z);
       ship.setValue(PirateCannon, 'hasTarget', true);
       return true;
+    }
+    return false;
+  }
+
+  /**
+   * Whether the cannon this ship locked still exists among live defender
+   * cores. The query's Destroyed exclusion does the real work: the frame
+   * ShellHitSystem tags the cannon, it leaves the query and every ship
+   * aiming at it re-acquires on the next update.
+   */
+  private targetAlive(ship: Entity): boolean {
+    const locked = Number(ship.getValue(PirateCannon, 'targetCoreIndex'));
+    for (const core of this.queries.cores.entities) {
+      if (core.getValue(HitCore, 'faction') !== 'defender') continue;
+      if (core.index === locked) return true;
     }
     return false;
   }
@@ -216,6 +249,14 @@ export class PirateFireSystem extends createSystem({
   private paused(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GamePaused);
+    }
+    return false;
+  }
+
+  /** True once the run has ended (victory or defeat) — the raiders hold fire. */
+  private over(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return director.hasComponent(GameOver);
     }
     return false;
   }

@@ -39,7 +39,7 @@ export const WakeSource = createComponent('WakeSource', {
  * one entity carries it, owned and written by LevelWaveSystem.
  */
 export const LevelDirector = createComponent('LevelDirector', {
-  /** 'waiting-start' | 'dispatching' | 'clearing' | 'wave-gap' | 'level-gap' | 'game-cleared' */
+  /** 'waiting-start' | 'dispatching' | 'clearing' | 'wave-gap' | 'level-gap' | 'game-cleared' | 'defeated' */
   phase: { type: 'String', default: 'waiting-start' },
   /** Index into the active level list. */
   levelIndex: { type: 'Int32', default: 0 },
@@ -189,6 +189,28 @@ export const HitCore = createComponent('HitCore', {
 });
 
 /**
+ * Damage pool of a hittable combatant (pirate ship, city cannon). Carried by
+ * every HitCore entity; ShellHitSystem is the only writer of `current`.
+ * Reaching zero kills the unit: attackers sink (dispose), defender cannons
+ * are tagged Destroyed.
+ */
+export const Health = createComponent('Health', {
+  /** Hits remaining before the unit dies. */
+  current: { type: 'Float32', default: 1 },
+  /** Hits the unit starts with; the RESTART restore target. */
+  max: { type: 'Float32', default: 1 },
+});
+
+/**
+ * Explicit tag: a defender cannon is knocked out. Written once by
+ * ShellHitSystem at the killing hit — the tag gates every consumer (fire,
+ * aim, targeting, hit detection exclude it) so the cannon leaves the fight
+ * without its components being stripped. The cannon object stays in the
+ * world, hidden; restoreCannons (battle-setup) removes the tag on RESTART.
+ */
+export const Destroyed = createComponent('Destroyed', {});
+
+/**
  * Faction carried by an airborne shell. Added on fire, removed on every
  * recycle path (splash or hit) so a pooled shell can never keep a stale side.
  */
@@ -209,6 +231,12 @@ export const PirateCannon = createComponent('PirateCannon', {
   cooldown: { type: 'Float32', default: 0 },
   /** Set once a defender target has been acquired. */
   hasTarget: { type: 'Boolean', default: false },
+  /**
+   * Entity index of the defender core this cannon has locked. PirateFireSystem
+   * re-validates it every frame against the live core query (which drops
+   * Destroyed cannons): gone means re-acquire a random surviving target.
+   */
+  targetCoreIndex: { type: 'Int32', default: -1 },
   /** Target hit_core world position snapshot (city cannons never move). */
   targetX: { type: 'Float32', default: 0 },
   targetY: { type: 'Float32', default: 0 },
@@ -228,6 +256,15 @@ export const GameStarted = createComponent('GameStarted', {});
  * billboard and follower systems ignore it, so pausing never blocks input.
  */
 export const GamePaused = createComponent('GamePaused', {});
+
+/**
+ * Explicit tag: the run has ended — director phase is 'game-cleared'
+ * (victory) or 'defeated' (battery wiped out). LevelWaveSystem is the only
+ * writer, adding it on the outcome frame and removing it in beginLevel /
+ * restartLevel / resetToWelcome. The result panel qualifies on it; the
+ * fire/aim systems hold while it is present.
+ */
+export const GameOver = createComponent('GameOver', {});
 
 /**
  * Marks a pooled hit-flash sphere. The pool lives in HitFlashSystem; a flash
@@ -270,10 +307,13 @@ export default defineComponents([
   CannonAim,
   SplashFade,
   HitCore,
+  Health,
+  Destroyed,
   ShellFaction,
   PirateCannon,
   GameStarted,
   GamePaused,
+  GameOver,
   HitFlashTag,
   HitFlash,
 ]);

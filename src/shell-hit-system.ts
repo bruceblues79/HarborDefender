@@ -5,38 +5,46 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { createSystem, Vector3 } from '@iwsdk/core';
-import type { Entity, Object3D } from '@iwsdk/core';
+import { createSystem, Object3D, Vector3 } from '@iwsdk/core';
+import type { Entity } from '@iwsdk/core';
 import {
   BallisticFlight,
+  Destroyed,
   GamePaused,
+  Health,
   HitCore,
   HitFlash,
   HitFlashTag,
   LevelDirector,
   ShellFaction,
   ShellTag,
+  SplashFade,
+  WakeSource,
 } from './components.js';
-import { COMBAT } from './level-config.js';
+import { COMBAT, OCEAN } from './level-config.js';
 
 /**
  * Distance-based hit resolution between airborne shells and combatants'
  * hit cores. A shell whose faction differs from a core's is consumed the
  * moment its centre comes within the core radius: flight and faction tags
  * are removed and the mesh hides, returning the shell to the shared pool
- * exactly like a splash-down — but no ripple is spawned, because the ball
- * struck a solid target. Instead a pooled hit-flash sphere blooms at the
- * struck core's centre — not the contact point, which sits inside the
+ * exactly like a splash-down — but no water ripple is spawned, because the
+ * ball struck a solid target. Instead a pooled hit-flash sphere blooms at
+ * the struck core's centre — not the contact point, which sits inside the
  * core radius and reads as a dented hull edge rather than a clean hit.
- * Claiming one is a thin spawn command (position + starting state +
- * HitFlash component); HitFlashSystem owns the animation.
+ *
+ * The hit also deals damage to the core's Health: a defender shell costs
+ * COMBAT.shellDamage, a pirate shell COMBAT.pirateShellDamage. At zero the
+ * unit dies — an attacker sinks (entity disposed, a splash ripple marks the
+ * spot on the surface) and a defender cannon is tagged Destroyed (hidden,
+ * out of every combat query; LevelWaveSystem reads the tags for defeat).
  *
  * Runs after BallisticSystem so each frame's motion is tested at its end
- * position. Hits are collected during the sweep and recycled afterwards.
+ * position. Hits are collected during the sweep and resolved afterwards.
  */
 export class ShellHitSystem extends createSystem({
   shells: { required: [ShellTag, BallisticFlight, ShellFaction] },
-  cores: { required: [HitCore] },
+  cores: { required: [HitCore, Health], excluded: [Destroyed] },
   freeFlashes: { required: [HitFlashTag], excluded: [HitFlash] },
   directors: { required: [LevelDirector] },
 }) {
@@ -44,12 +52,14 @@ export class ShellHitSystem extends createSystem({
   private readonly coreNodes = new Map<number, Object3D>();
   /** Reusable world position per core; allocated on qualify, never in update. */
   private readonly corePositions = new Map<number, Vector3>();
-  /** Shells consumed this frame; recycled after the sweep, not inside it. */
+  /** Shells consumed this frame; resolved after the sweep, not inside it. */
   private readonly hit: Entity[] = [];
-  /** Core entity index per `hit` entry; its cached world position feeds the flash. */
-  private readonly hitCores: number[] = [];
+  /** Core entity per `hit` entry; its cached position feeds the flash. */
+  private readonly hitCores: Entity[] = [];
   /** Peak scale per `hit` entry: defender cores at base size, ships larger. */
   private readonly hitPeakScales: number[] = [];
+  /** Damage per `hit` entry, read from the shell's faction. */
+  private readonly hitDamages: number[] = [];
   /** Flashes handed out this frame; the free-flash query refreshes next frame. */
   private readonly claimedFlashes = new Set<number>();
 
@@ -59,6 +69,12 @@ export class ShellHitSystem extends createSystem({
       if (!node) return;
       this.coreNodes.set(entity.index, node);
       this.corePositions.set(entity.index, new Vector3());
+    });
+    // A sunk ship (or hidden cannon) leaves the query — drop its cached
+    // world position so the maps never pin a disposed object.
+    this.queries.cores.subscribe('disqualify', (entity) => {
+      this.coreNodes.delete(entity.index);
+      this.corePositions.delete(entity.index);
     });
   }
 
@@ -75,6 +91,7 @@ export class ShellHitSystem extends createSystem({
     this.hit.length = 0;
     this.hitCores.length = 0;
     this.hitPeakScales.length = 0;
+    this.hitDamages.length = 0;
     this.claimedFlashes.clear();
 
     // Core world positions once per frame (pirate ships yaw after stopping).
@@ -99,13 +116,18 @@ export class ShellHitSystem extends createSystem({
         const dz = sz - position.z;
         if (dx * dx + dy * dy + dz * dz <= radius * radius) {
           this.hit.push(shell);
-          this.hitCores.push(core.index);
+          this.hitCores.push(core);
           // Ship cores bloom larger than harbour-cannon cores; the shared
           // pool geometry is the defender size, so scale is a ratio.
           this.hitPeakScales.push(
-            core.getValue(HitCore, 'faction') === 'attacker'
-              ? COMBAT.hitFlashShipRadius / COMBAT.hitFlashRadius
-              : 1,
+            faction === 'attacker' // a pirate shell struck a defender core
+              ? 1
+              : COMBAT.hitFlashShipRadius / COMBAT.hitFlashRadius,
+          );
+          this.hitDamages.push(
+            faction === 'defender'
+              ? COMBAT.shellDamage
+              : COMBAT.pirateShellDamage,
           );
           break;
         }
@@ -118,14 +140,38 @@ export class ShellHitSystem extends createSystem({
       if (!shell.hasComponent(BallisticFlight)) continue;
       shell.removeComponent(BallisticFlight);
       shell.removeComponent(ShellFaction);
-      if (shell.object3D) {
+      const core = this.hitCores[i];
+      const corePosition = this.corePositions.get(core.index);
+      if (shell.object3D && corePosition) {
         // Bloom at the struck core's centre: positions were refreshed at the
         // top of this frame, so the map is current for every hit this sweep.
-        const at =
-          this.corePositions.get(this.hitCores[i]) ?? shell.object3D.position;
-        this.spawnHitFlash(at, this.hitPeakScales[i]);
+        this.spawnHitFlash(corePosition, this.hitPeakScales[i]);
         shell.object3D.visible = false;
       }
+      this.applyDamage(core, this.hitDamages[i]);
+    }
+  }
+
+  /**
+   * Charge one hit of damage. At zero health the unit dies: an attacker's
+   * hull is disposed (its materials are per-ship clones) and a splash ripple
+   * marks the sinking spot; a defender cannon is tagged Destroyed and hidden
+   * — the tag, not a component strip, takes it out of every combat query.
+   */
+  private applyDamage(core: Entity, damage: number): void {
+    const hp = Number(core.getValue(Health, 'current')) - damage;
+    core.setValue(Health, 'current', Math.max(0, hp));
+    if (hp > 0) return;
+    if (String(core.getValue(HitCore, 'faction')) === 'attacker') {
+      const at = this.corePositions.get(core.index);
+      if (at) this.spawnSinkRipple(at.x, at.z);
+      // Keep the shared prototype resources alive: ships are prototype
+      // clones, and the default resource sweep would free geometry/materials/
+      // textures every later spawn clones from.
+      core.dispose({ disposeResources: false });
+    } else {
+      core.addComponent(Destroyed);
+      if (core.object3D) core.object3D.visible = false;
     }
   }
 
@@ -153,5 +199,27 @@ export class ShellHitSystem extends createSystem({
       });
       return;
     }
+  }
+
+  /**
+   * Surface ripple where a ship went down — the same pooled-splash pattern
+   * BallisticSystem uses for splash-downs; SplashSystem owns the fade-out.
+   * The hull itself is disposed, so the ripple is the sinking's only trace.
+   */
+  private spawnSinkRipple(x: number, z: number): void {
+    const ripple = new Object3D();
+    ripple.position.set(x, OCEAN.surfaceY, z);
+    this.world
+      .createTransformEntity(ripple)
+      .addComponent(WakeSource, {
+        strength: 1,
+        targetStrength: 1,
+        radius: COMBAT.splashRadius,
+        targetRadius: COMBAT.splashRadius,
+        amplitude: COMBAT.splashAmplitude,
+        frequency: COMBAT.splashFrequency,
+        speed: COMBAT.splashSpeed,
+      })
+      .addComponent(SplashFade, { duration: COMBAT.splashDuration });
   }
 }

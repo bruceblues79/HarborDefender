@@ -16,6 +16,8 @@ import type { Entity, Object3D } from '@iwsdk/core';
 import {
   BallisticFlight,
   CannonFire,
+  Destroyed,
+  GameOver,
   GamePaused,
   LevelDirector,
   ShellFaction,
@@ -35,7 +37,7 @@ import { COMBAT } from './level-config.js';
  * gun_rotate pivot, so the launch direction always follows the current aim.
  */
 export class CannonFireSystem extends createSystem({
-  cannons: { required: [CannonFire] },
+  cannons: { required: [CannonFire], excluded: [Destroyed] },
   freeShells: { required: [ShellTag], excluded: [BallisticFlight] },
   airborne: { required: [ShellTag, BallisticFlight] },
   directors: { required: [LevelDirector] },
@@ -74,8 +76,8 @@ export class CannonFireSystem extends createSystem({
     // Hold fire until the START gate opens: LevelDirector.phase is the single
     // truth for game flow. Cooldowns were rolled at mount time and tick only
     // once the level begins. GamePaused freezes the rhythm without touching
-    // any cooldown value.
-    if (this.paused() || !this.gameRunning()) return;
+    // any cooldown value; GameOver holds it for good after the outcome.
+    if (this.paused() || this.over() || !this.gameRunning()) return;
     this.claimed.clear();
     for (const entity of this.queries.cannons.entities) {
       let cooldown = Number(entity.getValue(CannonFire, 'cooldown')) - delta;
@@ -150,6 +152,14 @@ export class CannonFireSystem extends createSystem({
   private paused(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GamePaused);
+    }
+    return false;
+  }
+
+  /** True once the run has ended (victory or defeat) — the guns fall silent. */
+  private over(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return director.hasComponent(GameOver);
     }
     return false;
   }

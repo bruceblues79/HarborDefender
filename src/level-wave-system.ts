@@ -15,8 +15,11 @@ import {
 } from '@iwsdk/core';
 import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
 import {
+  Destroyed,
+  GameOver,
   GamePaused,
   GameStarted,
+  Health,
   HitCore,
   LevelDirector,
   PirateCannon,
@@ -97,7 +100,8 @@ type DirectorPhase =
   | 'clearing'
   | 'wave-gap'
   | 'level-gap'
-  | 'game-cleared';
+  | 'game-cleared'
+  | 'defeated';
 
 /**
  * Director for the level -> wave -> unit flow.
@@ -105,7 +109,10 @@ type DirectorPhase =
  * A single entity carries the LevelDirector state and this system is its only
  * writer. It paces dispatch (`PACING.spawnInterval` between units), pauses
  * while `PACING.maxConcurrentUnits` attackers are on the water, waits for a
- * wave to clear before the next, and advances levels until the list runs out.
+ * wave to clear — every dispatched attacker sunk — before the next, and
+ * advances levels until the list runs out ('game-cleared' victory). It also
+ * owns the defeat check: the whole battery tagged Destroyed flips the phase
+ * to 'defeated'. Both outcomes add the GameOver tag on the director.
  *
  * Attacker units are clones of UNIT_TYPES prototypes (loaded once in init) and
  * are handed to ShipMovementSystem through the ShipMovement component.
@@ -113,6 +120,7 @@ type DirectorPhase =
 export class LevelWaveSystem extends createSystem({
   directors: { required: [LevelDirector] },
   attackers: { required: [UnitTag, ShipMovement] },
+  cores: { required: [HitCore] },
 }) {
   /** Unit prototypes keyed by unitType; clones share geometry and materials. */
   private readonly prototypes = new Map<string, Object3D>();
@@ -142,6 +150,7 @@ export class LevelWaveSystem extends createSystem({
     // Explicit "game running" tag: MenuSystem shows the call button on its
     // qualify and hides everything on its dismiss.
     this.director.addComponent(GameStarted);
+    this.director.removeComponent(GameOver);
     this.enterLevel(0);
   }
 
@@ -152,6 +161,7 @@ export class LevelWaveSystem extends createSystem({
   resetToWelcome(): void {
     this.disposeAttackers();
     this.director.removeComponent(GameStarted);
+    this.director.removeComponent(GameOver);
     this.director.setValue(LevelDirector, 'levelIndex', 0);
     this.director.setValue(LevelDirector, 'waveIndex', 0);
     this.director.setValue(LevelDirector, 'pendingUnits', 0);
@@ -162,9 +172,12 @@ export class LevelWaveSystem extends createSystem({
   /**
    * RESTART command: clear the field and rerun the current level from its
    * first wave. Caller removes GamePaused first (MenuSystem owns that tag).
+   * Dropping GameOver re-shows the pause-menu call button and dismisses the
+   * result panel.
    */
   restartLevel(): void {
     this.disposeAttackers();
+    this.director.removeComponent(GameOver);
     const index = Math.min(
       Math.max(0, this.levelIndex()),
       activeLevelList.length - 1,
@@ -172,13 +185,20 @@ export class LevelWaveSystem extends createSystem({
     this.enterLevel(index);
   }
 
-  /** Dispose every unit on the water; their materials are per-ship clones. */
+  /** Dispose every unit on the water. Resources stay shared with the
+   * prototypes (per-ship material clones are plain JS objects — GC reclaims
+   * them), so the dispose must NOT walk the tree freeing geometry/materials/
+   * textures: those instances belong to the session-persistent prototypes
+   * every later spawn clones from. IWSDK's default disposeResources:true
+   * destroys exactly those shared GPU resources and poisons future spawns. */
   private disposeAttackers(): void {
     this.retiring.length = 0;
     for (const entity of this.queries.attackers.entities) {
       this.retiring.push(entity);
     }
-    for (const entity of this.retiring) entity.dispose();
+    for (const entity of this.retiring) {
+      entity.dispose({ disposeResources: false });
+    }
   }
 
   update(delta: number): void {
@@ -187,6 +207,7 @@ export class LevelWaveSystem extends createSystem({
       LevelDirector,
       'phase',
     ) as DirectorPhase;
+    if (this.checkOutcome(phase)) return;
     switch (phase) {
       case 'dispatching':
         this.updateDispatching(delta);
@@ -402,6 +423,13 @@ export class LevelWaveSystem extends createSystem({
       targetZ: target.z,
     });
     entity.addComponent(SpawnFade, { duration: SPAWN_FADE_DURATION });
+    // Hull hit points: the ship sinks once ShellHitSystem has charged
+    // COMBAT.shellDamage per defender-shell hit into this pool. Normalised:
+    // every unit shares COMBAT.unitHealth (100) as its pool size.
+    entity.addComponent(Health, {
+      current: COMBAT.unitHealth,
+      max: COMBAT.unitHealth,
+    });
     entity.addComponent(WakeSource, {
       strength: 0,
       // Under way (or held up) from frame one, so the wake aims at the
@@ -424,7 +452,7 @@ export class LevelWaveSystem extends createSystem({
   /** Begin the given level, or declare the run complete past the last one. */
   private enterLevel(index: number): void {
     if (index >= activeLevelList.length) {
-      this.setPhase('game-cleared');
+      this.declareCleared();
       return;
     }
     this.director.setValue(LevelDirector, 'levelIndex', index);
@@ -458,7 +486,22 @@ export class LevelWaveSystem extends createSystem({
       this.director.setValue(LevelDirector, 'timer', PACING.postLevelDelay);
       return;
     }
+    this.declareCleared();
+  }
+
+  /**
+   * Victory: the last wave of the last level has cleared. Besides the phase
+   * string, the GameOver tag goes on the director — it is what flips every
+   * fire/aim system silent and what the result panel qualifies on. Restart
+   * and MAIN both remove it (restartLevel / resetToWelcome).
+   *
+   * Order matters: elics fires query subscribers synchronously inside
+   * addComponent, and the result panel reads the phase in its qualify
+   * callback — so the outcome phase must be committed BEFORE the tag lands.
+   */
+  private declareCleared(): void {
     this.setPhase('game-cleared');
+    this.director.addComponent(GameOver);
   }
 
   /** Attackers of any type currently on the water. */
@@ -471,18 +514,39 @@ export class LevelWaveSystem extends createSystem({
   }
 
   /**
-   * Placeholder wave-clear test. Combat is not in yet, so a wave counts as
-   * cleared once every dispatched attacker has stopped at its target or is
-   * queued behind another ship. Swap this for a destroyed/killed check once
-   * units can be sunk.
+   * Wave-clear test: no dispatched attacker is left on the water. Dead ships
+   * are disposed by ShellHitSystem, so the query holding only living hulls
+   * makes "all sunk" an empty list — the wave cannot clear while any ship
+   * still floats, which is exactly the pressure the defence is built on.
    */
   private fieldSettled(): boolean {
-    for (const entity of this.queries.attackers.entities) {
-      if (entity.getValue(UnitTag, 'faction') !== 'attacker') continue;
-      if (entity.getValue(ShipMovement, 'state') !== 'stopped') {
-        if (!entity.getValue(ShipMovement, 'blocked')) return false;
-      }
+    return this.attackerCount() === 0;
+  }
+
+  /**
+   * Defeat check: the whole battery is tagged Destroyed. Runs once per frame
+   * while the game runs (never in waiting-start, never after an outcome is
+   * already recorded). Ships keep shelling until the last gun falls, so the
+   * test is only ever satisfied by combat, not by a pre-battle state.
+   *
+   * The phase is committed BEFORE the GameOver tag: elics fires query
+   * subscribers synchronously inside addComponent, and the result panel
+   * reads the phase in its qualify callback to pick the outcome copy.
+   */
+  private checkOutcome(phase: DirectorPhase): boolean {
+    if (phase === 'waiting-start' || this.director.hasComponent(GameOver)) {
+      return false;
     }
+    let cannons = 0;
+    let destroyed = 0;
+    for (const core of this.queries.cores.entities) {
+      if (core.getValue(HitCore, 'faction') !== 'defender') continue;
+      cannons += 1;
+      if (core.hasComponent(Destroyed)) destroyed += 1;
+    }
+    if (cannons === 0 || destroyed < cannons) return false;
+    this.setPhase('defeated');
+    this.director.addComponent(GameOver);
     return true;
   }
 

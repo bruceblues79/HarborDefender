@@ -15,7 +15,7 @@ import {
   VisibilityState,
 } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
-import { GamePaused, LevelDirector, CannonAim } from './components.js';
+import { Destroyed, GameOver, GamePaused, LevelDirector, CannonAim } from './components.js';
 import { COMBAT } from './level-config.js';
 
 const DEG2RAD = Math.PI / 180;
@@ -44,8 +44,8 @@ const clamp = (value: number, min: number, max: number): number =>
  * root's yaw and the gun_rotate pivot's pitch every frame, dragging or not.
  */
 export class CannonAimSystem extends createSystem({
-  cannons: { required: [CannonAim] },
-  pressed: { required: [CannonAim, Pressed] },
+  cannons: { required: [CannonAim], excluded: [Destroyed] },
+  pressed: { required: [CannonAim, Pressed], excluded: [Destroyed] },
   directors: { required: [LevelDirector] },
 }) {
   /** gun_rotate pivot per cannon entity index, resolved once on qualify. */
@@ -126,10 +126,19 @@ export class CannonAimSystem extends createSystem({
     return false;
   }
 
+  /** True once the run has ended (victory or defeat) — the guns park. */
+  private over(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return director.hasComponent(GameOver);
+    }
+    return false;
+  }
+
   update(): void {
     // Pause freezes new drags and transform application; an in-flight drag is
-    // simply never updated further (its pointer-up cleanup still runs).
-    if (this.paused()) return;
+    // simply never updated further (its pointer-up cleanup still runs). The
+    // GameOver hold keeps the battery parked behind the result panel too.
+    if (this.paused() || this.over()) return;
     // The START gate blocks new aim drags exactly like the fire rhythm is
     // held: before beginLevel() the guns are scenery, not controls. The
     // transform pass below still runs, so resetCannonAim() re-applies the

@@ -20,6 +20,7 @@ import {
 import type { Entity } from '@iwsdk/core';
 import {
   Billboard,
+  GameOver,
   GamePaused,
   GameStarted,
   LevelDirector,
@@ -27,10 +28,12 @@ import {
 import { CameraOrbitSystem } from './camera-orbit-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
-import { HitFlashSystem } from './hit-flash-system.js';
-import { SplashSystem } from './splash-system.js';
-import { CannonFireSystem } from './cannon-fire-system.js';
-import { resetCannonAim, returnToWelcome } from './battle-setup.js';
+import {
+  recycleCombatEffects,
+  resetCannonAim,
+  restoreCannons,
+  returnToWelcome,
+} from './battle-setup.js';
 
 /** Scale the call button shrinks to while the menu is open (hidden, not removed). */
 const CALL_HIDDEN_SCALE = 0.001;
@@ -84,6 +87,8 @@ export class MenuSystem extends createSystem({
   directors: { required: [LevelDirector] },
   /** Fires qualify/dismiss exactly when GameStarted is added/removed. */
   started: { required: [LevelDirector, GameStarted] },
+  /** Fires qualify/dismiss exactly when GameOver is added/removed. */
+  over: { required: [LevelDirector, GameOver] },
 }) {
   private mode: MenuMode = 'closed';
   private pendingCommand: 'main' | 'restart' | null = null;
@@ -102,6 +107,12 @@ export class MenuSystem extends createSystem({
     // The call button and menu track GameStarted on the director entity.
     this.queries.started.subscribe('qualify', () => this.onGameStart());
     this.queries.started.subscribe('disqualify', () => this.onGameEnd());
+    // An outcome hides the pause UI for good; a fresh RESTART (GameOver
+    // dismissed while GameStarted is still on the director) brings it back.
+    this.queries.over.subscribe('qualify', () => this.onOutcome());
+    this.queries.over.subscribe('disqualify', (entity) =>
+      this.onOutcomeDismissed(entity),
+    );
 
     // Load both panels once; they stay in the world (invisible when closed),
     // repositioned next to the player's head on every open.
@@ -210,6 +221,35 @@ export class MenuSystem extends createSystem({
     if (!this.panelRig) return;
     this.panelRig.visible = false;
     if (this.menuPanel) this.menuPanel.visible = false;
+    this.setPanelScales(1, CALL_HIDDEN_SCALE);
+  }
+
+  /**
+   * Run ended (victory / defeat): park the pause UI entirely — the result
+   * panel takes over, so the call button must not invite a pause on top of
+   * it. The simulation cannot be mid-pause here (pausing halts it), but the
+   * tag is dropped defensively anyway.
+   */
+  private onOutcome(): void {
+    this.setPaused(false);
+    this.mode = 'closed';
+    this.pendingCommand = null;
+    if (!this.panelRig) return;
+    this.panelRig.visible = false;
+    if (this.menuPanel) this.menuPanel.visible = false;
+    this.setPanelScales(1, CALL_HIDDEN_SCALE);
+  }
+
+  /**
+   * GameOver dismissed: a RESTART keeps GameStarted on the director, so the
+   * call-button state comes back; a MAIN hand-off has already dropped
+   * GameStarted and its own dismissal hides everything — do nothing there.
+   */
+  private onOutcomeDismissed(director: Entity): void {
+    if (!director.hasComponent(GameStarted)) return;
+    this.mode = 'closed';
+    if (!this.panelRig) return;
+    this.panelRig.visible = true;
     this.setPanelScales(1, CALL_HIDDEN_SCALE);
   }
 
@@ -325,21 +365,24 @@ export class MenuSystem extends createSystem({
     }
   }
 
-  /** MAIN: reset the director to the welcome gate and swap back the welcome UI. */
-  private runMain(): void {
-    this.findByClass(CannonFireSystem)?.recycleAirborneShells();
-    this.findByClass(HitFlashSystem)?.recycleAll();
-    this.findByClass(SplashSystem)?.disposeAll();
+  /**
+   * MAIN: reset the director to the welcome gate and swap back the welcome
+   * UI. Public: the result panel's MAIN button runs the same hand-off.
+   */
+  runMain(): void {
+    recycleCombatEffects(this.world);
     this.findByClass(LevelWaveSystem)?.resetToWelcome();
     this.findByClass(StartPanelSystem)?.reset();
     returnToWelcome(this.world);
   }
 
-  /** RESTART: clear the field, rerun the current level, restore the guns. */
-  private runRestart(): void {
-    this.findByClass(CannonFireSystem)?.recycleAirborneShells();
-    this.findByClass(HitFlashSystem)?.recycleAll();
-    this.findByClass(SplashSystem)?.disposeAll();
+  /**
+   * RESTART: clear the field, restore the battery, rerun the current level.
+   * Public: the result panel's RESTART button runs the same reset.
+   */
+  runRestart(): void {
+    recycleCombatEffects(this.world);
+    restoreCannons();
     resetCannonAim();
     this.findByClass(LevelWaveSystem)?.restartLevel();
   }
