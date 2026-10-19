@@ -319,10 +319,10 @@ export const DieBurst = createComponent('DieBurst', {
    */
   sizeRatio: { type: 'Float32', default: 1 },
   /**
-   * Rest height in the pooled mesh's LOCAL space: 0 for a cannon (chunks
-   * settle exactly on the wall top at the core), below zero for a sinking
-   * ship (just under the water line). Spawn converts world heights to this
-   * local value once.
+   * Rest height in the pooled mesh's LOCAL space: slightly below the core
+   * for a cannon (chunks settle on the wall stone) and just under the water
+   * line for a sinking ship. Spawn converts world heights to this local
+   * value once.
    */
   floorY: { type: 'Float32', default: 0 },
   /**
