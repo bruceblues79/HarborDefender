@@ -29,14 +29,15 @@ varying vec3 vWorldNormal;
 varying vec3 vLocalNormal;
 varying vec3 vWorldPosition;
 
-// Hash-based value noise (2D), smooth-interpolated
+// Hash-based value noise (2D), quintic-interpolated (C2-continuous) so the
+// lattice shows no derivative creases at cell boundaries.
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
 float valueNoise(vec2 p) {
   vec2 i = floor(p);
   vec2 f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
+  vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
   return mix(
     mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
     mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
@@ -125,14 +126,15 @@ varying vec3 vWorldNormal;
 varying vec3 vLocalNormal;
 varying vec3 vWorldPosition;
 
-// Hash-based value noise (2D), smooth-interpolated
+// Hash-based value noise (2D), quintic-interpolated (C2-continuous) so the
+// lattice shows no derivative creases at cell boundaries.
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
 float valueNoise(vec2 p) {
   vec2 i = floor(p);
   vec2 f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
+  vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
   return mix(
     mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
     mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),

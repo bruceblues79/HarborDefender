@@ -14,6 +14,7 @@ import { CameraOrbitSystem } from './camera-orbit-system.js';
 import { CannonAimSystem } from './cannon-aim-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
 import { Billboard } from './components.js';
+import { DieBurstSystem } from './die-burst-system.js';
 import { HitFlashSystem } from './hit-flash-system.js';
 import { HealthBarSystem } from './health-bar-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
@@ -50,6 +51,7 @@ World.create(
   world.registerSystem(BallisticSystem, { priority: 13 });
   world.registerSystem(ShellHitSystem, { priority: 14 });
   world.registerSystem(HitFlashSystem, { priority: 15 });
+  world.registerSystem(DieBurstSystem, { priority: 15 });
   world.registerSystem(SplashSystem, { priority: 15 });
   // UI tier, after the camera updates so billboards track this frame's view.
   world.registerSystem(PanelScaleSystem, { priority: 30 });

@@ -292,6 +292,47 @@ export const HitFlash = createComponent('HitFlash', {
   peakScale: { type: 'Float32', default: 1 },
 });
 
+/**
+ * Marks a pooled death-burst InstancedMesh. The pool lives in
+ * DieBurstSystem; a burst is free exactly while it does NOT carry
+ * `DieBurst` — presence of the state component is the "playing" tag, so no
+ * separate in-use flag exists.
+ */
+export const DieBurstTag = createComponent('DieBurstTag', {});
+
+/**
+ * Playing state of a pooled death-burst: the wood-and-iron chunk cloud a
+ * unit explodes into when it dies. ShellHitSystem claims a free burst by
+ * adding this component (the thin spawn command); DieBurstSystem is the
+ * only writer afterwards — its `qualify` callback randomises the per-chunk
+ * state, `update` integrates it, and removal returns the mesh to the pool.
+ */
+export const DieBurst = createComponent('DieBurst', {
+  /** Seconds the burst takes from spawn to fully recycled. */
+  duration: { type: 'Float32', default: COMBAT.dieBurstDuration },
+  /** Seconds elapsed so far. */
+  elapsed: { type: 'Float32', default: 0 },
+  /**
+   * Full-size multiplier over the shared base geometry: pirate ships burst
+   * at dieBurstShipRatio, wall cannons at dieBurstCannonRatio. Set by the
+   * spawner, read-only for the animator.
+   */
+  sizeRatio: { type: 'Float32', default: 1 },
+  /**
+   * Rest height in the pooled mesh's LOCAL space: slightly below the core
+   * for a cannon (chunks settle on the wall stone) and just under the water
+   * line for a sinking ship. Spawn converts world heights to this local
+   * value once.
+   */
+  floorY: { type: 'Float32', default: 0 },
+  /**
+   * Vertical bounce factor on reaching `floorY`. > 0 chunks rebound and
+   * settle (wall top); 0 chunks are hidden the moment they touch (sunk
+   * beneath the waves).
+   */
+  floorBounce: { type: 'Float32', default: 0 },
+});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -316,4 +357,6 @@ export default defineComponents([
   GameOver,
   HitFlashTag,
   HitFlash,
+  DieBurstTag,
+  DieBurst,
 ]);

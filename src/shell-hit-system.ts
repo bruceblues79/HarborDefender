@@ -10,6 +10,8 @@ import type { Entity } from '@iwsdk/core';
 import {
   BallisticFlight,
   Destroyed,
+  DieBurst,
+  DieBurstTag,
   GamePaused,
   Health,
   HitCore,
@@ -46,6 +48,7 @@ export class ShellHitSystem extends createSystem({
   shells: { required: [ShellTag, BallisticFlight, ShellFaction] },
   cores: { required: [HitCore, Health], excluded: [Destroyed] },
   freeFlashes: { required: [HitFlashTag], excluded: [HitFlash] },
+  freeBursts: { required: [DieBurstTag], excluded: [DieBurst] },
   directors: { required: [LevelDirector] },
 }) {
   /** hit_core node per core entity index, resolved once on qualify. */
@@ -62,6 +65,8 @@ export class ShellHitSystem extends createSystem({
   private readonly hitDamages: number[] = [];
   /** Flashes handed out this frame; the free-flash query refreshes next frame. */
   private readonly claimedFlashes = new Set<number>();
+  /** Bursts handed out this frame; the free-burst query refreshes next frame. */
+  private readonly claimedBursts = new Set<number>();
 
   init(): void {
     this.queries.cores.subscribe('qualify', (entity) => {
@@ -93,6 +98,7 @@ export class ShellHitSystem extends createSystem({
     this.hitPeakScales.length = 0;
     this.hitDamages.length = 0;
     this.claimedFlashes.clear();
+    this.claimedBursts.clear();
 
     // Core world positions once per frame (pirate ships yaw after stopping).
     for (const [index, node] of this.coreNodes) {
@@ -153,10 +159,12 @@ export class ShellHitSystem extends createSystem({
   }
 
   /**
-   * Charge one hit of damage. At zero health the unit dies: an attacker's
-   * hull is disposed (its materials are per-ship clones) and a splash ripple
-   * marks the sinking spot; a defender cannon is tagged Destroyed and hidden
-   * — the tag, not a component strip, takes it out of every combat query.
+   * Charge one hit of damage. At zero health the unit dies: it bursts into
+   * pooled wood-and-iron chunks at the core's centre, then an attacker's
+   * hull is disposed (its materials are per-ship clones) and a splash
+   * ripple marks the sinking spot, while a defender cannon is tagged
+   * Destroyed and hidden — the tag, not a component strip, takes it out of
+   * every combat query.
    */
   private applyDamage(core: Entity, damage: number): void {
     const hp = Number(core.getValue(Health, 'current')) - damage;
@@ -164,14 +172,57 @@ export class ShellHitSystem extends createSystem({
     if (hp > 0) return;
     if (String(core.getValue(HitCore, 'faction')) === 'attacker') {
       const at = this.corePositions.get(core.index);
-      if (at) this.spawnSinkRipple(at.x, at.z);
+      if (at) {
+        this.spawnDieBurst(at, true);
+        this.spawnSinkRipple(at.x, at.z);
+      }
       // Keep the shared prototype resources alive: ships are prototype
       // clones, and the default resource sweep would free geometry/materials/
       // textures every later spawn clones from.
       core.dispose({ disposeResources: false });
     } else {
+      const at = this.corePositions.get(core.index);
+      if (at) this.spawnDieBurst(at, false);
       core.addComponent(Destroyed);
       if (core.object3D) core.object3D.visible = false;
+    }
+  }
+
+  /**
+   * Claim a free pooled burst and plant it at the dying unit's core:
+   * position, visible, then the `DieBurst` component that both hands
+   * animation to DieBurstSystem and (via its synchronous qualify callback)
+   * scatters the chunks. Defenders burst on their wall top and rebound;
+   * attackers burst just above the waves and sink through. Pool empty:
+   * skip silently — a busy battle loses the odd burst, never a hit.
+   */
+  private spawnDieBurst(position: Vector3, attacker: boolean): void {
+    for (const burst of this.queries.freeBursts.entities) {
+      if (this.claimedBursts.has(burst.index)) continue;
+      // Live guard: another spawn this frame may have claimed it already,
+      // since the free-burst query only refreshes next frame.
+      if (burst.hasComponent(DieBurst)) continue;
+      this.claimedBursts.add(burst.index);
+      const object = burst.object3D;
+      if (!object) return;
+      object.position.copy(position);
+      object.visible = true;
+      // Chunk matrices integrate in the pooled mesh's LOCAL space, so the
+      // rest floor must be converted into it once at spawn: the wall top
+      // sits slightly below the core (chunks read as resting on the stone,
+      // not hovering at gun height) and the water line sits a bit below a
+      // sinking ship's core.
+      burst.addComponent(DieBurst, {
+        duration: COMBAT.dieBurstDuration,
+        sizeRatio: attacker
+          ? COMBAT.dieBurstShipRatio
+          : COMBAT.dieBurstCannonRatio,
+        floorY: attacker
+          ? OCEAN.surfaceY - 0.05 - position.y
+          : -0.085,
+        floorBounce: attacker ? 0 : COMBAT.dieBurstFloorBounce,
+      });
+      return;
     }
   }
 
