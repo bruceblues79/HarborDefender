@@ -48,7 +48,9 @@ export class SpawnFadeSystem extends createSystem({
         for (const material of materials) {
           material.opacity = fade;
         }
-        if (done) mesh.castShadow = true;
+        // Overlay meshes flagged by their owner (health-bar quads) opt out —
+        // a 0.5 m bar plane must not throw a stray shadow line.
+        if (done && !mesh.userData.skipShadow) mesh.castShadow = true;
       });
 
       if (done) this.finished.push(entity);
