@@ -239,8 +239,8 @@ export const COMBAT = {
   splashAmplitude: 0.04,
   splashFrequency: 18,
   splashSpeed: 4,
-  /** Whole-cannon traverse clamp, degrees (±). */
-  aimYawRange: 15,
+  /** Whole-cannon traverse clamp, degrees (±) — wide enough to flank the wall. */
+  aimYawRange: 45,
   /** Barrel elevation clamp, degrees. */
   aimPitchMin: 0,
   aimPitchMax: 45,
@@ -252,8 +252,11 @@ export const COMBAT = {
   aimPitchDefault: 22.5,
   /** Aim degrees per dragged pixel in the browser — retune by feel. */
   aimDegreesPerPixel: 0.1,
-  /** Aim degrees per metre of hand-ray travel in XR — retune by feel. */
-  aimDegreesPerMeter: 75,
+  /**
+   * Aim degrees per metre of wrist travel in XR — retune by feel on device.
+   * 200 puts a full ±45° sweep at ~23 cm of hand travel; 1 cm ≈ 2°.
+   */
+  aimDegreesPerMeter: 200,
   /**
    * Hit-core radii (m): a shell within this 3D distance of an opposing
    * faction's hit_core is consumed. The pirate core sits at bounding-box
