@@ -299,4 +299,30 @@ export const COMBAT = {
   hitFlashCenterColor: 0xffd84d,
   /** Fresnel rim colour (dark red, sRGB hex). */
   hitFlashEdgeColor: 0x8a1400,
+  /**
+   * World-space health bar above every combat unit's head: a red back plate
+   * with a green fill quad that shrinks from the left edge as
+   * `Health.current / max` drops, exposing the red beneath. HealthBarSystem
+   * builds one rig per unit as a child of the unit's object so it follows
+   * for free, and yaws it toward the camera each frame (yaw-only billboard —
+   * bars stay upright under the orbiting browser camera and in XR).
+   */
+  /** Bar back-plate width (m) — reads across both cannon and ship hulls. */
+  healthBarWidth: 0.5,
+  /** Bar height (m). */
+  healthBarHeight: 0.06,
+  /** Gap (m) between the unit's bounding-box top and the bar's bottom edge. */
+  healthBarMarginY: 0.12,
+  /**
+   * Defender cannons draw a smaller bar (uniform rig scale — 0.6 puts the
+   * plate at 0.3 m against a 0.4 m carriage) floated higher: their bounding
+   * box tops out at the raised barrel tip, and the stock gap let the gun
+   * poke through the plate.
+   */
+  healthBarDefenderScale: 0.6,
+  healthBarDefenderMarginY: 0.28,
+  /** Back-plate colour (sRGB hex) — the "missing health" showing through. */
+  healthBarBackColor: 0xc42424,
+  /** Fill colour (sRGB hex) — the remaining health. */
+  healthBarFillColor: 0x35c94f,
 };

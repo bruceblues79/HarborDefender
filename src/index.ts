@@ -15,6 +15,7 @@ import { CannonAimSystem } from './cannon-aim-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
 import { Billboard } from './components.js';
 import { HitFlashSystem } from './hit-flash-system.js';
+import { HealthBarSystem } from './health-bar-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
 import { MenuSystem } from './menu-system.js';
 import { OceanSystem } from './ocean-system.js';
@@ -60,6 +61,10 @@ World.create(
   // hands RESTART / MAIN to MenuSystem's shared reset sequences.
   world.registerSystem(ResultPanelSystem, { priority: 33 });
   world.registerSystem(BillboardSystem, { priority: 31 });
+  // Health bars: after the simulation tier so each frame's yaw cancels the
+  // unit's freshest rotation; keeps billboarding through pauses like the
+  // other viewer-facing systems.
+  world.registerSystem(HealthBarSystem, { priority: 30 });
   installXRButton(world);
 
   // Keep the welcome panel turned toward the viewer in browser and XR alike.
