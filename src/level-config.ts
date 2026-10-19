@@ -94,6 +94,8 @@ export const OCEAN_FAR_Z: number = OCEAN.centerZ - OCEAN.length / 2;
 export const WALL_CENTER_Z = -0.8;
 export const WALL_DEPTH_Z = 0.4;
 export const WALL_SEA_FACE_Z: number = WALL_CENTER_Z - WALL_DEPTH_Z / 2;
+/** Land-side face; past it the wall no longer holds burst chunks up. */
+export const WALL_LAND_FACE_Z: number = WALL_CENTER_Z + WALL_DEPTH_Z / 2;
 
 /**
  * Pirate hull envelope is ~1.2 m long with the bow on local -Z, so the bow
@@ -299,6 +301,42 @@ export const COMBAT = {
   hitFlashCenterColor: 0xffd84d,
   /** Fresnel rim colour (dark red, sRGB hex). */
   hitFlashEdgeColor: 0x8a1400,
+  /**
+   * Death-burst pool shared by every unit death: one pooled entity per
+   * burst, each an InstancedMesh of small wood-and-iron chunks that fly
+   * apart under gravity. Pool entities share one geometry AND one material
+   * — per-chunk colour comes from the mesh's instanceColor, so nothing is
+   * allocated per burst at play time.
+   */
+  dieBurstPoolSize: 4,
+  /** Chunks per burst: 8 wood + 4 iron. */
+  dieBurstChunkCount: 12,
+  /** Seconds one burst lives before its entity returns to the pool. */
+  dieBurstDuration: 1.1,
+  /** Chunk gravity (m/s²) — full 9.8 reads too fast at this unit scale. */
+  dieBurstGravity: 4.5,
+  /** Random horizontal-ish launch speed range (m/s). */
+  dieBurstSpeedMin: 0.8,
+  dieBurstSpeedMax: 1.8,
+  /** Random extra upward velocity range (m/s) on top of the launch speed. */
+  dieBurstUpBiasMin: 0.7,
+  dieBurstUpBiasMax: 1.6,
+  /** Random spin magnitude (rad/s) per axis. */
+  dieBurstSpin: 8,
+  /** Chunk size range (m) — 6-12% of the ~0.9 m ship length. */
+  dieBurstChunkMin: 0.05,
+  dieBurstChunkMax: 0.11,
+  /** Vertical bounce factor when chunks land on the cannon's wall top. */
+  dieBurstFloorBounce: 0.35,
+  /** Final seconds of a burst during which all remaining chunks shrink out. */
+  dieBurstShrinkTail: 0.15,
+  /** Full-size multiplier: pirate ships burst large, wall cannons smaller. */
+  dieBurstShipRatio: 1.0,
+  dieBurstCannonRatio: 0.6,
+  /** Wood plank tints (sRGB hex), picked per chunk. */
+  dieBurstWoodColors: [0x8a5a2b, 0x6b4423],
+  /** Iron block tints (sRGB hex), picked per chunk. */
+  dieBurstIronColors: [0x3d4247, 0x2b2f33],
   /**
    * World-space health bar above every combat unit's head: a red back plate
    * with a green fill quad that shrinks from the left edge as
