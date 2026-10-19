@@ -209,8 +209,8 @@ export class ShellHitSystem extends createSystem({
       object.visible = true;
       // Chunk matrices integrate in the pooled mesh's LOCAL space, so the
       // rest floor must be converted into it once at spawn: the wall top
-      // sits 0.1 below the core (chunks read as resting on the stone, not
-      // hovering at gun height) and the water line sits a bit below a
+      // sits slightly below the core (chunks read as resting on the stone,
+      // not hovering at gun height) and the water line sits a bit below a
       // sinking ship's core.
       burst.addComponent(DieBurst, {
         duration: COMBAT.dieBurstDuration,
@@ -219,7 +219,7 @@ export class ShellHitSystem extends createSystem({
           : COMBAT.dieBurstCannonRatio,
         floorY: attacker
           ? OCEAN.surfaceY - 0.05 - position.y
-          : -0.1,
+          : -0.085,
         floorBounce: attacker ? 0 : COMBAT.dieBurstFloorBounce,
       });
       return;
