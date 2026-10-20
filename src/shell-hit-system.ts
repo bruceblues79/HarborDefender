@@ -146,14 +146,20 @@ export class ShellHitSystem extends createSystem({
       if (!shell.hasComponent(BallisticFlight)) continue;
       shell.removeComponent(BallisticFlight);
       shell.removeComponent(ShellFaction);
+      // Always consume the shell mesh. Two shells can strike one core in the
+      // same sweep; the first kill drops the core's cached position, and the
+      // overkill hit must still hide its ball or it freezes mid-air as a
+      // visible orphan no system ever touches again.
+      if (shell.object3D) shell.object3D.visible = false;
       const core = this.hitCores[i];
+      // No cached position = the core died earlier in this same loop (its
+      // disqualify callback cleared the map): skip the flash and the damage,
+      // never touch the dead entity again.
       const corePosition = this.corePositions.get(core.index);
-      if (shell.object3D && corePosition) {
-        // Bloom at the struck core's centre: positions were refreshed at the
-        // top of this frame, so the map is current for every hit this sweep.
-        this.spawnHitFlash(corePosition, this.hitPeakScales[i]);
-        shell.object3D.visible = false;
-      }
+      if (!corePosition) continue;
+      // Bloom at the struck core's centre: positions were refreshed at the
+      // top of this frame, so the map is current for every hit this sweep.
+      this.spawnHitFlash(corePosition, this.hitPeakScales[i]);
       this.applyDamage(core, this.hitDamages[i]);
     }
   }

@@ -17,7 +17,13 @@ import {
   Vector3,
 } from '@iwsdk/core';
 import type { Entity } from '@iwsdk/core';
-import { Health, HitCore } from './components.js';
+import {
+  GameOver,
+  GamePaused,
+  Health,
+  HitCore,
+  LevelDirector,
+} from './components.js';
 import { COMBAT } from './level-config.js';
 
 /**
@@ -89,6 +95,7 @@ const FILL_Z_OFFSET = 0.002;
 
 export class HealthBarSystem extends createSystem({
   units: { required: [Health] },
+  directors: { required: [LevelDirector] },
 }) {
   /** health-bar rig per unit entity index; the unit object is its parent. */
   private readonly rigs = new Map<number, Object3D>();
@@ -164,11 +171,18 @@ export class HealthBarSystem extends createSystem({
   }
 
   update(): void {
+    // Panel gate: while the START panel, pause menu or result panel owns the
+    // screen, the bars hide entirely — the director entity is the single
+    // truth, and hiding the rigs sidesteps every transparent draw-order
+    // conflict with the panels instead of fighting renderOrder.
+    const panelsUp = this.panelsUp();
     this.world.camera.getWorldPosition(this.viewer);
     for (const entity of this.queries.units.entities) {
       const rig = this.rigs.get(entity.index);
       const fill = this.fills.get(entity.index);
       if (!rig || !fill) continue;
+      rig.visible = !panelsUp;
+      if (panelsUp) continue;
       fill.scale.x = this.fillRatio(entity);
 
       const parent = rig.parent;
@@ -187,6 +201,18 @@ export class HealthBarSystem extends createSystem({
       );
       rig.quaternion.copy(this.parentWorldQuat).multiply(this.yawQuat);
     }
+  }
+
+  /** True while a blocking panel (START / pause menu / result) is on screen. */
+  private panelsUp(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return (
+        director.hasComponent(GamePaused) ||
+        director.hasComponent(GameOver) ||
+        String(director.getValue(LevelDirector, 'phase')) === 'waiting-start'
+      );
+    }
+    return false;
   }
 
   /** Remaining health as 0..1, clamped — the fill's scale.x. */

@@ -7,10 +7,9 @@
 
 import {
   createSystem,
+  Hovered,
   InputComponent,
-  Plane,
   Pressed,
-  Ray,
   Vector3,
   VisibilityState,
 } from '@iwsdk/core';
@@ -34,11 +33,15 @@ const clamp = (value: number, min: number, max: number): number =>
  *   sliding off the barrel, matching how a real grabbed object behaves).
  *   Pixel deltas map to yaw/pitch: pull right swings the muzzle right, pull
  *   down drops it.
- * - XR: the pressing hand's ray is intersected with a vertical aim plane
- *   through the cannon (ray-plane geometry, not a scene Raycaster). The hit
- *   point's cannon-local travel from the anchor maps to yaw/pitch. The drag
- *   continues while the trigger/pinch is held, so rotating the barrel away
- *   from the ray never drops the gesture mid-aim.
+ * - XR: grabbing a hovered cannon while the trigger is held anchors that
+ *   hand; the hand's world-space travel from the grab pose maps to yaw/pitch
+ *   (wrist displacement, not ray-plane geometry — turret rotation never
+ *   feeds back into the mapping). The drag continues until that hand
+ *   releases, so the barrel or the ray wandering off never drops the gesture.
+ *   Starts key off `Hovered` rather than `Pressed`: InputSystem clears
+ *   `Pressed` the moment the ray slides off the barrel (even mid-pinch) and
+ *   never re-fires it without a fresh pinch, while `Hovered` returns as soon
+ *   as the ray is back — a grazing pinch no longer loses the grab.
  *
  * `CannonAim` stays the single truth: this system applies it to the cannon
  * root's yaw and the gun_rotate pivot's pitch every frame, dragging or not.
@@ -46,6 +49,8 @@ const clamp = (value: number, min: number, max: number): number =>
 export class CannonAimSystem extends createSystem({
   cannons: { required: [CannonAim], excluded: [Destroyed] },
   pressed: { required: [CannonAim, Pressed], excluded: [Destroyed] },
+  /** Self-healing XR grab candidates: ray currently over the cannon. */
+  hovered: { required: [CannonAim, Hovered], excluded: [Destroyed] },
   directors: { required: [LevelDirector] },
 }) {
   /** gun_rotate pivot per cannon entity index, resolved once on qualify. */
@@ -58,20 +63,14 @@ export class CannonAimSystem extends createSystem({
   private dragCannon: Entity | null = null;
   private readonly dragLast = { x: 0, y: 0 };
 
-  // --- XR drag state: one active drag, anchored in cannon-local space ---
+  // --- XR drag state: one active drag, anchored to one hand's wrist travel ---
   private xrDragCannon: number | null = null;
-  private readonly xrHitStart = new Vector3();
+  /** Ray space of the hand that started the drag; its release ends it. */
+  private xrDragSpace: Object3D | null = null;
+  private readonly xrHandStart = new Vector3();
+  private readonly xrHandPos = new Vector3();
   private xrAimStartYaw = 0;
   private xrAimStartPitch = 0;
-
-  // Per-frame scratch, allocated once (never in update).
-  private readonly rayOrigin = new Vector3();
-  private readonly rayDir = new Vector3();
-  private readonly hitLocal = new Vector3();
-  private readonly planePoint = new Vector3();
-  private readonly planeNormal = new Vector3(0, 0, 1);
-  private readonly aimPlane = new Plane();
-  private readonly ray = new Ray();
 
   init(): void {
     const canvas = this.world.renderer.domElement;
@@ -197,71 +196,73 @@ export class CannonAimSystem extends createSystem({
   // -------------------------------------------------------------------- XR
 
   private updateXRDrag(): void {
-    if (this.xrDragCannon === null) {
-      const cannon = this.firstPressedCannon();
-      if (!cannon || !this.xrRayHit(cannon)) return;
+    if (this.xrDragSpace === null) {
+      // Start: trigger held while the ray hovers a cannon. `Hovered` is the
+      // grab signal — it self-heals when a jittered ray slides off and back
+      // (InputSystem re-enters without a fresh pinch, unlike `Pressed`).
+      const space = this.heldRaySpace();
+      const cannon = space ? this.firstHoveredCannon() : undefined;
+      if (!space || !cannon) return;
       this.xrDragCannon = cannon.index;
-      cannon.object3D?.worldToLocal(this.hitLocal);
-      this.xrHitStart.copy(this.hitLocal);
+      this.xrDragSpace = space;
+      space.getWorldPosition(this.xrHandStart);
       this.xrAimStartYaw = Number(cannon.getValue(CannonAim, 'yawDeg'));
       this.xrAimStartPitch = Number(cannon.getValue(CannonAim, 'pitchDeg'));
       return;
     }
-    // Continue while the pinch/trigger is held — releasing is the only exit,
-    // so the barrel rotating away from the ray never drops the gesture.
-    if (!this.xrTriggerHeld()) {
+    // Continue with the anchoring hand only — releasing it is the sole exit,
+    // so the barrel rotating away or the ray wandering never drops the drag.
+    if (!this.handTriggerHeld(this.xrDragSpace)) {
       this.xrDragCannon = null;
+      this.xrDragSpace = null;
       return;
     }
-    const cannon = this.findCannonByIndex(this.xrDragCannon);
-    if (!cannon || !this.xrRayHit(cannon)) return;
-    cannon.object3D?.worldToLocal(this.hitLocal);
-    // Hand travels left/up in cannon space -> muzzle follows left/up.
-    const dYaw =
-      -(this.hitLocal.x - this.xrHitStart.x) * COMBAT.aimDegreesPerMeter;
-    const dPitch =
-      (this.hitLocal.y - this.xrHitStart.y) * COMBAT.aimDegreesPerMeter;
+    const dragIndex = this.xrDragCannon;
+    if (dragIndex === null) return;
+    const cannon = this.findCannonByIndex(dragIndex);
+    if (!cannon) {
+      // Knocked out mid-drag: nothing left to steer.
+      this.xrDragCannon = null;
+      this.xrDragSpace = null;
+      return;
+    }
+    this.xrDragSpace.getWorldPosition(this.xrHandPos);
+    // Wrist travel drives the aim, absolute from the grab pose: hand
+    // right/left -> muzzle right/left, hand up/down -> muzzle up/down.
     this.setAim(
       cannon,
-      this.xrAimStartYaw + dYaw,
-      this.xrAimStartPitch + dPitch,
+      this.xrAimStartYaw -
+        (this.xrHandPos.x - this.xrHandStart.x) * COMBAT.aimDegreesPerMeter,
+      this.xrAimStartPitch +
+        (this.xrHandPos.y - this.xrHandStart.y) * COMBAT.aimDegreesPerMeter,
     );
   }
 
-  /**
-   * Intersect the pressing hand's ray with the vertical aim plane through the
-   * cannon (normal +Z, the player's side). Leaves the WORLD hit point in
-   * `hitLocal`; callers transform it into cannon space. False when the ray
-   * runs parallel — that frame is simply skipped.
-   */
-  private xrRayHit(cannon: Entity): boolean {
-    const space = this.activeRaySpace();
-    const object = cannon.object3D;
-    if (!space || !object) return false;
-    space.getWorldPosition(this.rayOrigin);
-    // Object3D.getWorldDirection yields +Z; XR rays point down their -Z.
-    space.getWorldDirection(this.rayDir).negate();
-    this.ray.set(this.rayOrigin, this.rayDir);
-    this.planePoint.copy(object.position);
-    this.aimPlane.setFromNormalAndCoplanarPoint(this.planeNormal, this.planePoint);
-    return this.ray.intersectPlane(this.aimPlane, this.hitLocal) !== null;
-  }
-
   /** Hand whose select (trigger / pinch) is currently held, right first. */
-  private activeRaySpace(): Object3D | undefined {
-    const gamepads = this.world.input.xr.gamepads;
+  private heldRaySpace(): Object3D | undefined {
     const raySpaces = this.world.player.raySpaces;
-    if (gamepads.right?.getButtonPressed(InputComponent.Trigger)) {
-      return raySpaces.right;
-    }
-    if (gamepads.left?.getButtonPressed(InputComponent.Trigger)) {
-      return raySpaces.left;
-    }
+    if (this.handTriggerHeld(raySpaces.right)) return raySpaces.right;
+    if (this.handTriggerHeld(raySpaces.left)) return raySpaces.left;
     return undefined;
   }
 
-  private xrTriggerHeld(): boolean {
-    return this.activeRaySpace() !== undefined;
+  /** Trigger state of the specific hand that owns `space`. */
+  private handTriggerHeld(space: Object3D | undefined): boolean {
+    if (!space) return false;
+    const gamepads = this.world.input.xr.gamepads;
+    const raySpaces = this.world.player.raySpaces;
+    if (space === raySpaces.right) {
+      return gamepads.right?.getButtonPressed(InputComponent.Trigger) ?? false;
+    }
+    if (space === raySpaces.left) {
+      return gamepads.left?.getButtonPressed(InputComponent.Trigger) ?? false;
+    }
+    return false;
+  }
+
+  private firstHoveredCannon(): Entity | undefined {
+    for (const entity of this.queries.hovered.entities) return entity;
+    return undefined;
   }
 
   // ---------------------------------------------------------------- shared
