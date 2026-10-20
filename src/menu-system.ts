@@ -37,10 +37,15 @@ import {
 
 /** Scale the call button shrinks to while the menu is open (hidden, not removed). */
 const CALL_HIDDEN_SCALE = 0.001;
-/** Vertical gap from rig origin to the call button's bottom edge, metres. */
+/** Call button half-height at rig-local scale 1, metres; the menu top pins here. */
 const CALL_BUTTON_RADIUS = 0.11;
-/** Uniform shrink of the whole menu rig (button + menu, user-tuned 1/3 smaller). */
-const MENU_SCALE = 2 / 3;
+/** Call button's visible scale relative to the rig (user-tuned +1/2 bigger). */
+const CALL_VISIBLE_SCALE = 1.5;
+/**
+ * Uniform shrink of the whole menu rig (button + menu). Cumulative user
+ * tuning: 1/3 then 1/4 smaller — 1 × 2/3 × 3/4 = 1/2 of original size.
+ */
+const MENU_SCALE = 1 / 2;
 /** Pause-menu height, metres (150 × 100 UIKit units at scale 1). */
 const MENU_HEIGHT = 1.0;
 /** Seconds for the expand / collapse animation. */
@@ -48,11 +53,11 @@ const MENU_ANIM_TIME = 0.25;
 /** XR: anchor distance ahead of the head along head yaw, metres. */
 const MENU_XR_FORWARD = 2.5;
 /**
- * XR: anchor lift above head centre, metres. Was 0.85 — the flat view's ~19°
- * elevation (2.5 m · tan(18.8°)) — then shrunk to 2/3 along with the menu
- * sizes. Tunable by feel.
+ * XR: anchor lift above head centre, metres. Was 0.85 (flat view's ~19°
+ * elevation), then shrunk to 2/3 with the menu sizes, then nudged up
+ * 0.015 + 0.03. Tunable by feel.
  */
-const MENU_XR_LIFT = 0.567;
+const MENU_XR_LIFT = 0.612;
 /**
  * Flat mode: fixed world anchor over the water, ahead of the wall, high
  * enough that the default battle view projects it near the DOM ENTER-XR
@@ -61,7 +66,7 @@ const MENU_XR_LIFT = 0.567;
  * vertically; a world anchor + Billboard(lockY) keeps it perfectly still
  * while still facing the camera.
  */
-const MENU_FLAT_ANCHOR = { x: 0, y: 3.45, z: -3.5 };
+const MENU_FLAT_ANCHOR = { x: 0, y: 3.495, z: -3.5 };
 
 type MenuMode = 'closed' | 'opening' | 'open' | 'closing';
 
@@ -71,7 +76,7 @@ type MenuMode = 'closed' | 'opening' | 'open' | 'closing';
  *
  * - Call button: a small circular hamburger that appears once the START gate
  *   opens (GameStarted) and hides while the menu is open.
- * - Pause menu: 1.5 m × 1 m at rig scale 1 (rig runs a uniform ×2/3
+ * - Pause menu: 1.5 m × 1 m at rig scale 1 (rig runs a uniform ×1/2
  *   shrink), expanding downward from the call button with
  *   three column buttons — MAIN (back to welcome), RESTART (rerun the
  *   level), RESUME (unpause).
@@ -168,7 +173,7 @@ export class MenuSystem extends createSystem({
         // Panels load while the welcome screen is still up; park them closed
         // until the START gate opens.
         menuPanel.visible = false;
-        this.setPanelScales(1, CALL_HIDDEN_SCALE);
+        this.setPanelScales(CALL_VISIBLE_SCALE, CALL_HIDDEN_SCALE);
 
         this.wireMenuButtons();
         if (this.queries.started.entities.size > 0) this.onGameStart();
@@ -219,7 +224,7 @@ export class MenuSystem extends createSystem({
   private onGameStart(): void {
     if (!this.panelRig) return;
     this.panelRig.visible = true;
-    this.setPanelScales(1, CALL_HIDDEN_SCALE);
+    this.setPanelScales(CALL_VISIBLE_SCALE, CALL_HIDDEN_SCALE);
     this.mode = 'closed';
   }
 
@@ -231,7 +236,7 @@ export class MenuSystem extends createSystem({
     if (!this.panelRig) return;
     this.panelRig.visible = false;
     if (this.menuPanel) this.menuPanel.visible = false;
-    this.setPanelScales(1, CALL_HIDDEN_SCALE);
+    this.setPanelScales(CALL_VISIBLE_SCALE, CALL_HIDDEN_SCALE);
   }
 
   /**
@@ -247,7 +252,7 @@ export class MenuSystem extends createSystem({
     if (!this.panelRig) return;
     this.panelRig.visible = false;
     if (this.menuPanel) this.menuPanel.visible = false;
-    this.setPanelScales(1, CALL_HIDDEN_SCALE);
+    this.setPanelScales(CALL_VISIBLE_SCALE, CALL_HIDDEN_SCALE);
   }
 
   /**
@@ -260,7 +265,7 @@ export class MenuSystem extends createSystem({
     this.mode = 'closed';
     if (!this.panelRig) return;
     this.panelRig.visible = true;
-    this.setPanelScales(1, CALL_HIDDEN_SCALE);
+    this.setPanelScales(CALL_VISIBLE_SCALE, CALL_HIDDEN_SCALE);
   }
 
   private openMenu(): void {
@@ -303,7 +308,7 @@ export class MenuSystem extends createSystem({
       this.applyMenuScale(this.animProgress);
       if (this.animProgress <= 0) {
         this.menuPanel!.visible = false;
-        this.setPanelScales(1, CALL_HIDDEN_SCALE);
+        this.setPanelScales(CALL_VISIBLE_SCALE, CALL_HIDDEN_SCALE);
         const command = this.pendingCommand;
         this.pendingCommand = null;
         this.mode = 'closed';
@@ -362,7 +367,9 @@ export class MenuSystem extends createSystem({
         -CALL_BUTTON_RADIUS - (MENU_HEIGHT / 2) * eased;
     }
     if (this.callButton) {
-      this.callButton.scale.setScalar(Math.max(CALL_HIDDEN_SCALE, 1 - eased));
+      this.callButton.scale.setScalar(
+        Math.max(CALL_HIDDEN_SCALE, CALL_VISIBLE_SCALE * (1 - eased)),
+      );
     }
   }
 
