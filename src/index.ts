@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { UIKitMLAsset, World } from '@iwsdk/core';
+import { RayDisplayMode, type RayPointer, UIKitMLAsset, World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
 import { BallisticSystem } from './ballistic-system.js';
 import { BillboardSystem } from './billboard-system.js';
@@ -34,6 +34,19 @@ World.create(
   document.getElementById('scene-container') as HTMLDivElement,
   projectOptions,
 ).then((world) => {
+  // XR far-ray: show whenever the hand is tracked, not only while hovering an
+  // interactable (IWSDK defaults to VisibleOnIntersection). The RayPointer
+  // visual sits behind a private field with no public toggle, so use a narrow
+  // structural access. Tracking loss / near-pointer takeover still hide it.
+  for (const hand of ['left', 'right'] as const) {
+    const rayVisual = (
+      world.input.xr.multiPointers[hand] as unknown as {
+        ray: { visual: RayPointer };
+      }
+    ).ray.visual;
+    rayVisual.rayDisplayMode = RayDisplayMode.Visible;
+  }
+
   world.registerSystem(CameraOrbitSystem);
   world.registerSystem(OceanSystem);
   // Simulation tier: the director paces dispatch, movement runs the ships in
