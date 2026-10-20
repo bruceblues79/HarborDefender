@@ -98,6 +98,42 @@ export const WALL_SEA_FACE_Z: number = WALL_CENTER_Z - WALL_DEPTH_Z / 2;
 export const WALL_LAND_FACE_Z: number = WALL_CENTER_Z + WALL_DEPTH_Z / 2;
 
 /**
+ * Defense slots — the fixed wall mounts (城防位) a defender unit can occupy.
+ * Editing a slot's `unit` swaps what stands there; no system code changes.
+ * x is the slot centre across the wall (m); every mount faces the sea (-Z).
+ */
+export type DefenseUnitId = 'cannon' | 'sky-ballista';
+
+export interface DefenseSlotDef {
+  /** Slot centre x across the wall (m). */
+  x: number;
+  /** Unit standing in the slot. */
+  unit: DefenseUnitId;
+}
+
+/**
+ * Five slots evenly spaced across the central 3 m of the 3.4 m wall
+ * (0.2 m margin each side), matching the historical cannon row.
+ */
+export const DEFENSE_SLOTS: DefenseSlotDef[] = [
+  { x: -1.2, unit: 'cannon' },
+  { x: -0.6, unit: 'cannon' },
+  { x: 0, unit: 'sky-ballista' },
+  { x: 0.6, unit: 'cannon' },
+  { x: 1.2, unit: 'cannon' },
+];
+
+/**
+ * Anti-air ballista aim envelope: fixed high elevation against flyers —
+ * default 75° up, at most 15° of depression, never above 75°.
+ */
+export const SKY_BALLISTA = {
+  pitchDefault: 75,
+  pitchMin: 60,
+  pitchMax: 75,
+};
+
+/**
  * Pirate hull envelope is ~1.2 m long with the bow on local -Z, so the bow
  * reaches 0.6 m ahead of the ship's origin.
  */

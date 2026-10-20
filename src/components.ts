@@ -153,13 +153,19 @@ export const BallisticFlight = createComponent('BallisticFlight', {
  * Cannon aim state — the single truth for traverse and elevation.
  * CannonAimSystem writes it from drag input (browser drag / XR pinch-drag via
  * the native `Pressed` tag) and applies it every frame: yaw on the cannon
- * root, pitch on the gun_rotate pivot.
+ * root, pitch on the gun_rotate pivot. Pitch limits are per-entity scalars so
+ * a sky ballista (fixed high elevation) can share the component with cannons;
+ * the defaults reproduce the stock cannon envelope.
  */
 export const CannonAim = createComponent('CannonAim', {
   /** Whole-cannon traverse, degrees, clamped ±COMBAT.aimYawRange. */
   yawDeg: { type: 'Float32', default: 0 },
-  /** Barrel elevation, degrees, clamped [COMBAT.aimPitchMin, aimPitchMax]. */
+  /** Barrel elevation, degrees, clamped [pitchMinDeg, pitchMaxDeg]. */
   pitchDeg: { type: 'Float32', default: COMBAT.aimPitchDefault },
+  /** Per-entity elevation floor (deg) — stock cannon: COMBAT.aimPitchMin. */
+  pitchMinDeg: { type: 'Float32', default: COMBAT.aimPitchMin },
+  /** Per-entity elevation ceiling (deg) — stock cannon: COMBAT.aimPitchMax. */
+  pitchMaxDeg: { type: 'Float32', default: COMBAT.aimPitchMax },
 });
 
 /**

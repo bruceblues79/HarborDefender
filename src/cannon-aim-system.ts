@@ -293,10 +293,16 @@ export class CannonAimSystem extends createSystem({
       'yawDeg',
       clamp(yawDeg, -COMBAT.aimYawRange, COMBAT.aimYawRange),
     );
+    // Elevation limits live on the entity: cannons get the stock 0-45 envelope
+    // via component defaults, the sky ballista overrides with its own.
     cannon.setValue(
       CannonAim,
       'pitchDeg',
-      clamp(pitchDeg, COMBAT.aimPitchMin, COMBAT.aimPitchMax),
+      clamp(
+        pitchDeg,
+        Number(cannon.getValue(CannonAim, 'pitchMinDeg')),
+        Number(cannon.getValue(CannonAim, 'pitchMaxDeg')),
+      ),
     );
   }
 }

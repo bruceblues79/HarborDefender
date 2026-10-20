@@ -17,6 +17,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  ConeGeometry,
   CylinderGeometry,
   DoubleSide,
   ExtrudeGeometry,
@@ -25,9 +26,11 @@ import {
   MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
+  Quaternion,
   Shape,
   SphereGeometry,
   SRGBColorSpace,
+  TorusGeometry,
   Vector2,
   Vector3,
 } from '@iwsdk/core';
@@ -326,6 +329,23 @@ function mergeParts(parts: BufferGeometry[]): BufferGeometry {
   merged.computeBoundingBox();
   merged.computeBoundingSphere();
   return merged;
+}
+
+/**
+ * A cylinder strut spanned between two points — the rigging primitive for
+ * bow strings, crank arms and any tension member that reads as a line.
+ */
+function strut(a: Vector3, b: Vector3, radius: number, segments = 5): BufferGeometry {
+  const dir = new Vector3().subVectors(b, a);
+  const length = dir.length();
+  const geo = new CylinderGeometry(radius, radius, length, segments);
+  const quaternion = new Quaternion().setFromUnitVectors(
+    new Vector3(0, 1, 0),
+    dir.normalize(),
+  );
+  geo.applyQuaternion(quaternion);
+  geo.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+  return geo;
 }
 
 // Wood colours (warm, low-contrast browns)
@@ -854,6 +874,207 @@ function createPirateShipExport(): Object3D {
 }
 
 // ---------------------------------------------------------------------------
+// Sky ballista (anti-air ballista on a swivel post)
+// ---------------------------------------------------------------------------
+
+// Sky-ballista palette: shares the cannon wood/iron families, adds hemp
+// string and pale fletching tints.
+const STRING_COLOR = 0x9a8a6a;
+const FLETCHING_COLOR = 0xcfc4a6;
+const BOLT_SHAFT_COLOR = 0x8a6a45;
+
+/**
+ * Fixed pedestal in root space: the disc base, tapered post and the iron
+ * collar the yoke straddles. y = 0 is the placement floor; footprint is the
+ * 0.23 m disc, inside the cannon carriage's 0.25 × 0.31 m envelope.
+ */
+function buildBallistaBase(rand: () => number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  const disc = new CylinderGeometry(0.1, 0.115, 0.03, 20);
+  disc.translate(0, 0.015, 0);
+  paint(disc, WHEEL_COLOR, 0.04, rand);
+  parts.push(disc);
+
+  const post = new CylinderGeometry(0.034, 0.05, 0.07, 12);
+  post.translate(0, 0.065, 0);
+  paint(post, CHEEK_COLOR, 0.04, rand);
+  parts.push(post);
+
+  const collar = new CylinderGeometry(0.048, 0.048, 0.02, 12);
+  collar.translate(0, 0.11, 0);
+  paint(collar, BARREL_COLOR, 0.03, rand);
+  parts.push(collar);
+
+  return mergeParts(parts);
+}
+
+/**
+ * Rotating assembly in gun_rotate-local space (origin = the trunnion axis,
+ * mounted 0.19 m above the floor). At 0° elevation the bolt points -Z; the
+ * CannonAim pitch lifts the whole yoke-and-beam assembly. Sized so the tiller
+ * tail, winch and yoke clear the fixed collar through the full 60-75°
+ * elevation sweep and ±45° yaw.
+ */
+function buildBallistaAssembly(rand: () => number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  // Swivel yoke: two cheek plates descending from the trunnion axis,
+  // straddling the fixed collar (cheek inner faces at x = ±0.052).
+  const cheek = new BoxGeometry(0.016, 0.075, 0.05);
+  const cheekPlus = cheek.clone();
+  cheekPlus.translate(0.06, -0.0375, 0);
+  const cheekMinus = cheek.clone();
+  cheekMinus.translate(-0.06, -0.0375, 0);
+  paint(cheekPlus, CHEEK_COLOR, 0.04, rand);
+  paint(cheekMinus, CHEEK_COLOR, 0.04, rand);
+  parts.push(cheekPlus, cheekMinus);
+
+  // Trunnion through the yoke tops, capped by iron washers.
+  const trunnion = new CylinderGeometry(0.009, 0.009, 0.15, 8);
+  trunnion.rotateZ(Math.PI / 2);
+  paint(trunnion, BARREL_COLOR, 0.03, rand);
+  parts.push(trunnion);
+  for (const sx of [-1, 1]) {
+    const washer = new CylinderGeometry(0.016, 0.016, 0.006, 10);
+    washer.rotateZ(Math.PI / 2);
+    washer.translate(sx * 0.072, 0, 0);
+    paint(washer, BARREL_COLOR, 0.03, rand);
+    parts.push(washer);
+  }
+
+  // Main tiller beam, nose toward -Z, riding above the trunnion axis.
+  const beam = new BoxGeometry(0.035, 0.035, 0.19);
+  beam.translate(0, 0.025, -0.02);
+  paint(beam, CHEEK_COLOR, 0.04, rand);
+  parts.push(beam);
+
+  // Bolt-groove rails on the beam top, cradling the loaded bolt.
+  for (const sx of [-1, 1]) {
+    const rail = new BoxGeometry(0.008, 0.01, 0.13);
+    rail.translate(sx * 0.0135, 0.0475, -0.035);
+    paint(rail, TRANSOM_COLOR, 0.035, rand);
+    parts.push(rail);
+  }
+
+  // Torsion block housing the prod centre at the beam nose.
+  const block = new BoxGeometry(0.075, 0.055, 0.045);
+  block.translate(0, 0.025, -0.115);
+  paint(block, BARREL_COLOR, 0.03, rand);
+  parts.push(block);
+
+  // Twin prod arms: one -Z half-torus lying flat, tips swept out to ±0.105.
+  const prod = new TorusGeometry(0.105, 0.009, 8, 14, Math.PI);
+  prod.rotateX(-Math.PI / 2);
+  prod.translate(0, 0.025, -0.045);
+  paint(prod, BARREL_COLOR, 0.03, rand);
+  parts.push(prod);
+
+  // Drawn string: V from both prod tips back to the nut on the beam.
+  const nut = new BoxGeometry(0.018, 0.016, 0.014);
+  nut.translate(0, 0.04, 0.028);
+  paint(nut, BARREL_COLOR, 0.03, rand);
+  parts.push(nut);
+  for (const sx of [-1, 1]) {
+    const string = strut(
+      new Vector3(sx * 0.105, 0.025, -0.045),
+      new Vector3(0, 0.04, 0.028),
+      0.0022,
+    );
+    paint(string, STRING_COLOR, 0.02, rand);
+    parts.push(string);
+  }
+
+  // Loaded bolt: shaft in the groove, iron head overhanging the nose,
+  // crossed fletching at the tail.
+  const shaft = new CylinderGeometry(0.005, 0.005, 0.13, 6);
+  shaft.rotateX(Math.PI / 2);
+  shaft.translate(0, 0.0525, -0.04);
+  paint(shaft, BOLT_SHAFT_COLOR, 0.03, rand);
+  parts.push(shaft);
+
+  const head = new ConeGeometry(0.009, 0.026, 8);
+  head.rotateX(-Math.PI / 2);
+  head.translate(0, 0.0525, -0.118);
+  paint(head, BARREL_COLOR, 0.03, rand);
+  parts.push(head);
+
+  const finAcross = new BoxGeometry(0.024, 0.0025, 0.038);
+  finAcross.translate(0, 0.0525, 0.01);
+  paint(finAcross, FLETCHING_COLOR, 0.02, rand);
+  parts.push(finAcross);
+  const finUpright = new BoxGeometry(0.0025, 0.024, 0.038);
+  finUpright.translate(0, 0.0525, 0.01);
+  paint(finUpright, FLETCHING_COLOR, 0.02, rand);
+  parts.push(finUpright);
+
+  // Windlass at the tiller end: iron drum on the beam top with a crank
+  // arm and handle peg per side.
+  const drum = new CylinderGeometry(0.013, 0.013, 0.055, 8);
+  drum.rotateZ(Math.PI / 2);
+  drum.translate(0, 0.05, 0.05);
+  paint(drum, BARREL_COLOR, 0.03, rand);
+  parts.push(drum);
+  for (const sx of [-1, 1]) {
+    const arm = strut(
+      new Vector3(sx * 0.0275, 0.05, 0.05),
+      new Vector3(sx * 0.046, 0.038, 0.05),
+      0.003,
+    );
+    paint(arm, BARREL_COLOR, 0.03, rand);
+    parts.push(arm);
+    const handle = new CylinderGeometry(0.003, 0.003, 0.014, 6);
+    handle.rotateZ(Math.PI / 2);
+    handle.translate(sx * 0.05, 0.038, 0.05);
+    paint(handle, BARREL_COLOR, 0.03, rand);
+    parts.push(handle);
+  }
+
+  return mergeParts(parts);
+}
+
+/**
+ * Medieval harbour anti-air ballista.
+ *
+ * - Origin: centre of the disc base; y = 0 is the floor (wall top).
+ * - Forward: the bolt points -Z at 0 elevation (cannon muzzle convention);
+ *   CannonAim's default 75° elevation points it up and slightly seaward.
+ * - `gun_rotate` is the elevation pivot at the trunnion axis (0, 0.19, 0),
+ *   the same node-name contract as the cannon and ship gun.
+ * - Two draw calls: merged fixed pedestal, merged swivel assembly. All
+ *   colour is vertex-baked onto one white roughness-0.75 dielectric material.
+ */
+function createSkyBallistaExport(): Object3D {
+  const rand = makeRandom(20261020);
+
+  const material = new MeshStandardMaterial({
+    name: 'sky-ballista',
+    color: 0xffffff,
+    roughness: 0.75,
+    metalness: 0,
+    vertexColors: true,
+  });
+
+  const baseMesh = new Mesh(buildBallistaBase(rand), material);
+  baseMesh.name = 'sky-ballista-base';
+
+  const assemblyMesh = new Mesh(buildBallistaAssembly(rand), material);
+  assemblyMesh.name = 'sky-ballista-assembly';
+
+  const gunRotate = new Object3D();
+  gunRotate.name = 'gun_rotate';
+  gunRotate.position.set(0, 0.19, 0);
+  gunRotate.add(assemblyMesh);
+
+  const root = new Object3D();
+  root.name = 'sky-ballista';
+  root.add(baseMesh);
+  root.add(gunRotate);
+
+  return root;
+}
+
+// ---------------------------------------------------------------------------
 // Export driver
 // ---------------------------------------------------------------------------
 
@@ -905,4 +1126,7 @@ await exportGLB(createCannonExport(), 'cannon.glb');
 // fixed pedestal + turntable; the renamed file isolates the node-structure
 // change from any stale cached GLB.
 await exportGLB(createPirateShipExport(), 'pirate-ship-v2.glb');
+// sky-ballista: the anti-air mount replaces the centre wall slot (task 022);
+// a fresh file name keeps it isolated from any stale GLB caching.
+await exportGLB(createSkyBallistaExport(), 'sky-ballista.glb');
 console.log('\nDone. GLBs written to public/gltf/');

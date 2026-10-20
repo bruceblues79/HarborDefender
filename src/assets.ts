@@ -74,6 +74,12 @@ export default defineAssets({
     name: 'Cannon',
     priority: 'background',
   },
+  'sky-ballista': {
+    url: publicAssetUrl('gltf/sky-ballista.glb'),
+    type: AssetType.GLTF,
+    name: 'Sky Ballista',
+    priority: 'background',
+  },
   'pirate-ship': {
     url: publicAssetUrl('gltf/pirate-ship-v2.glb'),
     type: AssetType.GLTF,
