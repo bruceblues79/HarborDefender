@@ -185,11 +185,16 @@ export class CannonAimSystem extends createSystem({
     this.dragLast.x = pos.x;
     this.dragLast.y = pos.y;
     // Grab-the-barrel: pull right -> muzzle right (+yaw), pull down -> muzzle
-    // down (-pitch). Sensitivities live in COMBAT for feel tuning.
+    // down (-pitch). Units with invertPitchDrag flip the vertical axis (the
+    // sky ballista reads inverted when nearly vertical). Sensitivities live
+    // in COMBAT for feel tuning.
+    const invert = Boolean(
+      this.dragCannon.getValue(CannonAim, 'invertPitchDrag'),
+    );
     this.addAim(
       this.dragCannon,
       dx * COMBAT.aimDegreesPerPixel,
-      -dy * COMBAT.aimDegreesPerPixel,
+      (invert ? dy : -dy) * COMBAT.aimDegreesPerPixel,
     );
   }
 
@@ -228,13 +233,16 @@ export class CannonAimSystem extends createSystem({
     }
     this.xrDragSpace.getWorldPosition(this.xrHandPos);
     // Wrist travel drives the aim, absolute from the grab pose: hand
-    // right/left -> muzzle right/left, hand up/down -> muzzle up/down.
+    // right/left -> muzzle right/left, hand up/down -> muzzle up/down
+    // (vertical axis flipped for units with invertPitchDrag).
+    const invert = Boolean(cannon.getValue(CannonAim, 'invertPitchDrag'));
     this.setAim(
       cannon,
       this.xrAimStartYaw -
         (this.xrHandPos.x - this.xrHandStart.x) * COMBAT.aimDegreesPerMeter,
       this.xrAimStartPitch +
-        (this.xrHandPos.y - this.xrHandStart.y) * COMBAT.aimDegreesPerMeter,
+        (invert ? -1 : 1) *
+          (this.xrHandPos.y - this.xrHandStart.y) * COMBAT.aimDegreesPerMeter,
     );
   }
 

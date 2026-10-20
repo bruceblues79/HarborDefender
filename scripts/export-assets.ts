@@ -1039,8 +1039,9 @@ function buildBallistaAssembly(rand: () => number): BufferGeometry {
  * - Origin: centre of the disc base; y = 0 is the floor (wall top).
  * - Forward: the bolt points -Z at 0 elevation (cannon muzzle convention);
  *   CannonAim's default 75° elevation points it up and slightly seaward.
- * - `gun_rotate` is the elevation pivot at the trunnion axis (0, 0.19, 0),
- *   the same node-name contract as the cannon and ship gun.
+ * - `gun_rotate` is the elevation pivot at the trunnion axis (0, 0.21, 0),
+ *   the same node-name contract as the cannon and ship gun; the swivel
+ *   assembly under it is scaled 1.2x about that axis.
  * - Two draw calls: merged fixed pedestal, merged swivel assembly. All
  *   colour is vertex-baked onto one white roughness-0.75 dielectric material.
  */
@@ -1060,10 +1061,16 @@ function createSkyBallistaExport(): Object3D {
 
   const assemblyMesh = new Mesh(buildBallistaAssembly(rand), material);
   assemblyMesh.name = 'sky-ballista-assembly';
+  // Upper body enlarged 1.2x about the trunnion (scale origin = pivot): the
+  // base and the fulcrum relationship stay untouched, the mount keeps its
+  // balance. The pivot rises 0.19 -> 0.21 so the deeper yoke straddle seats
+  // flush on the collar top and the tiller tail keeps collar clearance
+  // through the full 60-75 degree sweep.
+  assemblyMesh.scale.setScalar(1.2);
 
   const gunRotate = new Object3D();
   gunRotate.name = 'gun_rotate';
-  gunRotate.position.set(0, 0.19, 0);
+  gunRotate.position.set(0, 0.21, 0);
   gunRotate.add(assemblyMesh);
 
   const root = new Object3D();

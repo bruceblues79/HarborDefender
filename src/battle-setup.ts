@@ -243,11 +243,14 @@ export function startBattle(world: World): void {
             } else {
               // Anti-air ballista: fixed 75° elevation with 15° of
               // depression, and no combat kit — without HitCore/Health it
-              // can never be targeted, hit or knocked out.
+              // can never be targeted, hit or knocked out. Its nearly
+              // vertical barrel flips the vertical drag feedback
+              // (invertPitchDrag), so push up lays it forward.
               unitEntity.addComponent(CannonAim, {
                 pitchDeg: SKY_BALLISTA.pitchDefault,
                 pitchMinDeg: SKY_BALLISTA.pitchMin,
                 pitchMaxDeg: SKY_BALLISTA.pitchMax,
+                invertPitchDrag: true,
               });
               defenseEntities.push({
                 entity: unitEntity,

@@ -166,6 +166,12 @@ export const CannonAim = createComponent('CannonAim', {
   pitchMinDeg: { type: 'Float32', default: COMBAT.aimPitchMin },
   /** Per-entity elevation ceiling (deg) — stock cannon: COMBAT.aimPitchMax. */
   pitchMaxDeg: { type: 'Float32', default: COMBAT.aimPitchMax },
+  /**
+   * Flip the vertical drag feedback. The sky ballista opts in: its nearly
+   * vertical barrel reads inverted with the stock grab-the-barrel mapping,
+   * so push up lays it forward and pull down raises it.
+   */
+  invertPitchDrag: { type: 'Boolean', default: false },
 });
 
 /**
