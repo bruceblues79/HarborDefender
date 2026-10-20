@@ -39,6 +39,8 @@ import {
 const CALL_HIDDEN_SCALE = 0.001;
 /** Vertical gap from rig origin to the call button's bottom edge, metres. */
 const CALL_BUTTON_RADIUS = 0.11;
+/** Uniform shrink of the whole menu rig (button + menu, user-tuned 1/3 smaller). */
+const MENU_SCALE = 2 / 3;
 /** Pause-menu height, metres (150 × 100 UIKit units at scale 1). */
 const MENU_HEIGHT = 1.0;
 /** Seconds for the expand / collapse animation. */
@@ -46,11 +48,11 @@ const MENU_ANIM_TIME = 0.25;
 /** XR: anchor distance ahead of the head along head yaw, metres. */
 const MENU_XR_FORWARD = 2.5;
 /**
- * XR: anchor lift above head centre, metres. Matches the flat view's ~19°
- * elevation (flat camera pitch + anchor height): 2.5 m · tan(18.8°) ≈ 0.85.
- * The old 0.35 read as eye level in the headset. Tunable by feel.
+ * XR: anchor lift above head centre, metres. Was 0.85 — the flat view's ~19°
+ * elevation (2.5 m · tan(18.8°)) — then shrunk to 2/3 along with the menu
+ * sizes. Tunable by feel.
  */
-const MENU_XR_LIFT = 0.85;
+const MENU_XR_LIFT = 0.567;
 /**
  * Flat mode: fixed world anchor over the water, ahead of the wall, high
  * enough that the default battle view projects it near the DOM ENTER-XR
@@ -69,7 +71,8 @@ type MenuMode = 'closed' | 'opening' | 'open' | 'closing';
  *
  * - Call button: a small circular hamburger that appears once the START gate
  *   opens (GameStarted) and hides while the menu is open.
- * - Pause menu: 1.5 m × 1 m, expanding downward from the call button with
+ * - Pause menu: 1.5 m × 1 m at rig scale 1 (rig runs a uniform ×2/3
+ *   shrink), expanding downward from the call button with
  *   three column buttons — MAIN (back to welcome), RESTART (rerun the
  *   level), RESUME (unpause).
  *
@@ -133,8 +136,11 @@ export class MenuSystem extends createSystem({
         this.menuPanel = menuPanel;
 
         // One rig under the Follower so both panels move and face together.
+        // Uniform 2/3 shrink: button, menu and the downward expansion all
+        // stay proportional (CALL_BUTTON_RADIUS / MENU_HEIGHT are rig-local).
         const rig = new Object3D();
         rig.name = 'MenuRig';
+        rig.scale.setScalar(MENU_SCALE);
         rig.add(callButton);
         rig.add(menuPanel);
         rig.visible = false;
