@@ -20,7 +20,7 @@
 | atk/hurt | cannon（城防炮） | ballista(防空弩) |
 |:--------:|:----------------:|:-------------:|
 | ship     | 15%              | 17.5%         |
-| bombardier | 10%            | 15%           |
+| bombardier | 10%            | 12.5%           |
 
 ### defender-to-pirate（守方 → 海盗）
 
