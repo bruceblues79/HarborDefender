@@ -252,21 +252,18 @@ export function startBattle(world: World): void {
                 defaultPitchDeg: COMBAT.aimPitchDefault,
               });
             } else {
-              // Anti-air ballista: fixed 75° elevation with 15° of
+              // Anti-air ballista: fixed 75° elevation with 20° of
               // depression, and a full combat kit. It fires straight bolts
               // (gravityScale 0 — the flight model the flyer's berth band
               // FLYER_STOP_Z_* is derived from) that are recycled once they
               // climb past COMBAT.boltReclaimY, and carries the same
               // HitCore/Health pool as a cannon so ships and bombardiers
               // can knock it out (17.5% / 15% per hit) and the defeat check
-              // counts it. Its nearly vertical barrel flips the vertical
-              // drag feedback (invertPitchDrag), so push up lays it
-              // forward.
+              // counts it.
               unitEntity.addComponent(CannonAim, {
                 pitchDeg: SKY_BALLISTA.pitchDefault,
                 pitchMinDeg: SKY_BALLISTA.pitchMin,
                 pitchMaxDeg: SKY_BALLISTA.pitchMax,
-                invertPitchDrag: true,
               });
               unitEntity.addComponent(CannonFire, {
                 interval: COMBAT.ballistaFireInterval,

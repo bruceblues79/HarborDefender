@@ -141,11 +141,11 @@ export const DEFENSE_SLOTS: DefenseSlotDef[] = [
 
 /**
  * Anti-air ballista aim envelope: fixed high elevation against flyers —
- * default 75° up, at most 15° of depression, never above 75°.
+ * default 75° up, at most 20° of depression, never above 75°.
  */
 export const SKY_BALLISTA = {
   pitchDefault: 75,
-  pitchMin: 60,
+  pitchMin: 55,
   pitchMax: 75,
 };
 

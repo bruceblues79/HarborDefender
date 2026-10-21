@@ -31,8 +31,8 @@ const clamp = (value: number, min: number, max: number): number =>
  * - Browser: once a press on a cannon anchors a pointer, that pointer owns
  *   the drag until pointerup (grab-the-barrel semantics — the drag survives
  *   sliding off the barrel, matching how a real grabbed object behaves).
- *   Pixel deltas map to yaw/pitch: pull right swings the muzzle right, pull
- *   down drops it.
+ *   Pixel deltas map to yaw/pitch: pull right swings the muzzle left, pull
+ *   down drops it — the horizontal axis is mirrored for every combat unit.
  * - XR: grabbing a hovered cannon while the trigger is held anchors that
  *   hand; the hand's world-space travel from the grab pose maps to yaw/pitch
  *   (wrist displacement, not ray-plane geometry — turret rotation never
@@ -184,17 +184,13 @@ export class CannonAimSystem extends createSystem({
     const dy = pos.y - this.dragLast.y;
     this.dragLast.x = pos.x;
     this.dragLast.y = pos.y;
-    // Grab-the-barrel: pull right -> muzzle right (+yaw), pull down -> muzzle
-    // down (-pitch). Units with invertPitchDrag flip the vertical axis (the
-    // sky ballista reads inverted when nearly vertical). Sensitivities live
-    // in COMBAT for feel tuning.
-    const invert = Boolean(
-      this.dragCannon.getValue(CannonAim, 'invertPitchDrag'),
-    );
+    // Grab-the-barrel, mirrored: pull right -> muzzle left (-yaw), pull
+    // down -> muzzle down (-pitch). The horizontal axis is mirrored for
+    // every combat unit; sensitivities live in COMBAT for feel tuning.
     this.addAim(
       this.dragCannon,
-      dx * COMBAT.aimDegreesPerPixel,
-      (invert ? dy : -dy) * COMBAT.aimDegreesPerPixel,
+      -dx * COMBAT.aimDegreesPerPixel,
+      -dy * COMBAT.aimDegreesPerPixel,
     );
   }
 
@@ -232,17 +228,14 @@ export class CannonAimSystem extends createSystem({
       return;
     }
     this.xrDragSpace.getWorldPosition(this.xrHandPos);
-    // Wrist travel drives the aim, absolute from the grab pose: hand
-    // right/left -> muzzle right/left, hand up/down -> muzzle up/down
-    // (vertical axis flipped for units with invertPitchDrag).
-    const invert = Boolean(cannon.getValue(CannonAim, 'invertPitchDrag'));
+    // Wrist travel drives the aim, absolute from the grab pose, mirrored
+    // like the browser drag: hand right -> muzzle left, hand up -> muzzle up.
     this.setAim(
       cannon,
-      this.xrAimStartYaw -
+      this.xrAimStartYaw +
         (this.xrHandPos.x - this.xrHandStart.x) * COMBAT.aimDegreesPerMeter,
       this.xrAimStartPitch +
-        (invert ? -1 : 1) *
-          (this.xrHandPos.y - this.xrHandStart.y) * COMBAT.aimDegreesPerMeter,
+        (this.xrHandPos.y - this.xrHandStart.y) * COMBAT.aimDegreesPerMeter,
     );
   }
 
