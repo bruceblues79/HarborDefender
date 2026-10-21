@@ -269,7 +269,13 @@ export const designList: LevelSpec[] = [
     name: 'design',
     waves: [
       {
-        units: ['bombardier', 'bombardier', 'bombardier'],
+        units: [
+          'pirate-ship',
+          'pirate-ship',
+          'pirate-ship',
+          'bombardier',
+          'bombardier',
+        ],
       },
     ],
   },
