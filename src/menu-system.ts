@@ -114,6 +114,8 @@ export class MenuSystem extends createSystem({
   private mode: MenuMode = 'closed';
   private pendingCommand: 'main' | 'restart' | null = null;
   private animProgress = 0;
+  /** Environment the panel scales were last applied for; a flip re-applies. */
+  private factorsEnvironment: boolean | null = null;
   private panelRig: Object3D | null = null;
   private menuPanel: UIKitMLAsset | null = null;
   private callButton: UIKitMLAsset | null = null;
@@ -307,6 +309,7 @@ export class MenuSystem extends createSystem({
   update(delta: number): void {
     if (!this.panelRig?.visible) return;
     this.updateAnchor();
+    this.updateEnvironmentFactors();
     if (this.mode === 'opening') {
       this.animProgress = Math.min(1, this.animProgress + delta / MENU_ANIM_TIME);
       if (this.animProgress >= 1) {
@@ -395,6 +398,25 @@ export class MenuSystem extends createSystem({
     const immersive =
       this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
     return immersive ? MENU_FACTORS_XR : MENU_FACTORS_FLAT;
+  }
+
+  /**
+   * React to an environment flip mid-game (XR <-> flat): the discrete
+   * moments that read menuFactors() (game start, menu open/close) already
+   * pick up the new factors, but a static closed button or an open menu
+   * would otherwise keep the old environment's size until touched again.
+   * Animating states self-correct — applyMenuScale re-reads every frame.
+   */
+  private updateEnvironmentFactors(): void {
+    const immersive =
+      this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+    if (this.factorsEnvironment === immersive) return;
+    this.factorsEnvironment = immersive;
+    if (this.mode === 'open') {
+      this.setPanelScales(CALL_HIDDEN_SCALE, this.menuFactors().menu);
+    } else if (this.mode === 'closed') {
+      this.setPanelScales(this.menuFactors().call, CALL_HIDDEN_SCALE);
+    }
   }
 
   private setPanelScales(callScale: number, menuScale: number): void {
