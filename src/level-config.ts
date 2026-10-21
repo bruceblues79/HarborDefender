@@ -269,7 +269,13 @@ export const designList: LevelSpec[] = [
     name: 'design',
     waves: [
       {
-        units: ['bombardier', 'bombardier', 'bombardier'],
+        units: [
+          'pirate-ship',
+          'pirate-ship',
+          'pirate-ship',
+          'bombardier',
+          'bombardier',
+        ],
       },
     ],
   },
@@ -485,7 +491,7 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   'pirate-ship->cannon': COMBAT.pirateShellDamage,
   'pirate-ship->sky-ballista': 17.5,
   'bombardier->cannon': 10,
-  'bombardier->sky-ballista': 15,
+  'bombardier->sky-ballista': 12.5,
 };
 
 /**

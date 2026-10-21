@@ -1381,6 +1381,16 @@ function createBombardierExport(): Object3D {
   machine.scale.setScalar(0.85);
   machine.add(new Mesh(buildBombardierBody(rand), material));
 
+  // Bomb-release anchor baked into the GLB at the slung bomb's centroid
+  // (machine-local: the merged bomb sphere sits at (0, -0.21, -0.12)).
+  // PirateFireSystem launches shells from the `muzzle` node, and
+  // decorateShipPrototype adopts a GLB-borne muzzle over its bounding-box
+  // bottom-centre fallback, so the drop spawns exactly where the bomb hangs.
+  const muzzle = new Object3D();
+  muzzle.name = 'muzzle';
+  muzzle.position.set(0, -0.21, -0.12);
+  machine.add(muzzle);
+
   const pilotMesh = new Mesh(buildBombardierPilot(rand), material);
   pilotMesh.name = 'bombardier-pilot';
   pilotMesh.position.y = -0.018;
@@ -1458,7 +1468,7 @@ await exportGLB(createPirateShipExport(), 'pirate-ship-v2.glb');
 // sky-ballista: the anti-air mount replaces the centre wall slot (task 022);
 // a fresh file name keeps it isolated from any stale GLB caching.
 await exportGLB(createSkyBallistaExport(), 'sky-ballista.glb');
-// bombardier: the goblin-piloted flyer joins the raid (task 023); the v2
-// name isolates the single-rotor redesign from any stale GLB caching.
-await exportGLB(createBombardierExport(), 'bombardier-v2.glb');
+// bombardier: the goblin-piloted flyer joins the raid (task 023); the v3
+// rename isolates the new baked-in `muzzle` bomb anchor from any stale GLB.
+await exportGLB(createBombardierExport(), 'bombardier-v3.glb');
 console.log('\nDone. GLBs written to public/gltf/');
