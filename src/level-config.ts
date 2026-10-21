@@ -169,15 +169,6 @@ export const SHIP_STOP_Z_MAX: number =
 /** Ships float just below the wave crest at the surface. */
 export const SHIP_Y = 0.66;
 
-/**
- * Bombardier flight envelope. The flyer cruises a fixed FLYER_ALTITUDE
- * above the ships' waterline, and its berth is not a designer choice: the
- * sky ballista's elevation envelope projects a coverage band onto the
- * cruise plane, and the flyer stops inside that band.
- */
-export const FLYER_ALTITUDE = 0.75;
-export const FLYER_Y = SHIP_Y + FLYER_ALTITUDE;
-
 /** Spin of the bombardier's rotor nodes, radians per second. */
 export const PROPELLER_SPIN_RAD = 8;
 
@@ -214,44 +205,6 @@ function ballistaBoltCrossZ(pitchDeg: number): number {
     BALLISTA_MUZZLE_LOCAL_Z * Math.cos(e);
   return muzzleZ - (FLYER_Y - muzzleY) / Math.tan(e);
 }
-
-/**
- * The flyer's berth band: at pitchMax (75°) the bolt crosses the cruise
- * plane nearest the wall (≈ -0.84); at pitchMin (60°, 15° of depression
- * from the default) it crosses farthest out (≈ -0.96). MIN < MAX keeps the
- * ship constants' reading — MIN far out, MAX against the wall.
- */
-export const FLYER_STOP_Z_MIN = ballistaBoltCrossZ(SKY_BALLISTA.pitchMin);
-export const FLYER_STOP_Z_MAX = ballistaBoltCrossZ(SKY_BALLISTA.pitchMax);
-
-/**
- * Unit registry keyed by the unitType string used in level data. Adding a new
- * enemy (goblin flyer, boss) is one entry here plus its asset manifest entry.
- */
-export const UNIT_TYPES: Record<string, UnitTypeDef> = {
-  'pirate-ship': {
-    assetId: 'pirate-ship',
-    movement: 'default-ship',
-    faction: 'attacker',
-    cruiseY: SHIP_Y,
-    armed: true,
-    rotor: false,
-    wake: true,
-    stopZMin: SHIP_STOP_Z_MIN,
-    stopZMax: SHIP_STOP_Z_MAX,
-  },
-  bombardier: {
-    assetId: 'bombardier',
-    movement: 'default-flyer',
-    faction: 'attacker',
-    cruiseY: FLYER_Y,
-    armed: false,
-    rotor: true,
-    wake: false,
-    stopZMin: FLYER_STOP_Z_MIN,
-    stopZMax: FLYER_STOP_Z_MAX,
-  },
-};
 
 /**
  * Ripples a moving unit drags across the surface. Strength is the wake's
@@ -489,4 +442,69 @@ export const COMBAT = {
   healthBarBackColor: 0xc42424,
   /** Fill colour (sRGB hex) — the remaining health. */
   healthBarFillColor: 0x35c94f,
+};
+
+/**
+ * Bombardier flight envelope. The flyer must sit above every cannonball the
+ * city battery can throw — its cruise plane is derived from the shell
+ * ballistics, not chosen by hand:
+ * - a cannon's gun_rotate pivot rides the wall top (y 0.8) and the muzzle
+ *   hangs gun_rotate-local z -0.2 (same offset as the level-wave-system
+ *   muzzle helper), so a 45° barrel launches from y 0.8 + 0.2·sin45° ≈ 0.941
+ *   — matching the shellSpeed tuning note above;
+ * - the barrel clamps at aimPitchMax 45°, and over [0°, 45°] both the muzzle
+ *   height and the vertical speed component rise together, so 45° is the
+ *   global worst case;
+ * - apex rise = (v·sin45°)² / 2g ≈ 1.42 → the shell tops out at y ≈ 2.36.
+ * Pirate cannons are flatter still: their arc solves for an exact hit with a
+ * ~0.2-0.35 m apex, nowhere near this plane.
+ */
+const CANNON_MUZZLE_LOCAL_Z = -0.2;
+const CANNON_MUZZLE_Y_45 = 0.8 - CANNON_MUZZLE_LOCAL_Z * Math.sin(Math.PI / 4);
+const CANNON_APEX_Y =
+  CANNON_MUZZLE_Y_45 +
+  (COMBAT.shellSpeed * Math.sin(Math.PI / 4)) ** 2 / (2 * COMBAT.gravity);
+/** Safety margin above the shell apex, also covering radius differences. */
+const FLYER_CLEARANCE = 0.2;
+export const FLYER_Y = CANNON_APEX_Y + FLYER_CLEARANCE;
+
+/**
+ * The flyer's berth band, projected by the sky ballista's elevation envelope
+ * onto the cruise plane: at pitchMax (75°) the bolt crosses nearest the wall
+ * (≈ -1.15, a hand's width off the sea face but clear of it); at pitchMin
+ * (60°, the default's full 15° of depression) it crosses farthest out
+ * (≈ -1.62). Anywhere inside the band some elevation in [60°, 75°] reaches
+ * the flyer, so the ballista can hit it once it attacks. MIN < MAX keeps the
+ * ship constants' reading — MIN far out, MAX against the wall.
+ */
+export const FLYER_STOP_Z_MIN = ballistaBoltCrossZ(SKY_BALLISTA.pitchMin);
+export const FLYER_STOP_Z_MAX = ballistaBoltCrossZ(SKY_BALLISTA.pitchMax);
+
+/**
+ * Unit registry keyed by the unitType string used in level data. Adding a new
+ * enemy (goblin flyer, boss) is one entry here plus its asset manifest entry.
+ */
+export const UNIT_TYPES: Record<string, UnitTypeDef> = {
+  'pirate-ship': {
+    assetId: 'pirate-ship',
+    movement: 'default-ship',
+    faction: 'attacker',
+    cruiseY: SHIP_Y,
+    armed: true,
+    rotor: false,
+    wake: true,
+    stopZMin: SHIP_STOP_Z_MIN,
+    stopZMax: SHIP_STOP_Z_MAX,
+  },
+  bombardier: {
+    assetId: 'bombardier',
+    movement: 'default-flyer',
+    faction: 'attacker',
+    cruiseY: FLYER_Y,
+    armed: false,
+    rotor: true,
+    wake: false,
+    stopZMin: FLYER_STOP_Z_MIN,
+    stopZMax: FLYER_STOP_Z_MAX,
+  },
 };

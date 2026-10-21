@@ -87,7 +87,7 @@ export default defineAssets({
     priority: 'background',
   },
   bombardier: {
-    url: publicAssetUrl('gltf/bombardier.glb'),
+    url: publicAssetUrl('gltf/bombardier-v2.glb'),
     type: AssetType.GLTF,
     name: 'Bombardier',
     priority: 'background',

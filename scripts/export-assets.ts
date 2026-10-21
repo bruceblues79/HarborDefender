@@ -1082,66 +1082,73 @@ function createSkyBallistaExport(): Object3D {
 }
 
 // ---------------------------------------------------------------------------
-// Bombardier (mechanical bomb-carrying flyer, tandem lift rotors)
+// Bombardier (mechanical bomb-carrying flyer, single main rotor + goblin pilot)
 // ---------------------------------------------------------------------------
+
+/** Goblin skin — the whimsical little pilot reads at a glance from afar. */
+const GOBLIN_COLOR = 0x6a9944;
 
 /**
  * Gondola side profile: shape local x is the length axis with the bow at
  * +x, y is height. Extruded across the beam, then rotated so the bow lands
- * on world -Z — the shared forward convention of ships and guns.
+ * on world -Z — the shared forward convention of ships and guns. Deliberately
+ * stubby: the flyer reads as a compact machine, roughly two-thirds the
+ * pirate hull's length.
  */
 function buildBombardierGondola(rand: () => number): BufferGeometry {
   const shape = new Shape();
-  shape.moveTo(-0.48, -0.1);
-  shape.lineTo(0.48, -0.1);
-  shape.lineTo(0.48, 0.06);
-  shape.lineTo(0.12, 0.11);
-  shape.lineTo(-0.48, 0.11);
+  shape.moveTo(-0.3, -0.1);
+  shape.lineTo(0.3, -0.1);
+  shape.lineTo(0.3, 0.06);
+  shape.lineTo(0.1, 0.11);
+  shape.lineTo(-0.3, 0.11);
   shape.closePath();
-  const geo = new ExtrudeGeometry(shape, { depth: 0.36, bevelEnabled: false });
+  const geo = new ExtrudeGeometry(shape, { depth: 0.34, bevelEnabled: false });
   geo.rotateY(Math.PI / 2);
-  geo.translate(-0.18, 0, 0);
+  geo.translate(-0.17, 0, 0);
   paint(geo, HULL_COLOR, 0.04, rand);
   return geo;
 }
 
 /**
  * Airframe in root space (y = 0 at the gondola mid): wooden hull with a
- * planked deck, iron straps, tail boom with red canvas fins, a winch whose
- * rope runs down to the bomb rack — the medieval "machine" story. The two
- * rotor masts stay static here; only the hubs and blades live under the
- * `propellers` node.
+ * planked deck, iron straps, a stubby tail boom with red canvas fins, a
+ * winch whose rope runs down to the bomb rack, one central rotor mast, and
+ * the goblin pilot sitting aft with his paws on the stick — the medieval
+ * "machine" story. The mast stays static here; the hub and blades live
+ * under the `propellers` node.
  */
 function buildBombardierBody(rand: () => number): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
   parts.push(buildBombardierGondola(rand));
 
-  // Deck planking across the flat sheer run, capped by three iron straps
-  // that read as bands clinching the hull.
-  const deck = new BoxGeometry(0.34, 0.012, 0.58);
-  deck.translate(0, 0.116, 0.17);
+  // Deck planking across the flat sheer run, capped by iron straps that
+  // read as bands clinching the hull.
+  const deck = new BoxGeometry(0.32, 0.012, 0.36);
+  deck.translate(0, 0.116, 0.04);
   paint(deck, DECK_COLOR, 0.03, rand);
   parts.push(deck);
-  for (const z of [0, 0.2, 0.4]) {
-    const strap = new BoxGeometry(0.4, 0.018, 0.03);
+  for (const z of [-0.12, 0.06, 0.24]) {
+    const strap = new BoxGeometry(0.38, 0.018, 0.03);
     strap.translate(0, 0.131, z);
     paint(strap, BARREL_COLOR, 0.03, rand);
     parts.push(strap);
   }
 
-  // Tail boom with a vertical fin and horizontal stabiliser in red canvas.
-  const boom = new CylinderGeometry(0.018, 0.024, 0.34, 6);
+  // Stubby tail boom with a vertical fin and horizontal stabiliser in red
+  // canvas — kept short so the whole machine stays compact.
+  const boom = new CylinderGeometry(0.016, 0.022, 0.2, 6);
   boom.rotateX(Math.PI / 2);
-  boom.translate(0, 0.085, 0.6);
+  boom.translate(0, 0.085, 0.39);
   paint(boom, MAST_COLOR, 0.03, rand);
   parts.push(boom);
-  const fin = new BoxGeometry(0.014, 0.15, 0.13);
-  fin.translate(0, 0.17, 0.73);
+  const fin = new BoxGeometry(0.014, 0.14, 0.12);
+  fin.translate(0, 0.16, 0.47);
   paint(fin, FLAG_COLOR, 0.02, rand);
   parts.push(fin);
-  const stabiliser = new BoxGeometry(0.26, 0.014, 0.13);
-  stabiliser.translate(0, 0.1, 0.73);
+  const stabiliser = new BoxGeometry(0.24, 0.014, 0.12);
+  stabiliser.translate(0, 0.1, 0.47);
   paint(stabiliser, FLAG_COLOR, 0.02, rand);
   parts.push(stabiliser);
 
@@ -1149,35 +1156,35 @@ function buildBombardierBody(rand: () => number): BufferGeometry {
   // hemp rope running from the drum down to the bomb rack.
   const drum = new CylinderGeometry(0.026, 0.026, 0.15, 8);
   drum.rotateZ(Math.PI / 2);
-  drum.translate(0, 0.16, 0.1);
+  drum.translate(0, 0.16, 0.02);
   paint(drum, BARREL_COLOR, 0.03, rand);
   parts.push(drum);
   for (const sx of [-1, 1]) {
     for (const dz of [-0.04, 0.04]) {
       const leg = strut(
-        new Vector3(sx * 0.05, 0.12, 0.1 + dz),
-        new Vector3(sx * 0.075, 0.16, 0.1),
+        new Vector3(sx * 0.05, 0.12, 0.02 + dz),
+        new Vector3(sx * 0.075, 0.16, 0.02),
         0.004,
       );
       paint(leg, CHEEK_COLOR, 0.04, rand);
       parts.push(leg);
     }
     const arm = strut(
-      new Vector3(sx * 0.075, 0.16, 0.1),
-      new Vector3(sx * 0.1, 0.175, 0.1),
+      new Vector3(sx * 0.075, 0.16, 0.02),
+      new Vector3(sx * 0.1, 0.175, 0.02),
       0.003,
     );
     paint(arm, BARREL_COLOR, 0.03, rand);
     parts.push(arm);
     const handle = new CylinderGeometry(0.004, 0.004, 0.03, 6);
     handle.rotateX(Math.PI / 2);
-    handle.translate(sx * 0.1, 0.175, 0.085);
+    handle.translate(sx * 0.1, 0.175, 0.005);
     paint(handle, WHEEL_COLOR, 0.03, rand);
     parts.push(handle);
   }
   const rope = strut(
-    new Vector3(0, 0.14, 0.1),
-    new Vector3(0, -0.155, -0.18),
+    new Vector3(0, 0.14, 0.02),
+    new Vector3(0, -0.155, -0.12),
     0.0025,
   );
   paint(rope, STRING_COLOR, 0.02, rand);
@@ -1187,77 +1194,127 @@ function buildBombardierBody(rand: () => number): BufferGeometry {
   // black-iron bomb with a short fuze cap.
   const crossbar = new CylinderGeometry(0.008, 0.008, 0.18, 6);
   crossbar.rotateZ(Math.PI / 2);
-  crossbar.translate(0, -0.16, -0.18);
+  crossbar.translate(0, -0.16, -0.12);
   paint(crossbar, BARREL_COLOR, 0.03, rand);
   parts.push(crossbar);
   for (const sx of [-1, 1]) {
     const hanger = strut(
-      new Vector3(sx * 0.07, -0.105, -0.18),
-      new Vector3(sx * 0.07, -0.16, -0.18),
+      new Vector3(sx * 0.07, -0.105, -0.12),
+      new Vector3(sx * 0.07, -0.16, -0.12),
       0.005,
     );
     paint(hanger, BARREL_COLOR, 0.03, rand);
     parts.push(hanger);
   }
   const bomb = new SphereGeometry(0.055, 8, 6);
-  bomb.translate(0, -0.21, -0.18);
+  bomb.translate(0, -0.21, -0.12);
   paint(bomb, BARREL_COLOR, 0.03, rand);
   parts.push(bomb);
   const fuze = new CylinderGeometry(0.012, 0.012, 0.03, 6);
-  fuze.translate(0, -0.145, -0.18);
+  fuze.translate(0, -0.145, -0.12);
   paint(fuze, BORE_COLOR, 0.02, rand);
   parts.push(fuze);
 
-  // Static rotor masts with guy struts; the spinning hubs live in the
-  // `propellers` node, one child node per rotor.
-  for (const z of [-0.28, 0.3]) {
-    const mast = new CylinderGeometry(0.016, 0.022, 0.22, 6);
-    mast.translate(0, 0.22, z);
-    paint(mast, MAST_COLOR, 0.03, rand);
-    parts.push(mast);
-    for (const sx of [-1, 1]) {
-      const lateral = strut(
-        new Vector3(sx * 0.14, 0.115, z),
-        new Vector3(0, 0.31, z),
+  // Single central rotor mast with four guy struts fanning to the deck; the
+  // spinning hub lives in the `propellers` node above it.
+  const mast = new CylinderGeometry(0.018, 0.026, 0.26, 6);
+  mast.translate(0, 0.24, 0);
+  paint(mast, MAST_COLOR, 0.03, rand);
+  parts.push(mast);
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const guy = strut(
+        new Vector3(sx * 0.14, 0.115, 0.02 + sz * 0.14),
+        new Vector3(0, 0.355, 0),
         0.005,
       );
-      paint(lateral, CHEEK_COLOR, 0.04, rand);
-      parts.push(lateral);
+      paint(guy, CHEEK_COLOR, 0.04, rand);
+      parts.push(guy);
     }
-    const fore = strut(
-      new Vector3(0, 0.115, z - 0.12),
-      new Vector3(0, 0.31, z),
-      0.005,
-    );
-    paint(fore, CHEEK_COLOR, 0.04, rand);
-    parts.push(fore);
-    const aft = strut(
-      new Vector3(0, 0.115, z + 0.12),
-      new Vector3(0, 0.31, z),
-      0.005,
-    );
-    paint(aft, CHEEK_COLOR, 0.04, rand);
-    parts.push(aft);
   }
+
+  // --- the goblin pilot, sitting aft with his paws on the stick ---
+  // Thighs stretched forward out of the open cockpit, leather tunic torso.
+  for (const sx of [-1, 1]) {
+    const thigh = new BoxGeometry(0.04, 0.03, 0.09);
+    thigh.translate(sx * 0.03, 0.135, 0.09);
+    paint(thigh, CHEEK_COLOR, 0.04, rand);
+    parts.push(thigh);
+  }
+  const torso = new BoxGeometry(0.09, 0.1, 0.06);
+  torso.translate(0, 0.17, 0.14);
+  paint(torso, CHEEK_COLOR, 0.04, rand);
+  parts.push(torso);
+  // Control stick between his knees; both arms reach down onto it.
+  const stick = strut(
+    new Vector3(0, 0.12, 0.05),
+    new Vector3(0, 0.185, 0.045),
+    0.004,
+  );
+  paint(stick, BARREL_COLOR, 0.03, rand);
+  parts.push(stick);
+  for (const sx of [-1, 1]) {
+    const arm = strut(
+      new Vector3(sx * 0.045, 0.2, 0.12),
+      new Vector3(sx * 0.015, 0.185, 0.05),
+      0.006,
+    );
+    paint(arm, GOBLIN_COLOR, 0.03, rand);
+    parts.push(arm);
+  }
+  // Big green head with pointed ears, a round nose and bead eyes.
+  const head = new SphereGeometry(0.045, 8, 6);
+  head.translate(0, 0.265, 0.13);
+  paint(head, GOBLIN_COLOR, 0.03, rand);
+  parts.push(head);
+  for (const sx of [-1, 1]) {
+    const ear = new ConeGeometry(0.016, 0.06, 5);
+    ear.rotateZ((sx * Math.PI) / 2.2);
+    ear.rotateY(sx * 0.5);
+    ear.translate(sx * 0.055, 0.27, 0.15);
+    paint(ear, GOBLIN_COLOR, 0.03, rand);
+    parts.push(ear);
+  }
+  const nose = new SphereGeometry(0.012, 6, 4);
+  nose.translate(0, 0.255, 0.088);
+  paint(nose, GOBLIN_COLOR, 0.03, rand);
+  parts.push(nose);
+  for (const sx of [-1, 1]) {
+    const eye = new SphereGeometry(0.008, 6, 4);
+    eye.translate(sx * 0.018, 0.272, 0.098);
+    paint(eye, BORE_COLOR, 0.02, rand);
+    parts.push(eye);
+  }
+  // A red scarf at the neck with a little tail — whimsy, one box each.
+  const scarf = new BoxGeometry(0.07, 0.016, 0.06);
+  scarf.translate(0, 0.223, 0.125);
+  paint(scarf, FLAG_COLOR, 0.02, rand);
+  parts.push(scarf);
+  const scarfTail = new BoxGeometry(0.02, 0.008, 0.08);
+  scarfTail.rotateY(0.3);
+  scarfTail.translate(0.03, 0.222, 0.2);
+  paint(scarfTail, FLAG_COLOR, 0.02, rand);
+  parts.push(scarfTail);
 
   return mergeParts(parts);
 }
 
 /**
- * One lift rotor in propeller-node-local space (origin on the mast axis at
+ * The lift rotor in propeller-node-local space (origin on the mast axis at
  * hub height): iron hub plus four flat wooden blades pitched ~11° about
- * their radial axis. Disc radius 0.2 keeps the sweep inside the 0.4 m beam.
+ * their radial axis. The disc deliberately overhangs the 0.4 m hull — one
+ * big chinook-style rotor is the flyer's silhouette.
  */
 function buildBombardierRotor(rand: () => number): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  const hub = new CylinderGeometry(0.02, 0.02, 0.035, 8);
+  const hub = new CylinderGeometry(0.024, 0.024, 0.04, 8);
   paint(hub, BARREL_COLOR, 0.03, rand);
   parts.push(hub);
 
   for (let k = 0; k < 4; k++) {
-    const blade = new BoxGeometry(0.17, 0.006, 0.03);
-    blade.translate(0.115, 0, 0);
+    const blade = new BoxGeometry(0.225, 0.007, 0.034);
+    blade.translate(0.145, 0, 0);
     blade.rotateX(0.2);
     blade.rotateY((k * Math.PI) / 2);
     paint(blade, WHEEL_COLOR, 0.03, rand);
@@ -1268,18 +1325,19 @@ function buildBombardierRotor(rand: () => number): BufferGeometry {
 }
 
 /**
- * Medieval mechanical bomb-carrying flyer — the whimsical raider of the
- * skies, sized against the pirate hull it fights beside:
+ * Medieval mechanical bomb-carrying flyer — the whimsical goblin-piloted
+ * raider of the skies, sized against the pirate hull it fights beside:
  *
  * - Origin: gondola mid at the unit's cruise altitude; the bomb hangs to
- *   -0.265 and the rotor discs top out at +0.365.
+ *   -0.265 and the rotor disc tops out at +0.395. The airframe runs about
+ *   0.77 m bow to tail — barely two-thirds of the pirate hull.
  * - Forward: bow on local -Z (ship/cannon convention), so the spawn yaw
  *   math is shared untouched.
- * - `propellers` groups one child node per rotor (`propeller-fore` /
- *   `propeller-aft`); PropellerSpinSystem spins each child about its local
- *   +Y — tandem discs stay on their own masts.
- * - Two draw calls: merged airframe, merged rotor set. All colour is
- *   vertex-baked onto one white roughness-0.75 dielectric material.
+ * - `propellers` holds a single child node `propeller-main` on the central
+ *   mast axis; PropellerSpinSystem spins each child about its local +Y, so
+ *   one big rotor is just one child.
+ * - Two draw calls: merged airframe (pilot included), merged rotor. All
+ *   colour is vertex-baked onto one white roughness-0.75 dielectric material.
  */
 function createBombardierExport(): Object3D {
   const rand = makeRandom(20261021);
@@ -1300,16 +1358,11 @@ function createBombardierExport(): Object3D {
 
   const propellers = new Object3D();
   propellers.name = 'propellers';
-  const rotorFore = new Object3D();
-  rotorFore.name = 'propeller-fore';
-  rotorFore.position.set(0, 0.345, -0.28);
-  rotorFore.add(new Mesh(buildBombardierRotor(rand), material));
-  const rotorAft = new Object3D();
-  rotorAft.name = 'propeller-aft';
-  rotorAft.position.set(0, 0.345, 0.3);
-  rotorAft.add(new Mesh(buildBombardierRotor(rand), material));
-  propellers.add(rotorFore);
-  propellers.add(rotorAft);
+  propellers.position.set(0, 0.375, 0);
+  const rotorMain = new Object3D();
+  rotorMain.name = 'propeller-main';
+  rotorMain.add(new Mesh(buildBombardierRotor(rand), material));
+  propellers.add(rotorMain);
 
   const root = new Object3D();
   root.name = 'bombardier';
@@ -1374,7 +1427,7 @@ await exportGLB(createPirateShipExport(), 'pirate-ship-v2.glb');
 // sky-ballista: the anti-air mount replaces the centre wall slot (task 022);
 // a fresh file name keeps it isolated from any stale GLB caching.
 await exportGLB(createSkyBallistaExport(), 'sky-ballista.glb');
-// bombardier: the mechanical bomb-carrying flyer joins the raid (task 023);
-// a fresh file name keeps it isolated from any stale GLB caching.
-await exportGLB(createBombardierExport(), 'bombardier.glb');
+// bombardier: the goblin-piloted flyer joins the raid (task 023); the v2
+// name isolates the single-rotor redesign from any stale GLB caching.
+await exportGLB(createBombardierExport(), 'bombardier-v2.glb');
 console.log('\nDone. GLBs written to public/gltf/');
