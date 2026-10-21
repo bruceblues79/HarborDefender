@@ -949,10 +949,13 @@ function buildBallistaAssembly(rand: () => number): BufferGeometry {
   paint(beam, CHEEK_COLOR, 0.04, rand);
   parts.push(beam);
 
-  // Bolt-groove rails on the beam top, cradling the loaded bolt.
+  // Bolt-groove rails on the beam top, cradling the loaded bolt. Height is
+  // 2 mm shy of the torsion block's top face (0.0465 + 0.004 = 0.0505 vs
+  // 0.0525): the rails' z-run crosses the block, and equal top faces used to
+  // coplanar z-fight there. Bottom stays flush on the beam top (0.0425).
   for (const sx of [-1, 1]) {
-    const rail = new BoxGeometry(0.008, 0.01, 0.13);
-    rail.translate(sx * 0.0135, 0.0475, -0.035);
+    const rail = new BoxGeometry(0.008, 0.008, 0.13);
+    rail.translate(sx * 0.0135, 0.0465, -0.035);
     paint(rail, TRANSOM_COLOR, 0.035, rand);
     parts.push(rail);
   }

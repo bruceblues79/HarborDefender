@@ -48,11 +48,12 @@ const CALL_VISIBLE_SCALE = 1.5;
  */
 const MENU_SCALE = 1 / 2;
 /**
- * Per-environment factors on top of the baseline (user tuning v0.1.122):
- * XR shrinks the call button 1/3 and keeps the menu size; flat mode grows
- * the button 1/3 and the menu by 2x of itself (x3 of baseline).
+ * Per-environment factors on top of the baseline (user tuning v0.1.122 +
+ * v0.1.124): XR shrinks the call button 1/3 then grows it 1/4 —
+ * 1 × 2/3 × 5/4 = 5/6 — and keeps the menu size; flat mode grows the
+ * button 1/3 and the menu by 2x of itself (x3 of baseline).
  */
-const MENU_FACTORS_XR = { call: 2 / 3, menu: 1 };
+const MENU_FACTORS_XR = { call: 5 / 6, menu: 1 };
 const MENU_FACTORS_FLAT = { call: 4 / 3, menu: 3 };
 /** Pause-menu height, metres (150 × 100 UIKit units at scale 1). */
 const MENU_HEIGHT = 1.0;
@@ -85,7 +86,7 @@ type MenuMode = 'closed' | 'opening' | 'open' | 'closing';
  * - Call button: a small circular hamburger that appears once the START gate
  *   opens (GameStarted) and hides while the menu is open.
  * - Pause menu: 1.5 m × 1 m at rig scale 1 (rig runs a uniform ×1/2 shrink;
- *   per-environment factors then resize button and menu — XR: button 2/3,
+ *   per-environment factors then resize button and menu — XR: button 5/6,
  *   menu as-is; flat: button 4/3, menu 3x), expanding downward from the call
  *   button with three column buttons — MAIN (back to welcome), RESTART
  *   (rerun the level), RESUME (unpause).

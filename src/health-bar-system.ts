@@ -86,7 +86,12 @@ const fillMaterial = new MeshBasicMaterial({
 /**
  * Transparent draw order: the fill must paint after its own back plate, and
  * both must stay under the hit-flash bloom (renderOrder 10) so a flash
- * blooming at a core never reads as dimmed by a bar above it.
+ * blooming at a core never reads as dimmed by a bar above it. The menu UI
+ * (call button / pause menu) renders at 20 — uikit surfaces are
+ * depthWrite-off like these bars, so draw order alone decides, and a bar
+ * crossing the call button in flight must never cover the UI. The panel-up
+ * gate below hides the bars for full-screen panels; the call button shows
+ * during battle, so only its render-order keeps the layering right.
  */
 const BACK_RENDER_ORDER = 8;
 const FILL_RENDER_ORDER = 9;

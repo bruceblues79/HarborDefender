@@ -6,7 +6,9 @@
   welcome / start panels; hex8 alpha 0.67. Breathing room:
   root padding 10 on all sides, buttons 112 × 22 centered (19-unit visual
   side margins) with 3 vertical padding — 3 × 22 + 2 gaps of 7 (space-between)
-  fills the remaining 80-unit column.
+  fills the remaining 80-unit column. render-order 20 keeps the menu above
+  every world overlay (health bars 8/9, hit flash 10): uikit depthWrite
+  defaults off on both sides, so draw order alone decides layering.
 -->
 <style>
   .menu-root {
@@ -17,6 +19,7 @@
     width: 150;
     height: 100;
     border-radius: 6;
+    render-order: 20;
     padding-top: 10;
     padding-right: 10;
     padding-bottom: 10;

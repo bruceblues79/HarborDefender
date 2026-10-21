@@ -1,9 +1,11 @@
 <!--
   Call-menu (pause) trigger: a small circular button carrying a three-bar
-  menu glyph (the same reading as mdi:menu). 22 × 22 UIKit units = 0.22 m
-  at scale 1. The kit's opaque Panel surface wins over a root background,
-  so the dark circle is the <button> itself; the glyph is three bars laid
-  out with space-between inside a fixed-height column.
+  menu glyph (the same reading as mdi:menu). 22 × 22 UIKit units = 0.22 m at scale 1. The kit's opaque Panel surface
+  wins over a root background, so the dark circle is the <button> itself; the
+  glyph is three bars laid out with space-between inside a fixed-height
+  column. render-order 20 paints the button above every world overlay
+  (health bars 8/9, hit flash 10) — both depthWrite off, so draw order alone
+  decides, and a flyer's bar crossing the button must never cover the UI.
 -->
 <style>
   .call-root {
@@ -13,6 +15,7 @@
     align-items: center;
     width: 22;
     height: 22;
+    render-order: 20;
     padding-top: 0;
     padding-right: 0;
     padding-bottom: 0;
