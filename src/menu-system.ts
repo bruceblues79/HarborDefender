@@ -42,10 +42,18 @@ const CALL_BUTTON_RADIUS = 0.11;
 /** Call button's visible scale relative to the rig (user-tuned +1/2 bigger). */
 const CALL_VISIBLE_SCALE = 1.5;
 /**
- * Uniform shrink of the whole menu rig (button + menu). Cumulative user
- * tuning: 1/3 then 1/4 smaller — 1 × 2/3 × 3/4 = 1/2 of original size.
+ * Uniform shrink of the whole menu rig (button + menu): the shared baseline
+ * both environments start from. Cumulative user tuning: 1/3 then 1/4
+ * smaller — 1 × 2/3 × 3/4 = 1/2 of original size.
  */
 const MENU_SCALE = 1 / 2;
+/**
+ * Per-environment factors on top of the baseline (user tuning v0.1.122):
+ * XR shrinks the call button 1/3 and keeps the menu size; flat mode grows
+ * the button 1/3 and the menu by 2x of itself (x3 of baseline).
+ */
+const MENU_FACTORS_XR = { call: 2 / 3, menu: 1 };
+const MENU_FACTORS_FLAT = { call: 4 / 3, menu: 3 };
 /** Pause-menu height, metres (150 × 100 UIKit units at scale 1). */
 const MENU_HEIGHT = 1.0;
 /** Seconds for the expand / collapse animation. */
@@ -76,10 +84,11 @@ type MenuMode = 'closed' | 'opening' | 'open' | 'closing';
  *
  * - Call button: a small circular hamburger that appears once the START gate
  *   opens (GameStarted) and hides while the menu is open.
- * - Pause menu: 1.5 m × 1 m at rig scale 1 (rig runs a uniform ×1/2
- *   shrink), expanding downward from the call button with
- *   three column buttons — MAIN (back to welcome), RESTART (rerun the
- *   level), RESUME (unpause).
+ * - Pause menu: 1.5 m × 1 m at rig scale 1 (rig runs a uniform ×1/2 shrink;
+ *   per-environment factors then resize button and menu — XR: button 2/3,
+ *   menu as-is; flat: button 4/3, menu 3x), expanding downward from the call
+ *   button with three column buttons — MAIN (back to welcome), RESTART
+ *   (rerun the level), RESUME (unpause).
  *
  * Placement follows the spatial-UI guidance for compact global UI: a
  * world-space `Follower` holds the rig at a stable anchor — head-relative
@@ -141,8 +150,10 @@ export class MenuSystem extends createSystem({
         this.menuPanel = menuPanel;
 
         // One rig under the Follower so both panels move and face together.
-        // Uniform 2/3 shrink: button, menu and the downward expansion all
-        // stay proportional (CALL_BUTTON_RADIUS / MENU_HEIGHT are rig-local).
+        // Uniform baseline shrink; the per-environment button/menu factors
+        // (menuFactors) ride on the panels' own rig-local scales, so the
+        // downward expansion stays proportional per environment
+        // (CALL_BUTTON_RADIUS / MENU_HEIGHT are rig-local).
         const rig = new Object3D();
         rig.name = 'MenuRig';
         rig.scale.setScalar(MENU_SCALE);
@@ -173,7 +184,7 @@ export class MenuSystem extends createSystem({
         // Panels load while the welcome screen is still up; park them closed
         // until the START gate opens.
         menuPanel.visible = false;
-        this.setPanelScales(CALL_VISIBLE_SCALE, CALL_HIDDEN_SCALE);
+        this.setPanelScales(this.menuFactors().call, CALL_HIDDEN_SCALE);
 
         this.wireMenuButtons();
         if (this.queries.started.entities.size > 0) this.onGameStart();
@@ -224,7 +235,7 @@ export class MenuSystem extends createSystem({
   private onGameStart(): void {
     if (!this.panelRig) return;
     this.panelRig.visible = true;
-    this.setPanelScales(CALL_VISIBLE_SCALE, CALL_HIDDEN_SCALE);
+    this.setPanelScales(this.menuFactors().call, CALL_HIDDEN_SCALE);
     this.mode = 'closed';
   }
 
@@ -236,7 +247,7 @@ export class MenuSystem extends createSystem({
     if (!this.panelRig) return;
     this.panelRig.visible = false;
     if (this.menuPanel) this.menuPanel.visible = false;
-    this.setPanelScales(CALL_VISIBLE_SCALE, CALL_HIDDEN_SCALE);
+    this.setPanelScales(this.menuFactors().call, CALL_HIDDEN_SCALE);
   }
 
   /**
@@ -252,7 +263,7 @@ export class MenuSystem extends createSystem({
     if (!this.panelRig) return;
     this.panelRig.visible = false;
     if (this.menuPanel) this.menuPanel.visible = false;
-    this.setPanelScales(CALL_VISIBLE_SCALE, CALL_HIDDEN_SCALE);
+    this.setPanelScales(this.menuFactors().call, CALL_HIDDEN_SCALE);
   }
 
   /**
@@ -265,7 +276,7 @@ export class MenuSystem extends createSystem({
     this.mode = 'closed';
     if (!this.panelRig) return;
     this.panelRig.visible = true;
-    this.setPanelScales(CALL_VISIBLE_SCALE, CALL_HIDDEN_SCALE);
+    this.setPanelScales(this.menuFactors().call, CALL_HIDDEN_SCALE);
   }
 
   private openMenu(): void {
@@ -300,7 +311,7 @@ export class MenuSystem extends createSystem({
       this.animProgress = Math.min(1, this.animProgress + delta / MENU_ANIM_TIME);
       if (this.animProgress >= 1) {
         this.mode = 'open';
-        this.setPanelScales(CALL_HIDDEN_SCALE, 1);
+        this.setPanelScales(CALL_HIDDEN_SCALE, this.menuFactors().menu);
       }
       this.applyMenuScale(this.animProgress);
     } else if (this.mode === 'closing') {
@@ -308,7 +319,7 @@ export class MenuSystem extends createSystem({
       this.applyMenuScale(this.animProgress);
       if (this.animProgress <= 0) {
         this.menuPanel!.visible = false;
-        this.setPanelScales(CALL_VISIBLE_SCALE, CALL_HIDDEN_SCALE);
+        this.setPanelScales(this.menuFactors().call, CALL_HIDDEN_SCALE);
         const command = this.pendingCommand;
         this.pendingCommand = null;
         this.mode = 'closed';
@@ -361,16 +372,29 @@ export class MenuSystem extends createSystem({
    */
   private applyMenuScale(t: number): void {
     const eased = 1 - (1 - t) ** 3;
+    const factors = this.menuFactors();
     if (this.menuPanel) {
-      this.menuPanel.scale.setScalar(Math.max(CALL_HIDDEN_SCALE, eased));
+      // The menu grows downward from the call button: its top edge stays
+      // pinned under the button while its centre slides down by its own
+      // (factor-scaled) half height.
+      this.menuPanel.scale.setScalar(
+        Math.max(CALL_HIDDEN_SCALE, eased * factors.menu),
+      );
       this.menuPanel.position.y =
-        -CALL_BUTTON_RADIUS - (MENU_HEIGHT / 2) * eased;
+        -CALL_BUTTON_RADIUS - (MENU_HEIGHT / 2) * eased * factors.menu;
     }
     if (this.callButton) {
       this.callButton.scale.setScalar(
-        Math.max(CALL_HIDDEN_SCALE, CALL_VISIBLE_SCALE * (1 - eased)),
+        Math.max(CALL_HIDDEN_SCALE, factors.call * (1 - eased)),
       );
     }
+  }
+
+  /** Per-environment button/menu scale factors over the shared baseline. */
+  private menuFactors(): { call: number; menu: number } {
+    const immersive =
+      this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+    return immersive ? MENU_FACTORS_XR : MENU_FACTORS_FLAT;
   }
 
   private setPanelScales(callScale: number, menuScale: number): void {
