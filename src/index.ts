@@ -22,6 +22,7 @@ import { MenuSystem } from './menu-system.js';
 import { OceanSystem } from './ocean-system.js';
 import { PanelScaleSystem } from './panel-scale-system.js';
 import { PirateFireSystem } from './pirate-fire-system.js';
+import { PropellerSpinSystem } from './propeller-spin-system.js';
 import { ResultPanelSystem } from './result-panel-system.js';
 import { ShellHitSystem } from './shell-hit-system.js';
 import { ShipMovementSystem } from './ship-movement-system.js';
@@ -54,6 +55,9 @@ World.create(
   world.registerSystem(LevelWaveSystem, { priority: 5 });
   world.registerSystem(CannonAimSystem, { priority: 8 });
   world.registerSystem(ShipMovementSystem, { priority: 10 });
+  // Rotor spin rides the simulation tier: same march cadence as movement,
+  // frozen by the same pause/hold tags.
+  world.registerSystem(PropellerSpinSystem, { priority: 10 });
   // Both fire systems draw from one shell pool at the same priority; pirate
   // is registered second and its live hasComponent guard keeps the two from
   // ever handing out the same shell in a frame.

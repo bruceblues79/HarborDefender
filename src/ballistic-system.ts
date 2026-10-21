@@ -39,12 +39,24 @@ export class BallisticSystem extends createSystem({
     for (const entity of this.queries.flying.entities) {
       const object = entity.object3D;
       if (!object) continue;
+      const gravityScale = Number(
+        entity.getValue(BallisticFlight, 'gravityScale'),
+      );
       const vy =
-        Number(entity.getValue(BallisticFlight, 'vy')) - COMBAT.gravity * delta;
+        Number(entity.getValue(BallisticFlight, 'vy')) -
+        COMBAT.gravity * gravityScale * delta;
       entity.setValue(BallisticFlight, 'vy', vy);
       object.position.x += Number(entity.getValue(BallisticFlight, 'vx')) * delta;
       object.position.y += vy * delta;
       object.position.z += Number(entity.getValue(BallisticFlight, 'vz')) * delta;
+      // Ceiling reclaim: straight bolts are never pulled down, so once a
+      // shot climbs past boltReclaimY it is recycled silently — no splash
+      // ripple, it never met the water. The ballistic arcs never get this
+      // high, so the check is safe for every pooled projectile.
+      if (object.position.y >= COMBAT.boltReclaimY) {
+        this.retire(entity);
+        continue;
+      }
       if (object.position.y <= splashY) this.landed.push(entity);
     }
     for (const entity of this.landed) this.splashDown(entity);
@@ -58,17 +70,26 @@ export class BallisticSystem extends createSystem({
     return false;
   }
 
-  /** Recycle the shell and leave a fading ripple where it met the water. */
-  private splashDown(shell: Entity): void {
+  /** Recycle the shell: hide the mesh and drop flight + faction tags. */
+  private retire(shell: Entity): void {
     const object = shell.object3D;
     if (!object) return;
     shell.removeComponent(BallisticFlight);
     // Drop the faction tag too, so the pooled shell carries no stale side.
     shell.removeComponent(ShellFaction);
     object.visible = false;
+  }
+
+  /** Recycle the shell and leave a fading ripple where it met the water. */
+  private splashDown(shell: Entity): void {
+    const object = shell.object3D;
+    if (!object) return;
+    const x = object.position.x;
+    const z = object.position.z;
+    this.retire(shell);
 
     const ripple = new Object3D();
-    ripple.position.set(object.position.x, OCEAN.surfaceY, object.position.z);
+    ripple.position.set(x, OCEAN.surfaceY, z);
     this.world
       .createTransformEntity(ripple)
       .addComponent(WakeSource, {

@@ -28,7 +28,8 @@ import {
   HitCore,
   OceanTag,
 } from './components.js';
-import { COMBAT } from './level-config.js';
+import { COMBAT, BALLISTA_MUZZLE_LOCAL_Y, BALLISTA_MUZZLE_LOCAL_Z, DEFENSE_SLOTS, SKY_BALLISTA } from './level-config.js';
+import type { DefenseUnitId } from './level-config.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
@@ -37,17 +38,22 @@ import { HitFlashSystem } from './hit-flash-system.js';
 import { SplashSystem } from './splash-system.js';
 
 /**
- * Hang the two invisible combat helpers on the cannon prototype once, so
- * every clone inherits them: the `muzzle` on the gun_rotate pivot (shells
- * launch down its world -Z) and the `hit_core` at the model's bounding-box
- * centre (opposing shells within its radius get consumed).
+ * Hang the two invisible combat helpers on a mounted-defender prototype once,
+ * so every clone inherits them: the `muzzle` on the gun_rotate pivot (shots
+ * launch down its world -Z; the offset is per unit — the cannon's barrel tip
+ * vs the ballista's loaded bolt tip) and the `hit_core` at the model's
+ * bounding-box centre (opposing shells within its radius get consumed).
  */
-function decorateCannonPrototype(prototype: Object3D): void {
+function decorateCombatPrototype(
+  prototype: Object3D,
+  muzzleLocalY: number,
+  muzzleLocalZ: number,
+): void {
   const gunPivot = prototype.getObjectByName('gun_rotate');
   if (gunPivot && !gunPivot.getObjectByName('muzzle')) {
     const muzzle = new Object3D();
     muzzle.name = 'muzzle';
-    muzzle.position.set(0, 0, -0.2);
+    muzzle.position.set(0, muzzleLocalY, muzzleLocalZ);
     gunPivot.add(muzzle);
   }
   if (!prototype.getObjectByName('hit_core')) {
@@ -70,7 +76,18 @@ let battlefieldReady = false;
 /** Whether a battle entry is currently in flight (guards double ENTER). */
 let battleStarted = false;
 const battlefieldObjects: Object3D[] = [];
-const cannonEntities: Entity[] = [];
+
+/**
+ * Every mounted defender with the pose it resets to on battle re-entry.
+ * Cannons reset to the stock half-raised barrel; the ballista to its fixed
+ * 75° anti-air elevation (its per-entity pitchMin/pitchMax differ).
+ */
+interface DefenseEntity {
+  entity: Entity;
+  unit: DefenseUnitId;
+  defaultPitchDeg: number;
+}
+const defenseEntities: DefenseEntity[] = [];
 
 /**
  * One-shot battle start flow: hide the welcome panel, show the loading
@@ -140,11 +157,13 @@ export function startBattle(world: World): void {
           });
           cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
 
-          const [oceanGltf, wallGltf, cannonGltf] = await Promise.all([
-            AssetManager.loadGLTFById('ocean-body'),
-            AssetManager.loadGLTFById('harbor-wall'),
-            AssetManager.loadGLTFById('cannon'),
-          ]);
+          const [oceanGltf, wallGltf, cannonGltf, ballistaGltf] =
+            await Promise.all([
+              AssetManager.loadGLTFById('ocean-body'),
+              AssetManager.loadGLTFById('harbor-wall'),
+              AssetManager.loadGLTFById('cannon'),
+              AssetManager.loadGLTFById('sky-ballista'),
+            ]);
 
           // Swap the GLB's placeholder material for the wave shader
           const oceanObject = oceanGltf.scene;
@@ -180,41 +199,94 @@ export function startBattle(world: World): void {
           world.createTransformEntity(wallObject);
           battlefieldObjects.push(wallObject);
 
-          // Five cannons evenly spaced across the central 3 m of the
-          // 3.4 m wall (0.2 m margin each side), muzzles facing the
-          // sea (-Z). One prototype is cloned so geometry/materials
-          // stay shared while each gun_rotate pivot stays independent;
-          // the muzzle and hit_core helpers live on that prototype.
+          // The defense battery: one clone per DEFENSE_SLOTS entry across the
+          // central 3 m of the 3.4 m wall, muzzles facing the sea (-Z).
+          // Cloning keeps geometry/materials shared while each gun_rotate
+          // pivot stays independent; both prototypes carry the muzzle and
+          // hit_core helpers, so cannons and ballistas alike are armed,
+          // targetable combatants.
           const cannonPrototype = cannonGltf.scene;
-          decorateCannonPrototype(cannonPrototype);
-          for (const x of [-1.2, -0.6, 0, 0.6, 1.2]) {
-            const cannon = cannonPrototype.clone(true);
-            cannon.position.set(x, 0.8, -0.8);
-            cannon.traverse((child: Object3D) => {
+          decorateCombatPrototype(cannonPrototype, 0, -0.2);
+          const ballistaPrototype = ballistaGltf.scene;
+          decorateCombatPrototype(
+            ballistaPrototype,
+            BALLISTA_MUZZLE_LOCAL_Y,
+            BALLISTA_MUZZLE_LOCAL_Z,
+          );
+          for (const slot of DEFENSE_SLOTS) {
+            const isCannon = slot.unit === 'cannon';
+            const unit = (isCannon ? cannonPrototype : ballistaPrototype).clone(
+              true,
+            );
+            unit.position.set(slot.x, 0.8, -0.8);
+            unit.traverse((child: Object3D) => {
               if ((child as Mesh).isMesh) {
                 child.castShadow = true;
                 child.receiveShadow = true;
               }
             });
-            const cannonEntity = world.createTransformEntity(cannon);
-            // RayInteractable makes the cannon pressable (mouse / touch / XR
-            // ray); CannonAim + CannonFire hand it to the combat systems.
-            cannonEntity.addComponent(RayInteractable);
-            cannonEntity.addComponent(CannonAim);
-            cannonEntity.addComponent(CannonFire);
-            // Defender hit core: pirate shells arriving within this radius
-            // are consumed by ShellHitSystem, which charges the cannon's
-            // health pool per hit (knockout = Destroyed tag + hidden).
-            cannonEntity.addComponent(HitCore, {
-              radius: COMBAT.defenderCoreRadius,
-              faction: 'defender',
-            });
-            cannonEntity.addComponent(Health, {
-              current: COMBAT.unitHealth,
-              max: COMBAT.unitHealth,
-            });
-            cannonEntities.push(cannonEntity);
-            battlefieldObjects.push(cannon);
+            const unitEntity = world.createTransformEntity(unit);
+            // RayInteractable makes the unit pressable (mouse / touch / XR
+            // ray); CannonAim hands it to the shared aim system, with
+            // per-entity pitch limits so the ballista's high-elevation
+            // envelope rides the same component.
+            unitEntity.addComponent(RayInteractable);
+            if (isCannon) {
+              unitEntity.addComponent(CannonAim);
+              unitEntity.addComponent(CannonFire, { unitType: 'cannon' });
+              // Defender hit core: pirate shells arriving within this radius
+              // are consumed by ShellHitSystem, which charges the cannon's
+              // health pool per hit (knockout = Destroyed tag + hidden).
+              unitEntity.addComponent(HitCore, {
+                radius: COMBAT.defenderCoreRadius,
+                faction: 'defender',
+                unitType: 'cannon',
+              });
+              unitEntity.addComponent(Health, {
+                current: COMBAT.unitHealth,
+                max: COMBAT.unitHealth,
+              });
+              defenseEntities.push({
+                entity: unitEntity,
+                unit: slot.unit,
+                defaultPitchDeg: COMBAT.aimPitchDefault,
+              });
+            } else {
+              // Anti-air ballista: fixed 75° elevation with 20° of
+              // depression, and a full combat kit. It fires straight bolts
+              // (gravityScale 0 — the flight model the flyer's berth band
+              // FLYER_STOP_Z_* is derived from) that are recycled once they
+              // climb past COMBAT.boltReclaimY, and carries the same
+              // HitCore/Health pool as a cannon so ships and bombardiers
+              // can knock it out (17.5% / 15% per hit) and the defeat check
+              // counts it.
+              unitEntity.addComponent(CannonAim, {
+                pitchDeg: SKY_BALLISTA.pitchDefault,
+                pitchMinDeg: SKY_BALLISTA.pitchMin,
+                pitchMaxDeg: SKY_BALLISTA.pitchMax,
+              });
+              unitEntity.addComponent(CannonFire, {
+                interval: COMBAT.ballistaFireInterval,
+                unitType: 'sky-ballista',
+                gravityScale: 0,
+                bolt: true,
+              });
+              unitEntity.addComponent(HitCore, {
+                radius: COMBAT.defenderCoreRadius,
+                faction: 'defender',
+                unitType: 'sky-ballista',
+              });
+              unitEntity.addComponent(Health, {
+                current: COMBAT.unitHealth,
+                max: COMBAT.unitHealth,
+              });
+              defenseEntities.push({
+                entity: unitEntity,
+                unit: slot.unit,
+                defaultPitchDeg: SKY_BALLISTA.pitchDefault,
+              });
+            }
+            battlefieldObjects.push(unit);
           }
           battlefieldReady = true;
 
@@ -252,28 +324,28 @@ export function returnToWelcome(world: World): void {
 }
 
 /**
- * Spawn-pose reset for every gun: turret yaw back to centre, barrel pitch
- * back to the configured spawn elevation. `CannonAim` stays the single
- * truth — CannonAimSystem re-applies the pose to the transforms on its next
- * frame. Shared by the MAIN-menu battlefield re-entry and the pause menu's
- * RESTART.
+ * Spawn-pose reset for every mounted defender: turret yaw back to centre,
+ * barrel pitch back to the unit's own spawn elevation (cannons half-raised,
+ * ballista at its fixed 75°). `CannonAim` stays the single truth —
+ * CannonAimSystem re-applies the pose to the transforms on its next frame.
+ * Shared by the MAIN-menu battlefield re-entry and the pause menu's RESTART.
  */
 export function resetCannonAim(): void {
-  for (const entity of cannonEntities) {
+  for (const { entity, defaultPitchDeg } of defenseEntities) {
     entity.setValue(CannonAim, 'yawDeg', 0);
-    entity.setValue(CannonAim, 'pitchDeg', COMBAT.aimPitchDefault);
+    entity.setValue(CannonAim, 'pitchDeg', defaultPitchDeg);
   }
 }
 
 /**
- * Undo every knockout: the Destroyed tag drops, the hidden cannon object is
- * revealed and its health pool refills. Cannons persist across rounds (see
- * the battlefield-persistence note above), so a RESTART restores rather than
- * rebuilds the battery. Shared by the pause menu's RESTART and the MAIN-menu
- * battlefield re-entry.
+ * Undo every knockout: the Destroyed tag drops, the hidden defender object
+ * is revealed and its health pool refills. Cannons and ballistas persist
+ * across rounds (see the battlefield-persistence note above), so a RESTART
+ * restores rather than rebuilds the battery. Shared by the pause menu's
+ * RESTART and the MAIN-menu battlefield re-entry.
  */
 export function restoreCannons(): void {
-  for (const entity of cannonEntities) {
+  for (const { entity } of defenseEntities) {
     entity.removeComponent(Destroyed);
     if (entity.object3D) entity.object3D.visible = true;
     entity.setValue(Health, 'current', Number(entity.getValue(Health, 'max')));

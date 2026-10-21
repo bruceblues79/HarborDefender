@@ -17,6 +17,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  ConeGeometry,
   CylinderGeometry,
   DoubleSide,
   ExtrudeGeometry,
@@ -25,9 +26,11 @@ import {
   MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
+  Quaternion,
   Shape,
   SphereGeometry,
   SRGBColorSpace,
+  TorusGeometry,
   Vector2,
   Vector3,
 } from '@iwsdk/core';
@@ -326,6 +329,23 @@ function mergeParts(parts: BufferGeometry[]): BufferGeometry {
   merged.computeBoundingBox();
   merged.computeBoundingSphere();
   return merged;
+}
+
+/**
+ * A cylinder strut spanned between two points — the rigging primitive for
+ * bow strings, crank arms and any tension member that reads as a line.
+ */
+function strut(a: Vector3, b: Vector3, radius: number, segments = 5): BufferGeometry {
+  const dir = new Vector3().subVectors(b, a);
+  const length = dir.length();
+  const geo = new CylinderGeometry(radius, radius, length, segments);
+  const quaternion = new Quaternion().setFromUnitVectors(
+    new Vector3(0, 1, 0),
+    dir.normalize(),
+  );
+  geo.applyQuaternion(quaternion);
+  geo.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+  return geo;
 }
 
 // Wood colours (warm, low-contrast browns)
@@ -854,6 +874,536 @@ function createPirateShipExport(): Object3D {
 }
 
 // ---------------------------------------------------------------------------
+// Sky ballista (anti-air ballista on a swivel post)
+// ---------------------------------------------------------------------------
+
+// Sky-ballista palette: shares the cannon wood/iron families, adds hemp
+// string and pale fletching tints.
+const STRING_COLOR = 0x9a8a6a;
+const FLETCHING_COLOR = 0xcfc4a6;
+const BOLT_SHAFT_COLOR = 0x8a6a45;
+
+/**
+ * Fixed pedestal in root space: the disc base, tapered post and the iron
+ * collar the yoke straddles. y = 0 is the placement floor; footprint is the
+ * 0.23 m disc, inside the cannon carriage's 0.25 × 0.31 m envelope.
+ */
+function buildBallistaBase(rand: () => number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  const disc = new CylinderGeometry(0.1, 0.115, 0.03, 20);
+  disc.translate(0, 0.015, 0);
+  paint(disc, WHEEL_COLOR, 0.04, rand);
+  parts.push(disc);
+
+  const post = new CylinderGeometry(0.034, 0.05, 0.07, 12);
+  post.translate(0, 0.065, 0);
+  paint(post, CHEEK_COLOR, 0.04, rand);
+  parts.push(post);
+
+  const collar = new CylinderGeometry(0.048, 0.048, 0.02, 12);
+  collar.translate(0, 0.11, 0);
+  paint(collar, BARREL_COLOR, 0.03, rand);
+  parts.push(collar);
+
+  return mergeParts(parts);
+}
+
+/**
+ * Rotating assembly in gun_rotate-local space (origin = the trunnion axis,
+ * mounted 0.19 m above the floor). At 0° elevation the bolt points -Z; the
+ * CannonAim pitch lifts the whole yoke-and-beam assembly. Sized so the tiller
+ * tail, winch and yoke clear the fixed collar through the full 60-75°
+ * elevation sweep and ±45° yaw.
+ */
+function buildBallistaAssembly(rand: () => number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  // Swivel yoke: two cheek plates descending from the trunnion axis,
+  // straddling the fixed collar (cheek inner faces at x = ±0.052).
+  const cheek = new BoxGeometry(0.016, 0.075, 0.05);
+  const cheekPlus = cheek.clone();
+  cheekPlus.translate(0.06, -0.0375, 0);
+  const cheekMinus = cheek.clone();
+  cheekMinus.translate(-0.06, -0.0375, 0);
+  paint(cheekPlus, CHEEK_COLOR, 0.04, rand);
+  paint(cheekMinus, CHEEK_COLOR, 0.04, rand);
+  parts.push(cheekPlus, cheekMinus);
+
+  // Trunnion through the yoke tops, capped by iron washers.
+  const trunnion = new CylinderGeometry(0.009, 0.009, 0.15, 8);
+  trunnion.rotateZ(Math.PI / 2);
+  paint(trunnion, BARREL_COLOR, 0.03, rand);
+  parts.push(trunnion);
+  for (const sx of [-1, 1]) {
+    const washer = new CylinderGeometry(0.016, 0.016, 0.006, 10);
+    washer.rotateZ(Math.PI / 2);
+    washer.translate(sx * 0.072, 0, 0);
+    paint(washer, BARREL_COLOR, 0.03, rand);
+    parts.push(washer);
+  }
+
+  // Main tiller beam, nose toward -Z, riding above the trunnion axis.
+  const beam = new BoxGeometry(0.035, 0.035, 0.19);
+  beam.translate(0, 0.025, -0.02);
+  paint(beam, CHEEK_COLOR, 0.04, rand);
+  parts.push(beam);
+
+  // Bolt-groove rails on the beam top, cradling the loaded bolt. Height is
+  // 2 mm shy of the torsion block's top face (0.0465 + 0.004 = 0.0505 vs
+  // 0.0525): the rails' z-run crosses the block, and equal top faces used to
+  // coplanar z-fight there. Bottom stays flush on the beam top (0.0425).
+  for (const sx of [-1, 1]) {
+    const rail = new BoxGeometry(0.008, 0.008, 0.13);
+    rail.translate(sx * 0.0135, 0.0465, -0.035);
+    paint(rail, TRANSOM_COLOR, 0.035, rand);
+    parts.push(rail);
+  }
+
+  // Torsion block housing the prod centre at the beam nose.
+  const block = new BoxGeometry(0.075, 0.055, 0.045);
+  block.translate(0, 0.025, -0.115);
+  paint(block, BARREL_COLOR, 0.03, rand);
+  parts.push(block);
+
+  // Twin prod arms: one -Z half-torus lying flat, tips swept out to ±0.105.
+  const prod = new TorusGeometry(0.105, 0.009, 8, 14, Math.PI);
+  prod.rotateX(-Math.PI / 2);
+  prod.translate(0, 0.025, -0.045);
+  paint(prod, BARREL_COLOR, 0.03, rand);
+  parts.push(prod);
+
+  // Drawn string: V from both prod tips back to the nut on the beam.
+  const nut = new BoxGeometry(0.018, 0.016, 0.014);
+  nut.translate(0, 0.04, 0.028);
+  paint(nut, BARREL_COLOR, 0.03, rand);
+  parts.push(nut);
+  for (const sx of [-1, 1]) {
+    const string = strut(
+      new Vector3(sx * 0.105, 0.025, -0.045),
+      new Vector3(0, 0.04, 0.028),
+      0.0022,
+    );
+    paint(string, STRING_COLOR, 0.02, rand);
+    parts.push(string);
+  }
+
+  // Loaded bolt: shaft in the groove, iron head overhanging the nose,
+  // crossed fletching at the tail.
+  const shaft = new CylinderGeometry(0.005, 0.005, 0.13, 6);
+  shaft.rotateX(Math.PI / 2);
+  shaft.translate(0, 0.0525, -0.04);
+  paint(shaft, BOLT_SHAFT_COLOR, 0.03, rand);
+  parts.push(shaft);
+
+  const head = new ConeGeometry(0.009, 0.026, 8);
+  head.rotateX(-Math.PI / 2);
+  head.translate(0, 0.0525, -0.118);
+  paint(head, BARREL_COLOR, 0.03, rand);
+  parts.push(head);
+
+  const finAcross = new BoxGeometry(0.024, 0.0025, 0.038);
+  finAcross.translate(0, 0.0525, 0.01);
+  paint(finAcross, FLETCHING_COLOR, 0.02, rand);
+  parts.push(finAcross);
+  const finUpright = new BoxGeometry(0.0025, 0.024, 0.038);
+  finUpright.translate(0, 0.0525, 0.01);
+  paint(finUpright, FLETCHING_COLOR, 0.02, rand);
+  parts.push(finUpright);
+
+  // Windlass at the tiller end: iron drum on the beam top with a crank
+  // arm and handle peg per side.
+  const drum = new CylinderGeometry(0.013, 0.013, 0.055, 8);
+  drum.rotateZ(Math.PI / 2);
+  drum.translate(0, 0.05, 0.05);
+  paint(drum, BARREL_COLOR, 0.03, rand);
+  parts.push(drum);
+  for (const sx of [-1, 1]) {
+    const arm = strut(
+      new Vector3(sx * 0.0275, 0.05, 0.05),
+      new Vector3(sx * 0.046, 0.038, 0.05),
+      0.003,
+    );
+    paint(arm, BARREL_COLOR, 0.03, rand);
+    parts.push(arm);
+    const handle = new CylinderGeometry(0.003, 0.003, 0.014, 6);
+    handle.rotateZ(Math.PI / 2);
+    handle.translate(sx * 0.05, 0.038, 0.05);
+    paint(handle, BARREL_COLOR, 0.03, rand);
+    parts.push(handle);
+  }
+
+  return mergeParts(parts);
+}
+
+/**
+ * Medieval harbour anti-air ballista.
+ *
+ * - Origin: centre of the disc base; y = 0 is the floor (wall top).
+ * - Forward: the bolt points -Z at 0 elevation (cannon muzzle convention);
+ *   CannonAim's default 75° elevation points it up and slightly seaward.
+ * - `gun_rotate` is the elevation pivot at the trunnion axis (0, 0.21, 0),
+ *   the same node-name contract as the cannon and ship gun; the swivel
+ *   assembly under it is scaled 1.2x about that axis.
+ * - Two draw calls: merged fixed pedestal, merged swivel assembly. All
+ *   colour is vertex-baked onto one white roughness-0.75 dielectric material.
+ */
+function createSkyBallistaExport(): Object3D {
+  const rand = makeRandom(20261020);
+
+  const material = new MeshStandardMaterial({
+    name: 'sky-ballista',
+    color: 0xffffff,
+    roughness: 0.75,
+    metalness: 0,
+    vertexColors: true,
+  });
+
+  const baseMesh = new Mesh(buildBallistaBase(rand), material);
+  baseMesh.name = 'sky-ballista-base';
+
+  const assemblyMesh = new Mesh(buildBallistaAssembly(rand), material);
+  assemblyMesh.name = 'sky-ballista-assembly';
+  // Upper body enlarged 1.2x about the trunnion (scale origin = pivot): the
+  // base and the fulcrum relationship stay untouched, the mount keeps its
+  // balance. The pivot rises 0.19 -> 0.21 so the deeper yoke straddle seats
+  // flush on the collar top and the tiller tail keeps collar clearance
+  // through the full 60-75 degree sweep.
+  assemblyMesh.scale.setScalar(1.2);
+
+  const gunRotate = new Object3D();
+  gunRotate.name = 'gun_rotate';
+  gunRotate.position.set(0, 0.21, 0);
+  gunRotate.add(assemblyMesh);
+
+  const root = new Object3D();
+  root.name = 'sky-ballista';
+  root.add(baseMesh);
+  root.add(gunRotate);
+
+  return root;
+}
+
+// ---------------------------------------------------------------------------
+// Bombardier (mechanical bomb-carrying flyer, single main rotor + goblin pilot)
+// ---------------------------------------------------------------------------
+
+/** Goblin skin — the whimsical little pilot reads at a glance from afar. */
+const GOBLIN_COLOR = 0x6a9944;
+
+/**
+ * Gondola side profile: shape local x is the length axis with the bow at
+ * +x, y is height. Extruded across the beam, then rotated so the bow lands
+ * on world -Z — the shared forward convention of ships and guns. Deliberately
+ * stubby: the flyer reads as a compact machine, roughly two-thirds the
+ * pirate hull's length.
+ */
+function buildBombardierGondola(rand: () => number): BufferGeometry {
+  const shape = new Shape();
+  shape.moveTo(-0.3, -0.1);
+  shape.lineTo(0.3, -0.1);
+  shape.lineTo(0.3, 0.06);
+  shape.lineTo(0.1, 0.11);
+  shape.lineTo(-0.3, 0.11);
+  shape.closePath();
+  const geo = new ExtrudeGeometry(shape, { depth: 0.34, bevelEnabled: false });
+  geo.rotateY(Math.PI / 2);
+  geo.translate(-0.17, 0, 0);
+  paint(geo, HULL_COLOR, 0.04, rand);
+  return geo;
+}
+
+/**
+ * Airframe in root space (y = 0 at the gondola mid): wooden hull with a
+ * planked deck, iron straps, a stubby tail boom with red canvas fins, a
+ * winch whose rope runs down to the bomb rack, one central rotor mast, and
+ * the goblin pilot sitting aft with his paws on the stick — the medieval
+ * "machine" story. The mast stays static here; the hub and blades live
+ * under the `propellers` node.
+ */
+function buildBombardierBody(rand: () => number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  parts.push(buildBombardierGondola(rand));
+
+  // Deck planking across the flat sheer run, capped by iron straps that
+  // read as bands clinching the hull.
+  const deck = new BoxGeometry(0.32, 0.012, 0.36);
+  deck.translate(0, 0.116, 0.04);
+  paint(deck, DECK_COLOR, 0.03, rand);
+  parts.push(deck);
+  for (const z of [-0.12, 0.06, 0.24]) {
+    const strap = new BoxGeometry(0.38, 0.018, 0.03);
+    strap.translate(0, 0.131, z);
+    paint(strap, BARREL_COLOR, 0.03, rand);
+    parts.push(strap);
+  }
+
+  // Stubby tail boom with a vertical fin and horizontal stabiliser in red
+  // canvas — kept short so the whole machine stays compact.
+  const boom = new CylinderGeometry(0.016, 0.022, 0.2, 6);
+  boom.rotateX(Math.PI / 2);
+  boom.translate(0, 0.085, 0.39);
+  paint(boom, MAST_COLOR, 0.03, rand);
+  parts.push(boom);
+  const fin = new BoxGeometry(0.014, 0.14, 0.12);
+  fin.translate(0, 0.16, 0.47);
+  paint(fin, FLAG_COLOR, 0.02, rand);
+  parts.push(fin);
+  const stabiliser = new BoxGeometry(0.24, 0.014, 0.12);
+  stabiliser.translate(0, 0.1, 0.47);
+  paint(stabiliser, FLAG_COLOR, 0.02, rand);
+  parts.push(stabiliser);
+
+  // Winch amidships: iron drum in an A-frame, one crank per side, and the
+  // hemp rope running from the drum down to the bomb rack.
+  const drum = new CylinderGeometry(0.026, 0.026, 0.15, 8);
+  drum.rotateZ(Math.PI / 2);
+  drum.translate(0, 0.16, 0.02);
+  paint(drum, BARREL_COLOR, 0.03, rand);
+  parts.push(drum);
+  for (const sx of [-1, 1]) {
+    for (const dz of [-0.04, 0.04]) {
+      const leg = strut(
+        new Vector3(sx * 0.05, 0.12, 0.02 + dz),
+        new Vector3(sx * 0.075, 0.16, 0.02),
+        0.004,
+      );
+      paint(leg, CHEEK_COLOR, 0.04, rand);
+      parts.push(leg);
+    }
+    const arm = strut(
+      new Vector3(sx * 0.075, 0.16, 0.02),
+      new Vector3(sx * 0.1, 0.175, 0.02),
+      0.003,
+    );
+    paint(arm, BARREL_COLOR, 0.03, rand);
+    parts.push(arm);
+    const handle = new CylinderGeometry(0.004, 0.004, 0.03, 6);
+    handle.rotateX(Math.PI / 2);
+    handle.translate(sx * 0.1, 0.175, 0.005);
+    paint(handle, WHEEL_COLOR, 0.03, rand);
+    parts.push(handle);
+  }
+  const rope = strut(
+    new Vector3(0, 0.14, 0.02),
+    new Vector3(0, -0.155, -0.12),
+    0.0025,
+  );
+  paint(rope, STRING_COLOR, 0.02, rand);
+  parts.push(rope);
+
+  // Bomb rack slung under the bow: crossbar on two hangers, carrying a round
+  // black-iron bomb with a short fuze cap.
+  const crossbar = new CylinderGeometry(0.008, 0.008, 0.18, 6);
+  crossbar.rotateZ(Math.PI / 2);
+  crossbar.translate(0, -0.16, -0.12);
+  paint(crossbar, BARREL_COLOR, 0.03, rand);
+  parts.push(crossbar);
+  for (const sx of [-1, 1]) {
+    const hanger = strut(
+      new Vector3(sx * 0.07, -0.105, -0.12),
+      new Vector3(sx * 0.07, -0.16, -0.12),
+      0.005,
+    );
+    paint(hanger, BARREL_COLOR, 0.03, rand);
+    parts.push(hanger);
+  }
+  const bomb = new SphereGeometry(0.055, 8, 6);
+  bomb.translate(0, -0.21, -0.12);
+  paint(bomb, BARREL_COLOR, 0.03, rand);
+  parts.push(bomb);
+  const fuze = new CylinderGeometry(0.012, 0.012, 0.03, 6);
+  fuze.translate(0, -0.145, -0.12);
+  paint(fuze, BORE_COLOR, 0.02, rand);
+  parts.push(fuze);
+
+  // Single central rotor mast with four guy struts fanning to the deck; the
+  // spinning hub lives in the `propellers` node above it.
+  const mast = new CylinderGeometry(0.018, 0.026, 0.26, 6);
+  mast.translate(0, 0.24, 0);
+  paint(mast, MAST_COLOR, 0.03, rand);
+  parts.push(mast);
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const guy = strut(
+        new Vector3(sx * 0.14, 0.115, 0.02 + sz * 0.14),
+        new Vector3(0, 0.355, 0),
+        0.005,
+      );
+      paint(guy, CHEEK_COLOR, 0.04, rand);
+      parts.push(guy);
+    }
+  }
+
+  // Control stick rising from the deck between the pilot's knees.
+  const stick = strut(
+    new Vector3(0, 0.12, 0.05),
+    new Vector3(0, 0.185, 0.045),
+    0.004,
+  );
+  paint(stick, BARREL_COLOR, 0.03, rand);
+  parts.push(stick);
+
+  return mergeParts(parts);
+}
+
+/**
+ * The goblin pilot in body-space (same frame as the machine): sitting aft
+ * with his paws on the control stick — thighs out of the open cockpit,
+ * leather tunic, big green head with pointed ears, round nose, bead eyes
+ * and a red scarf. Kept as its own mesh so the machine can shrink without
+ * shrinking its driver.
+ */
+function buildBombardierPilot(rand: () => number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  for (const sx of [-1, 1]) {
+    const thigh = new BoxGeometry(0.04, 0.03, 0.09);
+    thigh.translate(sx * 0.03, 0.135, 0.09);
+    paint(thigh, CHEEK_COLOR, 0.04, rand);
+    parts.push(thigh);
+  }
+  const torso = new BoxGeometry(0.09, 0.1, 0.06);
+  torso.translate(0, 0.17, 0.14);
+  paint(torso, CHEEK_COLOR, 0.04, rand);
+  parts.push(torso);
+  for (const sx of [-1, 1]) {
+    const arm = strut(
+      new Vector3(sx * 0.045, 0.2, 0.12),
+      new Vector3(sx * 0.015, 0.185, 0.05),
+      0.006,
+    );
+    paint(arm, GOBLIN_COLOR, 0.03, rand);
+    parts.push(arm);
+  }
+  const head = new SphereGeometry(0.045, 8, 6);
+  head.translate(0, 0.265, 0.13);
+  paint(head, GOBLIN_COLOR, 0.03, rand);
+  parts.push(head);
+  for (const sx of [-1, 1]) {
+    const ear = new ConeGeometry(0.016, 0.06, 5);
+    ear.rotateZ((sx * Math.PI) / 2.2);
+    ear.rotateY(sx * 0.5);
+    ear.translate(sx * 0.055, 0.27, 0.15);
+    paint(ear, GOBLIN_COLOR, 0.03, rand);
+    parts.push(ear);
+  }
+  const nose = new SphereGeometry(0.012, 6, 4);
+  nose.translate(0, 0.255, 0.088);
+  paint(nose, GOBLIN_COLOR, 0.03, rand);
+  parts.push(nose);
+  for (const sx of [-1, 1]) {
+    const eye = new SphereGeometry(0.008, 6, 4);
+    eye.translate(sx * 0.018, 0.272, 0.098);
+    paint(eye, BORE_COLOR, 0.02, rand);
+    parts.push(eye);
+  }
+  const scarf = new BoxGeometry(0.07, 0.016, 0.06);
+  scarf.translate(0, 0.223, 0.125);
+  paint(scarf, FLAG_COLOR, 0.02, rand);
+  parts.push(scarf);
+  const scarfTail = new BoxGeometry(0.02, 0.008, 0.08);
+  scarfTail.rotateY(0.3);
+  scarfTail.translate(0.03, 0.222, 0.2);
+  paint(scarfTail, FLAG_COLOR, 0.02, rand);
+  parts.push(scarfTail);
+
+  return mergeParts(parts);
+}
+
+/**
+ * The lift rotor in propeller-node-local space (origin on the mast axis at
+ * hub height): iron hub plus four flat wooden blades pitched ~11° about
+ * their radial axis. The disc deliberately overhangs the 0.4 m hull — one
+ * big chinook-style rotor is the flyer's silhouette.
+ */
+function buildBombardierRotor(rand: () => number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  const hub = new CylinderGeometry(0.024, 0.024, 0.04, 8);
+  paint(hub, BARREL_COLOR, 0.03, rand);
+  parts.push(hub);
+
+  for (let k = 0; k < 4; k++) {
+    const blade = new BoxGeometry(0.225, 0.007, 0.034);
+    blade.translate(0.145, 0, 0);
+    blade.rotateX(0.2);
+    blade.rotateY((k * Math.PI) / 2);
+    paint(blade, WHEEL_COLOR, 0.03, rand);
+    parts.push(blade);
+  }
+
+  const rotor = mergeParts(parts);
+  // The rotor is the flyer's silhouette — scaled up 1.25x about the hub
+  // axis (the propeller node's origin), baked into the geometry so the
+  // node itself stays unscaled. Blade tips reach r ≈ 0.32.
+  rotor.scale(1.25, 1.25, 1.25);
+  return rotor;
+}
+
+/**
+ * Medieval mechanical bomb-carrying flyer — the whimsical goblin-piloted
+ * raider of the skies, sized against the pirate hull it fights beside:
+ *
+ * - Origin: gondola mid at the unit's cruise altitude. The machine group is
+ *   scaled to 0.85 so the airframe runs about 0.65 m bow to tail and the
+ *   bomb hangs to ≈ -0.23; the goblin keeps his full size in a separate
+ *   unscaled mesh, dropped onto the scaled deck. The rotor disc tops out
+ *   around +0.37.
+ * - Forward: bow on local -Z (ship/cannon convention), so the spawn yaw
+ *   math is shared untouched.
+ * - `propellers` holds a single child node `propeller-main` on the central
+ *   mast axis (hub resting on the scaled mast top); PropellerSpinSystem
+ *   spins each child about its local +Y, so one big rotor is just one child.
+ * - Three draw calls: merged machine, merged pilot, merged rotor. All
+ *   colour is vertex-baked onto one white roughness-0.75 dielectric material.
+ */
+function createBombardierExport(): Object3D {
+  const rand = makeRandom(20261021);
+
+  const material = new MeshStandardMaterial({
+    name: 'bombardier',
+    color: 0xffffff,
+    roughness: 0.75,
+    metalness: 0,
+    vertexColors: true,
+    // The canvas fins and their thin planes read from both sides, like the
+    // ship's sail in its hull material.
+    side: DoubleSide,
+  });
+
+  // The machine shrinks to 0.85 while the pilot keeps his size — so the
+  // goblin rides in his own mesh, nudged down onto the scaled deck (deck
+  // top 0.122 → 0.104, hence the -0.018 offset).
+  const machine = new Object3D();
+  machine.name = 'bombardier-machine';
+  machine.scale.setScalar(0.85);
+  machine.add(new Mesh(buildBombardierBody(rand), material));
+
+  const pilotMesh = new Mesh(buildBombardierPilot(rand), material);
+  pilotMesh.name = 'bombardier-pilot';
+  pilotMesh.position.y = -0.018;
+
+  const propellers = new Object3D();
+  propellers.name = 'propellers';
+  // Hub rests on the scaled mast top: 0.37 · 0.85 + half the hub height.
+  propellers.position.set(0, 0.334, 0);
+  const rotorMain = new Object3D();
+  rotorMain.name = 'propeller-main';
+  rotorMain.add(new Mesh(buildBombardierRotor(rand), material));
+  propellers.add(rotorMain);
+
+  const root = new Object3D();
+  root.name = 'bombardier';
+  root.add(machine);
+  root.add(pilotMesh);
+  root.add(propellers);
+
+  return root;
+}
+
+// ---------------------------------------------------------------------------
 // Export driver
 // ---------------------------------------------------------------------------
 
@@ -905,4 +1455,10 @@ await exportGLB(createCannonExport(), 'cannon.glb');
 // fixed pedestal + turntable; the renamed file isolates the node-structure
 // change from any stale cached GLB.
 await exportGLB(createPirateShipExport(), 'pirate-ship-v2.glb');
+// sky-ballista: the anti-air mount replaces the centre wall slot (task 022);
+// a fresh file name keeps it isolated from any stale GLB caching.
+await exportGLB(createSkyBallistaExport(), 'sky-ballista.glb');
+// bombardier: the goblin-piloted flyer joins the raid (task 023); the v2
+// name isolates the single-rotor redesign from any stale GLB caching.
+await exportGLB(createBombardierExport(), 'bombardier-v2.glb');
 console.log('\nDone. GLBs written to public/gltf/');

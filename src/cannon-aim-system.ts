@@ -31,8 +31,8 @@ const clamp = (value: number, min: number, max: number): number =>
  * - Browser: once a press on a cannon anchors a pointer, that pointer owns
  *   the drag until pointerup (grab-the-barrel semantics — the drag survives
  *   sliding off the barrel, matching how a real grabbed object behaves).
- *   Pixel deltas map to yaw/pitch: pull right swings the muzzle right, pull
- *   down drops it.
+ *   Pixel deltas map to yaw/pitch: pull right swings the muzzle left, pull
+ *   down drops it — the horizontal axis is mirrored for every combat unit.
  * - XR: grabbing a hovered cannon while the trigger is held anchors that
  *   hand; the hand's world-space travel from the grab pose maps to yaw/pitch
  *   (wrist displacement, not ray-plane geometry — turret rotation never
@@ -184,11 +184,12 @@ export class CannonAimSystem extends createSystem({
     const dy = pos.y - this.dragLast.y;
     this.dragLast.x = pos.x;
     this.dragLast.y = pos.y;
-    // Grab-the-barrel: pull right -> muzzle right (+yaw), pull down -> muzzle
-    // down (-pitch). Sensitivities live in COMBAT for feel tuning.
+    // Grab-the-barrel, mirrored: pull right -> muzzle left (-yaw), pull
+    // down -> muzzle down (-pitch). The horizontal axis is mirrored for
+    // every combat unit; sensitivities live in COMBAT for feel tuning.
     this.addAim(
       this.dragCannon,
-      dx * COMBAT.aimDegreesPerPixel,
+      -dx * COMBAT.aimDegreesPerPixel,
       -dy * COMBAT.aimDegreesPerPixel,
     );
   }
@@ -227,11 +228,11 @@ export class CannonAimSystem extends createSystem({
       return;
     }
     this.xrDragSpace.getWorldPosition(this.xrHandPos);
-    // Wrist travel drives the aim, absolute from the grab pose: hand
-    // right/left -> muzzle right/left, hand up/down -> muzzle up/down.
+    // Wrist travel drives the aim, absolute from the grab pose, mirrored
+    // like the browser drag: hand right -> muzzle left, hand up -> muzzle up.
     this.setAim(
       cannon,
-      this.xrAimStartYaw -
+      this.xrAimStartYaw +
         (this.xrHandPos.x - this.xrHandStart.x) * COMBAT.aimDegreesPerMeter,
       this.xrAimStartPitch +
         (this.xrHandPos.y - this.xrHandStart.y) * COMBAT.aimDegreesPerMeter,
@@ -293,10 +294,16 @@ export class CannonAimSystem extends createSystem({
       'yawDeg',
       clamp(yawDeg, -COMBAT.aimYawRange, COMBAT.aimYawRange),
     );
+    // Elevation limits live on the entity: cannons get the stock 0-45 envelope
+    // via component defaults, the sky ballista overrides with its own.
     cannon.setValue(
       CannonAim,
       'pitchDeg',
-      clamp(pitchDeg, COMBAT.aimPitchMin, COMBAT.aimPitchMax),
+      clamp(
+        pitchDeg,
+        Number(cannon.getValue(CannonAim, 'pitchMinDeg')),
+        Number(cannon.getValue(CannonAim, 'pitchMaxDeg')),
+      ),
     );
   }
 }
