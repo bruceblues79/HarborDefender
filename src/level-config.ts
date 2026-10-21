@@ -491,7 +491,7 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   'pirate-ship->cannon': COMBAT.pirateShellDamage,
   'pirate-ship->sky-ballista': 17.5,
   'bombardier->cannon': 10,
-  'bombardier->sky-ballista': 15,
+  'bombardier->sky-ballista': 12.5,
 };
 
 /**
