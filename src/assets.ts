@@ -80,6 +80,12 @@ export default defineAssets({
     name: 'Sky Ballista',
     priority: 'background',
   },
+  'ballista-bolt': {
+    url: publicAssetUrl('gltf/ballista-bolt.glb'),
+    type: AssetType.GLTF,
+    name: 'Ballista Bolt',
+    priority: 'background',
+  },
   'pirate-ship': {
     url: publicAssetUrl('gltf/pirate-ship-v2.glb'),
     type: AssetType.GLTF,

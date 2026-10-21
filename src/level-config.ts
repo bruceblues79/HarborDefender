@@ -35,6 +35,12 @@ export interface UnitTypeDef {
   cruiseY: number;
   /** Carries the deck-cannon ability (fires once anchored). */
   armed: boolean;
+  /**
+   * Seconds between two shots for an armed unit, rolled into PirateCannon
+   * at spawn (PirateFireSystem re-rolls from the component, not a constant).
+   * Only meaningful when `armed` is true.
+   */
+  fireInterval: number;
   /** Driven rotor node — PropellerSpinSystem spins `propellers` children. */
   rotor: boolean;
   /** Disturbs the ocean surface (WakeSource); flyers never touch water. */
@@ -179,13 +185,19 @@ export const PROPELLER_SPIN_RAD = 8;
  * - the `gun_rotate` pivot rides 0.21 above the floor;
  * - the loaded bolt tip (the muzzle) sits at gun_rotate-local
  *   (0, 0.063, -0.157) — assembly-local (0, 0.0525, -0.131) x the 1.2 scale.
- * No runtime muzzle anchor exists yet (task 022 shipped without one); these
- * constants are the muzzle's single truth until an attack task adds it.
+ * battle-setup hangs the runtime `muzzle` node at exactly this offset, so
+ * these constants stay the muzzle's single truth for both the node and the
+ * band math below.
  */
 const BALLISTA_PIVOT_Y = 0.8 + 0.21;
 const BALLISTA_ROOT_Z = -0.8;
-const BALLISTA_MUZZLE_LOCAL_Y = 0.063;
-const BALLISTA_MUZZLE_LOCAL_Z = -0.157;
+/**
+ * The muzzle helper battle-setup hangs under the ballista's gun_rotate pivot
+ * (the loaded bolt tip). Exported so the runtime node and the band math in
+ * `ballistaBoltCrossZ` share one truth.
+ */
+export const BALLISTA_MUZZLE_LOCAL_Y = 0.063;
+export const BALLISTA_MUZZLE_LOCAL_Z = -0.157;
 
 /**
  * z where a bolt fired at `pitchDeg` elevation crosses the flyer's cruise
@@ -354,6 +366,20 @@ export const COMBAT = {
   unitHealth: 100,
   /** Seconds between two shots from one pirate ship that is in fire range. */
   pirateFireInterval: 3.0,
+  /** Seconds between two bolts from one sky ballista (anti-air mount). */
+  ballistaFireInterval: 1.5,
+  /** Seconds between two bombs from one bombardier. */
+  bombardierFireInterval: 2,
+  /**
+   * World y a shot never crosses: straight bolts (gravityScale 0 — the
+   * flight model the flyer's berth band is derived from) are never pulled
+   * down, so once one climbs past this ceiling BallisticSystem recycles it
+   * silently. The ballistic arcs never get this high, so the same check is
+   * safe for every pooled projectile.
+   */
+  boltReclaimY: 3.25,
+  /** Pool size for straight ballista bolts (separate from the ball pool). */
+  boltPoolSize: 12,
   /**
    * Pirate shells keep a constant horizontal speed (m/s); flight time is
    * distance / this and the vertical velocity is solved for an exact hit,
@@ -445,6 +471,24 @@ export const COMBAT = {
 };
 
 /**
+ * Attacker->target damage table, keyed `${attackerUnitType}->${targetUnitType}`:
+ * one shot's damage as a percentage of the target's 100-point pool. Unknown
+ * pairs read 0 — immunity is explicit data, never a guessed default. Mirrors
+ * docs/design/combat.md; change both together. The two stock pairs stay on
+ * their named COMBAT constants (shellDamage / pirateShellDamage).
+ */
+export const DAMAGE_MATRIX: Record<string, number> = {
+  'cannon->pirate-ship': COMBAT.shellDamage,
+  'cannon->bombardier': 25,
+  'sky-ballista->pirate-ship': 10,
+  'sky-ballista->bombardier': 20,
+  'pirate-ship->cannon': COMBAT.pirateShellDamage,
+  'pirate-ship->sky-ballista': 17.5,
+  'bombardier->cannon': 10,
+  'bombardier->sky-ballista': 15,
+};
+
+/**
  * Bombardier flight envelope. The flyer must sit above every cannonball the
  * city battery can throw — its cruise plane is derived from the shell
  * ballistics, not chosen by hand:
@@ -494,6 +538,7 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     faction: 'attacker',
     cruiseY: SHIP_Y,
     armed: true,
+    fireInterval: COMBAT.pirateFireInterval,
     rotor: false,
     wake: true,
     stopZMin: SHIP_STOP_Z_MIN,
@@ -504,7 +549,8 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     movement: 'default-flyer',
     faction: 'attacker',
     cruiseY: FLYER_Y,
-    armed: false,
+    armed: true,
+    fireInterval: COMBAT.bombardierFireInterval,
     rotor: true,
     wake: false,
     stopZMin: FLYER_STOP_Z_MIN,

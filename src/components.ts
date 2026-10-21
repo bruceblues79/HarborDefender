@@ -6,7 +6,7 @@
  */
 
 import { createComponent, defineComponents } from '@iwsdk/core';
-import { COMBAT, PROPELLER_SPIN_RAD, SHIP_Y } from './level-config.js';
+import { COMBAT, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y } from './level-config.js';
 
 /** Marks the ocean body entity so OceanSystem can find it via query. */
 export const OceanTag = createComponent('OceanTag', {});
@@ -134,11 +134,16 @@ export const PanelScaleAnim = createComponent('PanelScaleAnim', {
 });
 
 /**
- * Marks a pooled cannon shell. The pool lives in CannonFireSystem; a shell is
- * free exactly while it does NOT carry `BallisticFlight` — presence of the
+ * Marks a pooled projectile — cannonball or straight ballista bolt, both
+ * living in CannonFireSystem's pools (bolt copies additionally carry
+ * BoltTag, which routes them to their own free query). A projectile is free
+ * exactly while it does NOT carry `BallisticFlight` — presence of the
  * flight component is the "airborne" tag, so no separate in-use flag exists.
  */
 export const ShellTag = createComponent('ShellTag', {});
+
+/** Marks pooled copies of the ballista-bolt glb inside the ShellTag pool. */
+export const BoltTag = createComponent('BoltTag', {});
 
 /**
  * Auto-fire ability of a cannon's muzzle: launch one pooled shell every
@@ -150,6 +155,22 @@ export const CannonFire = createComponent('CannonFire', {
   interval: { type: 'Float32', default: COMBAT.fireInterval },
   /** Countdown to the next shot; written only by CannonFireSystem. */
   cooldown: { type: 'Float32', default: 0 },
+  /**
+   * Attacker unit id stamped onto fired shells (ShellFaction.unitType) so
+   * ShellHitSystem can look the damage up in DAMAGE_MATRIX.
+   */
+  unitType: { type: 'String', default: '' },
+  /**
+   * Gravity multiplier for this gun's shots: 1 = the standard lob; the sky
+   * ballista fires 0 — bolts fly dead straight along the barrel, the flight
+   * model the flyer's berth band (FLYER_STOP_Z_*) is derived from.
+   */
+  gravityScale: { type: 'Float32', default: 1 },
+  /**
+   * True when this gun fires the straight bolt mesh (ballista) instead of a
+   * cannonball: CannonFireSystem picks the pool and aligns the mesh with it.
+   */
+  bolt: { type: 'Boolean', default: false },
 });
 
 /**
@@ -161,6 +182,8 @@ export const BallisticFlight = createComponent('BallisticFlight', {
   vx: { type: 'Float32', default: 0 },
   vy: { type: 'Float32', default: 0 },
   vz: { type: 'Float32', default: 0 },
+  /** Gravity multiplier: 1 standard; 0 = dead straight flight (bolts). */
+  gravityScale: { type: 'Float32', default: 1 },
 });
 
 /**
@@ -212,6 +235,8 @@ export const HitCore = createComponent('HitCore', {
   radius: { type: 'Float32', default: 0.5 },
   /** 'attacker' | 'defender' — only opposing-faction shells are consumed. */
   faction: { type: 'String', default: 'attacker' },
+  /** Unit id of the hittable combatant ('cannon', 'pirate-ship'…). */
+  unitType: { type: 'String', default: '' },
 });
 
 /**
@@ -243,6 +268,8 @@ export const Destroyed = createComponent('Destroyed', {});
 export const ShellFaction = createComponent('ShellFaction', {
   /** 'attacker' | 'defender'. */
   faction: { type: 'String', default: 'defender' },
+  /** Attacker unit id for the DAMAGE_MATRIX lookup ('cannon', 'bombardier'…). */
+  unitType: { type: 'String', default: '' },
 });
 
 /**
@@ -253,6 +280,13 @@ export const ShellFaction = createComponent('ShellFaction', {
 export const PirateCannon = createComponent('PirateCannon', {
   /** Seconds between two shots. */
   interval: { type: 'Float32', default: COMBAT.pirateFireInterval },
+  /**
+   * Seaward-most world z this unit may fire from — the far edge of its own
+   * berth band (ships SHIP_STOP_Z_MIN, the bombardier FLYER_STOP_Z_MIN).
+   * LevelWaveSystem writes it from the unit sheet at spawn; this system only
+   * reads it, so "crossing the fire line" stays one per-unit fact.
+   */
+  fireLineZ: { type: 'Float32', default: SHIP_STOP_Z_MIN },
   /** Countdown to the next shot; ticks only while stopped and the game runs. */
   cooldown: { type: 'Float32', default: 0 },
   /** Set once a defender target has been acquired. */
@@ -370,6 +404,7 @@ export default defineComponents([
   Billboard,
   PanelScaleAnim,
   ShellTag,
+  BoltTag,
   CannonFire,
   BallisticFlight,
   CannonAim,

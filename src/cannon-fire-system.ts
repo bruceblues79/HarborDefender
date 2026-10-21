@@ -6,6 +6,7 @@
  */
 
 import {
+  AssetManager,
   createSystem,
   Mesh,
   MeshStandardMaterial,
@@ -15,6 +16,7 @@ import {
 import type { Entity, Object3D } from '@iwsdk/core';
 import {
   BallisticFlight,
+  BoltTag,
   CannonFire,
   Destroyed,
   GameOver,
@@ -26,19 +28,28 @@ import {
 import { COMBAT } from './level-config.js';
 
 /**
- * Owns the shared shell pool and the cannons' fire rhythm.
+ * Owns the shared projectile pools and the cannons' fire rhythm.
  *
- * Pool: `COMBAT.shellPoolSize` shells created once at init, all sharing one
- * geometry and one material; a shell is free exactly while it does not carry
- * BallisticFlight. Firing never allocates — it repositions a free shell at
- * the muzzle and hands it to BallisticSystem by adding BallisticFlight.
+ * Pools: `COMBAT.shellPoolSize` cannonballs created synchronously at init,
+ * plus `COMBAT.boltPoolSize` straight ballista bolts cloned from the
+ * ballista-bolt glb once it loads (until then that pool is simply empty and
+ * fire() retries shortly). All copies share geometry/materials and carry
+ * ShellTag; bolts additionally carry BoltTag, which routes them to their own
+ * free query so a ball-firing gun can never grab a bolt mesh and vice versa.
+ * A projectile is free exactly while it does not carry BallisticFlight.
+ * Firing never allocates — it repositions a free projectile at the muzzle
+ * and hands it to BallisticSystem by adding BallisticFlight.
  *
  * The muzzle is the `muzzle` child battle-setup hangs under each cannon's
  * gun_rotate pivot, so the launch direction always follows the current aim.
  */
 export class CannonFireSystem extends createSystem({
   cannons: { required: [CannonFire], excluded: [Destroyed] },
-  freeShells: { required: [ShellTag], excluded: [BallisticFlight] },
+  freeShells: { required: [ShellTag], excluded: [BallisticFlight, BoltTag] },
+  freeBolts: {
+    required: [ShellTag, BoltTag],
+    excluded: [BallisticFlight],
+  },
   airborne: { required: [ShellTag, BallisticFlight] },
   directors: { required: [LevelDirector] },
 }) {
@@ -50,6 +61,8 @@ export class CannonFireSystem extends createSystem({
   private readonly retiring: Entity[] = [];
   private readonly muzzlePos = new Vector3();
   private readonly muzzleDir = new Vector3();
+  /** lookAt target for bolt alignment; allocated once, reused per shot. */
+  private readonly boltAim = new Vector3();
 
   init(): void {
     const geometry = new SphereGeometry(COMBAT.shellRadius, 8, 6);
@@ -64,6 +77,22 @@ export class CannonFireSystem extends createSystem({
       shell.visible = false;
       this.world.createTransformEntity(shell).addComponent(ShellTag);
     }
+    // Bolt pool: clones of the vertex-coloured ballista-bolt glb (head along
+    // its local +Z). Loads asynchronously — the pool starts empty and fire()
+    // retries until the copies exist.
+    AssetManager.loadGLTFById('ballista-bolt').then((gltf) => {
+      for (let i = 0; i < COMBAT.boltPoolSize; i++) {
+        const bolt = gltf.scene.clone();
+        bolt.traverse((node) => {
+          node.castShadow = true;
+        });
+        bolt.visible = false;
+        this.world
+          .createTransformEntity(bolt)
+          .addComponent(ShellTag)
+          .addComponent(BoltTag);
+      }
+    });
     this.queries.cannons.subscribe('qualify', (entity) => {
       const muzzle = entity.object3D?.getObjectByName('muzzle');
       if (muzzle) this.muzzles.set(entity.index, muzzle);
@@ -99,11 +128,12 @@ export class CannonFireSystem extends createSystem({
     );
   }
 
-  /** Launch one free shell along the muzzle's world -Z. False when none is free. */
+  /** Launch one free projectile along the muzzle's world -Z. False when none is free. */
   private fire(cannon: Entity): boolean {
     const muzzle = this.muzzles.get(cannon.index);
     if (!muzzle) return false;
-    const shell = this.firstFreeShell();
+    const isBolt = Boolean(cannon.getValue(CannonFire, 'bolt'));
+    const shell = isBolt ? this.firstFreeBolt() : this.firstFreeShell();
     const shellObject = shell?.object3D;
     if (!shell || !shellObject) return false;
 
@@ -111,15 +141,26 @@ export class CannonFireSystem extends createSystem({
     // Object3D.getWorldDirection returns +Z; the barrel fires down its -Z.
     muzzle.getWorldDirection(this.muzzleDir).negate();
     shellObject.position.copy(this.muzzlePos);
+    if (isBolt) {
+      // Straight bolt: point the mesh's modelled-forward +Z along the launch
+      // direction so it flies nose-first; no spin, fins keep it stable.
+      this.boltAim.copy(this.muzzlePos).add(this.muzzleDir);
+      shellObject.lookAt(this.boltAim);
+    }
     shellObject.visible = true;
     shell.addComponent(BallisticFlight, {
       vx: this.muzzleDir.x * COMBAT.shellSpeed,
       vy: this.muzzleDir.y * COMBAT.shellSpeed,
       vz: this.muzzleDir.z * COMBAT.shellSpeed,
+      gravityScale: Number(cannon.getValue(CannonFire, 'gravityScale')),
     });
-    // City batteries fight for the defender side; ShellHitSystem uses this
-    // to decide which hit cores may consume the shell.
-    shell.addComponent(ShellFaction, { faction: 'defender' });
+    // City batteries fight for the defender side; ShellHitSystem uses the
+    // faction to pick consumable cores and the unit type to pick the damage
+    // matrix row.
+    shell.addComponent(ShellFaction, {
+      faction: 'defender',
+      unitType: String(cannon.getValue(CannonFire, 'unitType')),
+    });
     return true;
   }
 
@@ -134,6 +175,17 @@ export class CannonFireSystem extends createSystem({
       if (shell.hasComponent(BallisticFlight)) continue;
       this.claimed.add(shell.index);
       return shell;
+    }
+    return undefined;
+  }
+
+  /** Same discipline as firstFreeShell, over the bolt pool. */
+  private firstFreeBolt(): Entity | undefined {
+    for (const bolt of this.queries.freeBolts.entities) {
+      if (this.claimed.has(bolt.index)) continue;
+      if (bolt.hasComponent(BallisticFlight)) continue;
+      this.claimed.add(bolt.index);
+      return bolt;
     }
     return undefined;
   }

@@ -23,7 +23,7 @@ import {
   SplashFade,
   WakeSource,
 } from './components.js';
-import { COMBAT, OCEAN } from './level-config.js';
+import { COMBAT, DAMAGE_MATRIX, OCEAN } from './level-config.js';
 
 /**
  * Distance-based hit resolution between airborne shells and combatants'
@@ -35,11 +35,13 @@ import { COMBAT, OCEAN } from './level-config.js';
  * the struck core's centre — not the contact point, which sits inside the
  * core radius and reads as a dented hull edge rather than a clean hit.
  *
- * The hit also deals damage to the core's Health: a defender shell costs
- * COMBAT.shellDamage, a pirate shell COMBAT.pirateShellDamage. At zero the
- * unit dies — an attacker sinks (entity disposed, a splash ripple marks the
- * spot on the surface) and a defender cannon is tagged Destroyed (hidden,
- * out of every combat query; LevelWaveSystem reads the tags for defeat).
+ * The hit also deals damage to the core's Health, read from the
+ * attacker->target damage matrix (DAMAGE_MATRIX, keyed by the shell's
+ * attacker unit type and the core's unit type; unknown pairs read 0). At
+ * zero the unit dies — an attacker sinks (entity disposed, a splash ripple
+ * marks the spot on the surface) and a defender cannon or ballista is
+ * tagged Destroyed (hidden, out of every combat query; LevelWaveSystem
+ * reads the tags for defeat).
  *
  * Runs after BallisticSystem so each frame's motion is tested at its end
  * position. Hits are collected during the sweep and resolved afterwards.
@@ -130,10 +132,12 @@ export class ShellHitSystem extends createSystem({
               ? 1
               : COMBAT.hitFlashShipRadius / COMBAT.hitFlashRadius,
           );
+          // Damage is a matrix lookup, not a faction flat rate: the shell's
+          // attacker unit type x the core's unit type (unknown pair -> 0).
           this.hitDamages.push(
-            faction === 'defender'
-              ? COMBAT.shellDamage
-              : COMBAT.pirateShellDamage,
+            DAMAGE_MATRIX[
+              `${String(shell.getValue(ShellFaction, 'unitType'))}->${String(core.getValue(HitCore, 'unitType'))}`
+            ] ?? 0,
           );
           break;
         }

@@ -53,13 +53,15 @@ const MUZZLE_LOCAL_Z = -0.2;
  * Hang combat helpers on a unit prototype once (runs for every UNIT_TYPES
  * entry):
  *
- * - a `muzzle` under the embedded gun_rotate pivot (identical placement to
- *   the city cannon, local z = -0.2 at the barrel tip) — ships only;
+ * - a `muzzle` — under the embedded gun_rotate pivot for gunned units
+ *   (identical placement to the city cannon, local z = -0.2 at the barrel
+ *   tip), or at the bounding box's bottom centre for units with no gun pivot
+ *   (the bombardier): its bomb-release point under the belly;
  * - a `cannon_mount` yaw wrapper that owns the WHOLE deck gun. The GLB's
  *   gun_rotate pivot sits on the fixed pedestal's central axis, and the
  *   wrapper copies that position before attach(), so yawing the mount spins
  *   turntable + barrel around the pedestal's own axis — the hull stays put
- *   and the gun never sweeps around the ship centre — ships only;
+ *   and the gun never sweeps around the ship centre — gunned units only;
  * - a `hit_core` at the model's bounding-box centre — every unit.
  */
 function decorateShipPrototype(prototype: Object3D): void {
@@ -69,6 +71,16 @@ function decorateShipPrototype(prototype: Object3D): void {
     muzzle.name = 'muzzle';
     muzzle.position.set(0, 0, MUZZLE_LOCAL_Z);
     gunPivot.add(muzzle);
+  } else if (!gunPivot && !prototype.getObjectByName('muzzle')) {
+    const box = new Box3().setFromObject(prototype);
+    const muzzle = new Object3D();
+    muzzle.name = 'muzzle';
+    muzzle.position.set(
+      (box.min.x + box.max.x) / 2,
+      box.min.y,
+      (box.min.z + box.max.z) / 2,
+    );
+    prototype.add(muzzle);
   }
   if (gunPivot && !prototype.getObjectByName('cannon_mount')) {
     const mount = new Object3D();
@@ -463,16 +475,20 @@ export class LevelWaveSystem extends createSystem({
     if (def.rotor) {
       entity.addComponent(PropellerSpin);
     }
-    // Combat: attacker hit core (defender shells are consumed inside it)
-    // and — for armed units — the ship's cannon ability (fires only once
-    // anchored). The bombardier is unarmed for now: it raids, it just
-    // cannot attack yet.
+    // Combat: attacker hit core (defender shells are consumed inside it) and
+    // — for armed units — the deck-gun ability with the unit sheet's own
+    // fire interval (pirate ships 3 s, the bombardier 2 s between bombs)
+    // and its own fire line, the far edge of its berth band.
     entity.addComponent(HitCore, {
       radius: COMBAT.attackerCoreRadius,
       faction: def.faction,
+      unitType,
     });
     if (def.armed) {
-      entity.addComponent(PirateCannon);
+      entity.addComponent(PirateCannon, {
+        interval: def.fireInterval,
+        fireLineZ: def.stopZMin,
+      });
     }
     return true;
   }

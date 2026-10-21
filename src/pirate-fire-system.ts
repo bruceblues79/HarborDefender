@@ -9,6 +9,7 @@ import { createSystem, Vector3 } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
 import {
   BallisticFlight,
+  BoltTag,
   Destroyed,
   GameOver,
   GamePaused,
@@ -20,22 +21,26 @@ import {
   ShipMovement,
   UnitTag,
 } from './components.js';
-import { COMBAT, SHIP_STOP_Z_MIN } from './level-config.js';
+import { COMBAT } from './level-config.js';
 
 /**
- * Pirate-ship fire. Firing permission is a positional fact owned by this
- * attack ability, deliberately separate from ShipMovement's termination:
- * the moment a ship crosses the outermost (seaward) berthing line
- * SHIP_STOP_Z_MIN, it may shoot — it does not need to have stopped yet.
- * Once in range and the battle has started it:
+ * Attacker fire (pirate ships and the bombardier share the ability). Firing
+ * permission is a positional fact owned by this attack ability, deliberately
+ * separate from ShipMovement's termination: the moment a unit crosses its
+ * own fire line — PirateCannon.fireLineZ, the far edge of its berth band
+ * (ships SHIP_STOP_Z_MIN, the bombardier FLYER_STOP_Z_MIN) — it may shoot,
+ * it does not need to have stopped yet. Once in range and the battle has
+ * started it:
  *
- * 1. picks one random defender hit core (a city cannon) and snapshots its
- *    world position as the target — city cannons never move; a locked target
+ * 1. picks one random defender hit core (a city cannon or sky ballista) and
+ *    snapshots its world position as the target — mounted defenders never
+ *    move; a locked target
  *    that gets knocked out is re-acquired the same way on the next frame, and
- *    with no survivor the ship holds fire until the defeat outcome lands;
- * 2. yaws the whole deck gun — carriage plus barrel on one cannon_mount
- *    pivot — onto the target, never the hull: the ship keeps its travel
- *    heading while its gun tracks the target;
+ *    with no survivor the unit holds fire until the defeat outcome lands;
+ * 2. yaws onto the target: units with a cannon_mount pivot (ships) swing the
+ *    whole deck gun — carriage plus barrel — and keep the hull heading; the
+ *    bombardier has no gun pivot, so it yaws the entire hull, which also
+ *    swings its belly muzzle nose-forward for the bomb drop;
  * 3. the first shot leaves immediately when permission is granted (cooldown
  *    starts at 0); later shots follow a jittered cooldown.
  *
@@ -48,7 +53,7 @@ import { COMBAT, SHIP_STOP_Z_MIN } from './level-config.js';
 export class PirateFireSystem extends createSystem({
   ships: { required: [UnitTag, ShipMovement, PirateCannon] },
   cores: { required: [HitCore], excluded: [Destroyed] },
-  freeShells: { required: [ShellTag], excluded: [BallisticFlight] },
+  freeShells: { required: [ShellTag], excluded: [BallisticFlight, BoltTag] },
   directors: { required: [LevelDirector] },
 }) {
   /** Muzzle object per ship entity index, resolved once on qualify. */
@@ -87,9 +92,15 @@ export class PirateFireSystem extends createSystem({
     if (this.paused() || this.over() || !this.gameRunning()) return;
     this.claimed.clear();
     for (const ship of this.queries.ships.entities) {
-      // Fire permission: crossing the outermost berthing line, not stopping.
+      // Fire permission: crossing this unit's own fire line (PirateCannon
+      // .fireLineZ, written from the unit sheet at spawn), not stopping.
       const object = ship.object3D;
-      if (!object || object.position.z < SHIP_STOP_Z_MIN) continue;
+      if (
+        !object ||
+        object.position.z < Number(ship.getValue(PirateCannon, 'fireLineZ'))
+      ) {
+        continue;
+      }
       // Re-validate the locked target every frame: the cores query drops
       // Destroyed cannons, so a missing index means the target died and the
       // gun re-acquires a random surviving one. With no survivor at all the
@@ -104,18 +115,19 @@ export class PirateFireSystem extends createSystem({
       if (!ship.getValue(PirateCannon, 'hasTarget')) {
         if (!this.acquireTarget(ship)) continue;
       }
-      // The deck gun tracks the target from permission on; the hull never turns.
+      // The gun — or the whole hull for pivotless units — tracks the target
+      // from permission on.
       this.aimCannon(ship);
       let cooldown = Number(ship.getValue(PirateCannon, 'cooldown')) - delta;
       if (cooldown <= 0) {
         // Pool empty: retry shortly instead of banking negative time.
-        cooldown = this.fire(ship) ? this.rollInterval() : 0.1;
+        cooldown = this.fire(ship) ? this.rollInterval(ship) : 0.1;
       }
       ship.setValue(PirateCannon, 'cooldown', cooldown);
     }
   }
 
-  /** Pick one random city-cannon core and snapshot its world position. */
+  /** Pick one random defender core (cannon or sky ballista) and snapshot it. */
   private acquireTarget(ship: Entity): boolean {
     // Two passes over the query (count, then pick) keep update() allocation
     // free; this runs on first acquisition and again whenever the previous
@@ -161,22 +173,25 @@ export class PirateFireSystem extends createSystem({
   }
 
   /**
-   * Yaw the cannon_mount pivot (carriage + barrel as one rigid unit) so its
-   * local -Z barrel points at the target. The target yaw is computed in
+   * Yaw the unit's aim onto the target. Ships swing the cannon_mount pivot
+   * (carriage + barrel as one rigid unit): the target yaw is computed in
    * world space (pivot origin -> target, same atan2(-dx, -dz) convention as
    * the city guns) and converted to the pivot's local frame by subtracting
-   * the hull's world yaw, so the whole gun can track while the ship keeps
-   * sailing on its own heading.
+   * the hull's world yaw, so the gun tracks while the ship keeps sailing on
+   * its own heading. The bombardier has no cannon_mount — it yaws the whole
+   * hull, which also swings its belly muzzle nose-forward for the drop.
    */
   private aimCannon(ship: Entity): void {
     const object = ship.object3D;
     const pivot = this.gunPivots.get(ship.index);
-    if (!object || !pivot) return;
-    pivot.getWorldPosition(this.pivotPos);
+    if (!object) return;
+    const reference = pivot ?? object;
+    reference.getWorldPosition(this.pivotPos);
     const dx = Number(ship.getValue(PirateCannon, 'targetX')) - this.pivotPos.x;
     const dz = Number(ship.getValue(PirateCannon, 'targetZ')) - this.pivotPos.z;
     const worldYaw = Math.atan2(-dx, -dz);
-    pivot.rotation.y = worldYaw - object.rotation.y;
+    if (pivot) pivot.rotation.y = worldYaw - object.rotation.y;
+    else object.rotation.y = worldYaw;
   }
 
   /**
@@ -210,14 +225,15 @@ export class PirateFireSystem extends createSystem({
     });
     shell.addComponent(ShellFaction, {
       faction: String(ship.getValue(UnitTag, 'faction')),
+      unitType: String(ship.getValue(UnitTag, 'unitType')),
     });
     return true;
   }
 
-  /** Every cooldown is a fresh roll: interval plus the shared jitter. */
-  private rollInterval(): number {
+  /** Every cooldown is a fresh roll: the unit's own interval plus the shared jitter. */
+  private rollInterval(ship: Entity): number {
     return (
-      COMBAT.pirateFireInterval +
+      Number(ship.getValue(PirateCannon, 'interval')) +
       COMBAT.fireJitterMin +
       Math.random() * (COMBAT.fireJitterMax - COMBAT.fireJitterMin)
     );

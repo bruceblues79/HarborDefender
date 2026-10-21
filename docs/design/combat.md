@@ -41,14 +41,25 @@
 | pirate-to-defender：ship → cannon | `COMBAT.pirateShellDamage` | 15 |
 | 城防炮射击间隔（+抖动 0.2–0.5s） | `COMBAT.fireInterval` | 2.5 |
 | 海盗船射击间隔 | `COMBAT.pirateFireInterval` | 3.0 |
-| 防空弩射击间隔 |                | 1.5 |
-| 投弹飞行器    |                | 2   |
+| 防空弩射击间隔 | `COMBAT.ballistaFireInterval` | 1.5 |
+| 投弹飞行器射击间隔 | `COMBAT.bombardierFireInterval` | 2 |
+| 弩箭回收高度（世界 y，静默回收无水花） | `COMBAT.boltReclaimY` | 3.25 |
+| 弩箭对象池大小 | `COMBAT.boltPoolSize` | 12 |
+| 开火许可线（各停泊带远端，spawn 时写入 `PirateCannon.fireLineZ`） | `UnitTypeDef.stopZMin` | 船 -1.75 / 飞行器 -1.80 |
+| 伤害矩阵全部格子 | `DAMAGE_MATRIX`（键 `攻击方->受击方`） | 见上文矩阵；上两行 `shellDamage`/`pirateShellDamage` 即矩阵的 cannon→ship / ship→cannon 格 |
 
 ## 当前节拍（由表推导，改表后重算）
 
 - 城防炮沉一艘船：ceil(100 / 20) = **5 发**；单炮理论 12.5–15s（含抖动）
 - 一艘海盗毁一门炮：ceil(100 / 15) = **7 发**；单船 18–21s（3s 间隔）
 - 结论：单挑城防炮占优，压力来自多船齐压下的火力分配
+- 城防炮击落一架飞行器：ceil(100 / 25) = **4 发**；单炮理论 10–12s（含抖动）
+- 防空弩击落一架飞行器：ceil(100 / 20) = **5 发**；1.5s + 抖动 ≈ 1.7–2.0s/发，直射弹道需玩家手动瞄准
+- 飞行器毁一门炮：ceil(100 / 10) = **10 发**；毁一架弩：ceil(100 / 15) ≈ **7 发**（2s 间隔）
+- 海盗船毁一架弩：ceil(100 / 17.5) = **6 发**（3s 间隔）
+- 防空弩对船（10%）为休眠格：60–75° 仰角的直射弹不会落到水面
+- 弩箭：程序化弩箭 glb（顶点色、粗糙度 0.5），沿炮管朝向直射无重力，越过 y=3.25 静默回收；命中闪光/碎裂沿用统一特效
+- 投弹飞行器：与海盗船同一套目标选择/闭式必中投弹，区别在于无炮塔节点——整机绕 y 轴转向目标，越过自身远停线（z≥-1.80）即获开火许可
 
 ## 扩展约定
 
