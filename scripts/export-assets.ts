@@ -1233,8 +1233,28 @@ function buildBombardierBody(rand: () => number): BufferGeometry {
     }
   }
 
-  // --- the goblin pilot, sitting aft with his paws on the stick ---
-  // Thighs stretched forward out of the open cockpit, leather tunic torso.
+  // Control stick rising from the deck between the pilot's knees.
+  const stick = strut(
+    new Vector3(0, 0.12, 0.05),
+    new Vector3(0, 0.185, 0.045),
+    0.004,
+  );
+  paint(stick, BARREL_COLOR, 0.03, rand);
+  parts.push(stick);
+
+  return mergeParts(parts);
+}
+
+/**
+ * The goblin pilot in body-space (same frame as the machine): sitting aft
+ * with his paws on the control stick — thighs out of the open cockpit,
+ * leather tunic, big green head with pointed ears, round nose, bead eyes
+ * and a red scarf. Kept as its own mesh so the machine can shrink without
+ * shrinking its driver.
+ */
+function buildBombardierPilot(rand: () => number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
   for (const sx of [-1, 1]) {
     const thigh = new BoxGeometry(0.04, 0.03, 0.09);
     thigh.translate(sx * 0.03, 0.135, 0.09);
@@ -1245,14 +1265,6 @@ function buildBombardierBody(rand: () => number): BufferGeometry {
   torso.translate(0, 0.17, 0.14);
   paint(torso, CHEEK_COLOR, 0.04, rand);
   parts.push(torso);
-  // Control stick between his knees; both arms reach down onto it.
-  const stick = strut(
-    new Vector3(0, 0.12, 0.05),
-    new Vector3(0, 0.185, 0.045),
-    0.004,
-  );
-  paint(stick, BARREL_COLOR, 0.03, rand);
-  parts.push(stick);
   for (const sx of [-1, 1]) {
     const arm = strut(
       new Vector3(sx * 0.045, 0.2, 0.12),
@@ -1262,7 +1274,6 @@ function buildBombardierBody(rand: () => number): BufferGeometry {
     paint(arm, GOBLIN_COLOR, 0.03, rand);
     parts.push(arm);
   }
-  // Big green head with pointed ears, a round nose and bead eyes.
   const head = new SphereGeometry(0.045, 8, 6);
   head.translate(0, 0.265, 0.13);
   paint(head, GOBLIN_COLOR, 0.03, rand);
@@ -1285,7 +1296,6 @@ function buildBombardierBody(rand: () => number): BufferGeometry {
     paint(eye, BORE_COLOR, 0.02, rand);
     parts.push(eye);
   }
-  // A red scarf at the neck with a little tail — whimsy, one box each.
   const scarf = new BoxGeometry(0.07, 0.016, 0.06);
   scarf.translate(0, 0.223, 0.125);
   paint(scarf, FLAG_COLOR, 0.02, rand);
@@ -1321,22 +1331,29 @@ function buildBombardierRotor(rand: () => number): BufferGeometry {
     parts.push(blade);
   }
 
-  return mergeParts(parts);
+  const rotor = mergeParts(parts);
+  // The rotor is the flyer's silhouette — scaled up 1.25x about the hub
+  // axis (the propeller node's origin), baked into the geometry so the
+  // node itself stays unscaled. Blade tips reach r ≈ 0.32.
+  rotor.scale(1.25, 1.25, 1.25);
+  return rotor;
 }
 
 /**
  * Medieval mechanical bomb-carrying flyer — the whimsical goblin-piloted
  * raider of the skies, sized against the pirate hull it fights beside:
  *
- * - Origin: gondola mid at the unit's cruise altitude; the bomb hangs to
- *   -0.265 and the rotor disc tops out at +0.395. The airframe runs about
- *   0.77 m bow to tail — barely two-thirds of the pirate hull.
+ * - Origin: gondola mid at the unit's cruise altitude. The machine group is
+ *   scaled to 0.85 so the airframe runs about 0.65 m bow to tail and the
+ *   bomb hangs to ≈ -0.23; the goblin keeps his full size in a separate
+ *   unscaled mesh, dropped onto the scaled deck. The rotor disc tops out
+ *   around +0.37.
  * - Forward: bow on local -Z (ship/cannon convention), so the spawn yaw
  *   math is shared untouched.
  * - `propellers` holds a single child node `propeller-main` on the central
- *   mast axis; PropellerSpinSystem spins each child about its local +Y, so
- *   one big rotor is just one child.
- * - Two draw calls: merged airframe (pilot included), merged rotor. All
+ *   mast axis (hub resting on the scaled mast top); PropellerSpinSystem
+ *   spins each child about its local +Y, so one big rotor is just one child.
+ * - Three draw calls: merged machine, merged pilot, merged rotor. All
  *   colour is vertex-baked onto one white roughness-0.75 dielectric material.
  */
 function createBombardierExport(): Object3D {
@@ -1353,12 +1370,22 @@ function createBombardierExport(): Object3D {
     side: DoubleSide,
   });
 
-  const bodyMesh = new Mesh(buildBombardierBody(rand), material);
-  bodyMesh.name = 'bombardier-body';
+  // The machine shrinks to 0.85 while the pilot keeps his size — so the
+  // goblin rides in his own mesh, nudged down onto the scaled deck (deck
+  // top 0.122 → 0.104, hence the -0.018 offset).
+  const machine = new Object3D();
+  machine.name = 'bombardier-machine';
+  machine.scale.setScalar(0.85);
+  machine.add(new Mesh(buildBombardierBody(rand), material));
+
+  const pilotMesh = new Mesh(buildBombardierPilot(rand), material);
+  pilotMesh.name = 'bombardier-pilot';
+  pilotMesh.position.y = -0.018;
 
   const propellers = new Object3D();
   propellers.name = 'propellers';
-  propellers.position.set(0, 0.375, 0);
+  // Hub rests on the scaled mast top: 0.37 · 0.85 + half the hub height.
+  propellers.position.set(0, 0.334, 0);
   const rotorMain = new Object3D();
   rotorMain.name = 'propeller-main';
   rotorMain.add(new Mesh(buildBombardierRotor(rand), material));
@@ -1366,7 +1393,8 @@ function createBombardierExport(): Object3D {
 
   const root = new Object3D();
   root.name = 'bombardier';
-  root.add(bodyMesh);
+  root.add(machine);
+  root.add(pilotMesh);
   root.add(propellers);
 
   return root;

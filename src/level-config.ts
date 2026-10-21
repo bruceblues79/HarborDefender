@@ -466,14 +466,17 @@ const CANNON_APEX_Y =
   (COMBAT.shellSpeed * Math.sin(Math.PI / 4)) ** 2 / (2 * COMBAT.gravity);
 /** Safety margin above the shell apex, also covering radius differences. */
 const FLYER_CLEARANCE = 0.2;
-export const FLYER_Y = CANNON_APEX_Y + FLYER_CLEARANCE;
+/** Extra designer headroom above the ballistic bound. */
+const FLYER_EXTRA_ALTITUDE = 0.3;
+export const FLYER_Y =
+  CANNON_APEX_Y + FLYER_CLEARANCE + FLYER_EXTRA_ALTITUDE;
 
 /**
  * The flyer's berth band, projected by the sky ballista's elevation envelope
  * onto the cruise plane: at pitchMax (75°) the bolt crosses nearest the wall
- * (≈ -1.15, a hand's width off the sea face but clear of it); at pitchMin
+ * (≈ -1.23, a hand's width off the sea face but clear of it); at pitchMin
  * (60°, the default's full 15° of depression) it crosses farthest out
- * (≈ -1.62). Anywhere inside the band some elevation in [60°, 75°] reaches
+ * (≈ -1.80). Anywhere inside the band some elevation in [60°, 75°] reaches
  * the flyer, so the ballista can hit it once it attacks. MIN < MAX keeps the
  * ship constants' reading — MIN far out, MAX against the wall.
  */
