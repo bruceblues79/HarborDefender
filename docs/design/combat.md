@@ -17,15 +17,17 @@
 
 ### pirate-to-defender（海盗 → 守方）
 
-| atk/hurt | cannon（城防炮） |
-|:--------:|:----------------:|
-| ship     | 15%              |
+| atk/hurt | cannon（城防炮） | ballista(防空弩) |
+|:--------:|:----------------:|:-------------:|
+| ship     | 15%              | 17.5%         |
+| bombardier | 10%            | 15%           |
 
 ### defender-to-pirate（守方 → 海盗）
 
-| atk/hurt | ship（海盗船） |
-|:--------:|:--------------:|
-| cannon   | 20%            |
+| atk/hurt | ship（海盗船） | bombardier(投弹飞行器) |
+|:--------:|:--------------:|:-------------------:|
+| cannon   | 20%            | 25%                |
+| ballista | 10%            | 20%                |
 
 未知组合（表中未写的格）视为 0——打不动的目标显式写 0%，
 免疫关系（如将来城墙免疫船炮）不靠缺省猜。
@@ -39,6 +41,8 @@
 | pirate-to-defender：ship → cannon | `COMBAT.pirateShellDamage` | 15 |
 | 城防炮射击间隔（+抖动 0.2–0.5s） | `COMBAT.fireInterval` | 2.5 |
 | 海盗船射击间隔 | `COMBAT.pirateFireInterval` | 3.0 |
+| 防空弩射击间隔 |                | 1.5 |
+| 投弹飞行器    |                | 2   |
 
 ## 当前节拍（由表推导，改表后重算）
 
