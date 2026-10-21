@@ -86,4 +86,10 @@ export default defineAssets({
     name: 'Pirate Ship',
     priority: 'background',
   },
+  bombardier: {
+    url: publicAssetUrl('gltf/bombardier.glb'),
+    type: AssetType.GLTF,
+    name: 'Bombardier',
+    priority: 'background',
+  },
 });

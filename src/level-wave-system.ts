@@ -23,6 +23,7 @@ import {
   HitCore,
   LevelDirector,
   PirateCannon,
+  PropellerSpin,
   ShipMovement,
   SpawnFade,
   UnitTag,
@@ -34,9 +35,6 @@ import {
   OCEAN,
   OCEAN_FAR_Z,
   PACING,
-  SHIP_STOP_Z_MAX,
-  SHIP_STOP_Z_MIN,
-  SHIP_Y,
   SPAWN_FADE_DURATION,
   SPAWN_ROLL_TRIES,
   STOP_MIN_GAP_X,
@@ -46,21 +44,23 @@ import {
   WAKE_RADIUS,
   WAKE_STRENGTH_MOVING,
 } from './level-config.js';
+import type { UnitTypeDef } from './level-config.js';
 
 /** Local z of the muzzle helper under a gun_rotate pivot (barrel -Z tip). */
 const MUZZLE_LOCAL_Z = -0.2;
 
 /**
- * Hang the pirate ship's combat helpers on its prototype once:
+ * Hang combat helpers on a unit prototype once (runs for every UNIT_TYPES
+ * entry):
  *
  * - a `muzzle` under the embedded gun_rotate pivot (identical placement to
- *   the city cannon, local z = -0.2 at the barrel tip);
+ *   the city cannon, local z = -0.2 at the barrel tip) — ships only;
  * - a `cannon_mount` yaw wrapper that owns the WHOLE deck gun. The GLB's
  *   gun_rotate pivot sits on the fixed pedestal's central axis, and the
  *   wrapper copies that position before attach(), so yawing the mount spins
  *   turntable + barrel around the pedestal's own axis — the hull stays put
- *   and the gun never sweeps around the ship centre;
- * - a `hit_core` at the model's bounding-box centre.
+ *   and the gun never sweeps around the ship centre — ships only;
+ * - a `hit_core` at the model's bounding-box centre — every unit.
  */
 function decorateShipPrototype(prototype: Object3D): void {
   const gunPivot = prototype.getObjectByName('gun_rotate');
@@ -290,8 +290,8 @@ export class LevelWaveSystem extends createSystem({
     return clearance;
   }
 
-  private rollZ(): number {
-    return SHIP_STOP_Z_MIN + Math.random() * (SHIP_STOP_Z_MAX - SHIP_STOP_Z_MIN);
+  private rollZ(stopZMin: number, stopZMax: number): number {
+    return stopZMin + Math.random() * (stopZMax - stopZMin);
   }
 
   /**
@@ -309,14 +309,23 @@ export class LevelWaveSystem extends createSystem({
    * and because claims are read from *live* attackers, a stop is released the
    * moment its ship leaves the water, with no cleanup anywhere.
    *
+   * The z bounds come from the unit's own berth band (ships roll the ocean's
+   * wall-side half; the bombardier rolls the sky-ballista coverage band).
    * This runs once per dispatch (about every two seconds), never per frame.
    */
-  private pickTarget(): { x: number; z: number } {
-    let best = { x: this.rollX(), z: this.rollZ() };
+  private pickTarget(def: UnitTypeDef): { x: number; z: number } {
+    let best = {
+      x: this.rollX(),
+      z: this.rollZ(def.stopZMin, def.stopZMax),
+    };
     let bestRoom = this.roominess(best.x, best.z);
-    for (let attempt = 1; attempt < STOP_ROLL_TRIES && bestRoom < 1; attempt += 1) {
+    for (
+      let attempt = 1;
+      attempt < STOP_ROLL_TRIES && bestRoom < 1;
+      attempt += 1
+    ) {
       const x = this.rollX();
-      const z = this.rollZ();
+      const z = this.rollZ(def.stopZMin, def.stopZMax);
       const room = this.roominess(x, z);
       if (room < bestRoom) continue;
       best = { x, z };
@@ -368,8 +377,11 @@ export class LevelWaveSystem extends createSystem({
     // from the berth cascade, which is why it is resolved before anything is
     // committed.
     const spawnX = units.length === 1 ? 0 : this.pickSpawnX();
-    const target = this.pickTarget();
-    object.position.set(spawnX, SHIP_Y, SPAWN_Z);
+    const target = this.pickTarget(def);
+    // Altitude is the unit sheet's cruiseY — ships float at the waterline,
+    // the bombardier holds FLYER_Y. Everything downstream reads the same
+    // value off ShipMovement, so no system ever hard-codes an altitude.
+    object.position.set(spawnX, def.cruiseY, SPAWN_Z);
     // Bow is the hull's local -Z; yaw it onto the spawn -> target direction.
     object.rotation.y = Math.atan2(
       -(target.x - spawnX),
@@ -416,11 +428,14 @@ export class LevelWaveSystem extends createSystem({
     entity.addComponent(UnitTag, { unitType, faction: def.faction });
     // No `state`: ShipMovement defaults to 'moving', so the run starts on the
     // spawn frame while SpawnFadeSystem materialises the hull in parallel.
+    // cruiseY rides along so ShipMovementSystem holds this unit's own
+    // altitude instead of a shared waterline constant.
     entity.addComponent(ShipMovement, {
       pattern: def.movement,
       spawnX,
       targetX: target.x,
       targetZ: target.z,
+      cruiseY: def.cruiseY,
     });
     entity.addComponent(SpawnFade, { duration: SPAWN_FADE_DURATION });
     // Hull hit points: the ship sinks once ShellHitSystem has charged
@@ -430,22 +445,35 @@ export class LevelWaveSystem extends createSystem({
       current: COMBAT.unitHealth,
       max: COMBAT.unitHealth,
     });
-    entity.addComponent(WakeSource, {
-      strength: 0,
-      // Under way (or held up) from frame one, so the wake aims at the
-      // sailing values; ShipMovementSystem retargets it the moment the ship
-      // stops or starts waiting.
-      targetStrength: WAKE_STRENGTH_MOVING,
-      radius: WAKE_RADIUS,
-      targetRadius: WAKE_RADIUS,
-    });
+    // Water contact is a unit-sheet fact: ships churn a wake, the airborne
+    // bombardier never touches the surface and gets none.
+    if (def.wake) {
+      entity.addComponent(WakeSource, {
+        strength: 0,
+        // Under way (or held up) from frame one, so the wake aims at the
+        // sailing values; ShipMovementSystem retargets it the moment the ship
+        // stops or starts waiting.
+        targetStrength: WAKE_STRENGTH_MOVING,
+        radius: WAKE_RADIUS,
+        targetRadius: WAKE_RADIUS,
+      });
+    }
+    // The rotor is also a unit-sheet fact: PropellerSpinSystem turns the
+    // model's `propellers` children for as long as the unit lives.
+    if (def.rotor) {
+      entity.addComponent(PropellerSpin);
+    }
     // Combat: attacker hit core (defender shells are consumed inside it)
-    // and the ship's cannon ability (fires only once anchored).
+    // and — for armed units — the ship's cannon ability (fires only once
+    // anchored). The bombardier is unarmed for now: it raids, it just
+    // cannot attack yet.
     entity.addComponent(HitCore, {
       radius: COMBAT.attackerCoreRadius,
       faction: def.faction,
     });
-    entity.addComponent(PirateCannon);
+    if (def.armed) {
+      entity.addComponent(PirateCannon);
+    }
     return true;
   }
 

@@ -15,18 +15,18 @@ import {
   WakeSource,
 } from './components.js';
 import {
-  SHIP_Y,
   WAKE_RADIUS,
   WAKE_STRENGTH_HALTED,
   WAKE_STRENGTH_MOVING,
 } from './level-config.js';
 
 /**
- * Runs the `default-ship` movement pattern.
+ * Runs the shared march pattern (`default-ship` / `default-flyer`).
  *
- * Moving: sail the straight line from the spawn point to the rolled target; a
- * ship keeps `stopDistance` behind a same-type ship ahead along its travel
- * direction and waits for it to clear.
+ * Moving: sail the straight line from the spawn point to the rolled target at
+ * the unit's own cruiseY — ships ride the waterline, the bombardier holds
+ * FLYER_Y; a unit keeps `stopDistance` behind a same-type unit ahead along
+ * its travel direction and waits for it to clear.
  * Stopped: hold at the target, wake eased down.
  *
  * The wake is bound to motion: WAKE_STRENGTH_MOVING while under way,
@@ -38,7 +38,9 @@ import {
  * deliberately not a gate on movement.
  */
 export class ShipMovementSystem extends createSystem({
-  movers: { required: [ShipMovement, UnitTag, WakeSource] },
+  // WakeSource is deliberately absent: flyers march the same line but churn
+  // no water, and setWake no-ops for them.
+  movers: { required: [ShipMovement, UnitTag] },
   directors: { required: [LevelDirector] },
 }) {
   update(delta: number): void {
@@ -86,14 +88,22 @@ export class ShipMovementSystem extends createSystem({
     }
     this.setWake(entity, WAKE_STRENGTH_MOVING, WAKE_RADIUS);
 
+    // Altitude is per-unit: ships cruise at the waterline, the bombardier
+    // holds FLYER_Y. Read once per advance, applied to both arrival and
+    // in-flight positioning.
+    const cruiseY = Number(entity.getValue(ShipMovement, 'cruiseY'));
     const step = Number(entity.getValue(ShipMovement, 'speed')) * delta;
     if (step >= remaining) {
-      object.position.set(targetX, SHIP_Y, targetZ);
+      object.position.set(targetX, cruiseY, targetZ);
       entity.setValue(ShipMovement, 'state', 'stopped');
       this.setWake(entity, WAKE_STRENGTH_HALTED, WAKE_RADIUS * 0.5);
       return;
     }
-    object.position.set(x + (dx / remaining) * step, SHIP_Y, z + (dz / remaining) * step);
+    object.position.set(
+      x + (dx / remaining) * step,
+      cruiseY,
+      z + (dz / remaining) * step,
+    );
   }
 
   /**
@@ -133,6 +143,9 @@ export class ShipMovementSystem extends createSystem({
 
   /** Retarget the wake; OceanSystem eases the running values over ~0.3 s. */
   private setWake(entity: Entity, strength: number, radius: number): void {
+    // Flyers (and any future non-water unit) carry no WakeSource; the march
+    // stays shared and the water stays still.
+    if (!entity.hasComponent(WakeSource)) return;
     if (Number(entity.getValue(WakeSource, 'targetStrength')) !== strength) {
       entity.setValue(WakeSource, 'targetStrength', strength);
     }

@@ -14,12 +14,16 @@
  */
 
 /** Movement pattern ids understood by ShipMovementSystem. */
-export type MovementPattern = 'default-ship';
+export type MovementPattern = 'default-ship' | 'default-flyer';
 
 /** Side a unit fights for. The director only ever dispatches attackers. */
 export type Faction = 'attacker' | 'defender';
 
-/** One unit type: what to spawn and how it behaves on the water. */
+/**
+ * One unit type: what to spawn and how it behaves. The unit sheet is the
+ * single truth the spawner reads — altitude, armament, rotor, wake and the
+ * berth band are all designer data, never system hard-coding.
+ */
 export interface UnitTypeDef {
   /** Asset manifest id instantiated for this unit (see src/assets.ts). */
   assetId: string;
@@ -27,19 +31,25 @@ export interface UnitTypeDef {
   movement: MovementPattern;
   /** Side this unit fights for. */
   faction: Faction;
+  /** World y the unit holds while under way (its object-origin height). */
+  cruiseY: number;
+  /** Carries the deck-cannon ability (fires once anchored). */
+  armed: boolean;
+  /** Driven rotor node — PropellerSpinSystem spins `propellers` children. */
+  rotor: boolean;
+  /** Disturbs the ocean surface (WakeSource); flyers never touch water. */
+  wake: boolean;
+  /** Berth z bounds rolled for this unit's stop point (MIN far, MAX near). */
+  stopZMin: number;
+  stopZMax: number;
 }
 
 /**
- * Unit registry keyed by the unitType string used in level data. Adding a new
- * enemy (goblin flyer, boss) is one entry here plus its asset manifest entry.
+ * Unit registry keyed by the unitType string used in level data. Declared
+ * after the constants it reads (module const order is evaluation order).
+ * Adding a new enemy (goblin flyer, boss) is one entry here plus its asset
+ * manifest entry.
  */
-export const UNIT_TYPES: Record<string, UnitTypeDef> = {
-  'pirate-ship': {
-    assetId: 'pirate-ship',
-    movement: 'default-ship',
-    faction: 'attacker',
-  },
-};
 
 /** A wave sends its units out one at a time, in listed order. */
 export interface WaveSpec {
@@ -160,6 +170,90 @@ export const SHIP_STOP_Z_MAX: number =
 export const SHIP_Y = 0.66;
 
 /**
+ * Bombardier flight envelope. The flyer cruises a fixed FLYER_ALTITUDE
+ * above the ships' waterline, and its berth is not a designer choice: the
+ * sky ballista's elevation envelope projects a coverage band onto the
+ * cruise plane, and the flyer stops inside that band.
+ */
+export const FLYER_ALTITUDE = 0.75;
+export const FLYER_Y = SHIP_Y + FLYER_ALTITUDE;
+
+/** Spin of the bombardier's rotor nodes, radians per second. */
+export const PROPELLER_SPIN_RAD = 8;
+
+/**
+ * Sky-ballista muzzle geometry the flyer's stop band is derived from, kept
+ * in step with sky-ballista.glb and its battle-setup placement:
+ * - the mount stands on the wall top (y 0.8) at the wall centre z (-0.8);
+ * - the `gun_rotate` pivot rides 0.21 above the floor;
+ * - the loaded bolt tip (the muzzle) sits at gun_rotate-local
+ *   (0, 0.063, -0.157) — assembly-local (0, 0.0525, -0.131) x the 1.2 scale.
+ * No runtime muzzle anchor exists yet (task 022 shipped without one); these
+ * constants are the muzzle's single truth until an attack task adds it.
+ */
+const BALLISTA_PIVOT_Y = 0.8 + 0.21;
+const BALLISTA_ROOT_Z = -0.8;
+const BALLISTA_MUZZLE_LOCAL_Y = 0.063;
+const BALLISTA_MUZZLE_LOCAL_Z = -0.157;
+
+/**
+ * z where a bolt fired at `pitchDeg` elevation crosses the flyer's cruise
+ * plane. The muzzle offset rotates with the barrel (CannonAimSystem writes
+ * rotation.x = pitch) and the bolt then flies along the muzzle direction
+ * (0, sin e, -cos e) with no decay, so the crossing is plain trigonometry.
+ */
+function ballistaBoltCrossZ(pitchDeg: number): number {
+  const e = (pitchDeg * Math.PI) / 180;
+  const muzzleY =
+    BALLISTA_PIVOT_Y +
+    BALLISTA_MUZZLE_LOCAL_Y * Math.cos(e) -
+    BALLISTA_MUZZLE_LOCAL_Z * Math.sin(e);
+  const muzzleZ =
+    BALLISTA_ROOT_Z +
+    BALLISTA_MUZZLE_LOCAL_Y * Math.sin(e) +
+    BALLISTA_MUZZLE_LOCAL_Z * Math.cos(e);
+  return muzzleZ - (FLYER_Y - muzzleY) / Math.tan(e);
+}
+
+/**
+ * The flyer's berth band: at pitchMax (75°) the bolt crosses the cruise
+ * plane nearest the wall (≈ -0.84); at pitchMin (60°, 15° of depression
+ * from the default) it crosses farthest out (≈ -0.96). MIN < MAX keeps the
+ * ship constants' reading — MIN far out, MAX against the wall.
+ */
+export const FLYER_STOP_Z_MIN = ballistaBoltCrossZ(SKY_BALLISTA.pitchMin);
+export const FLYER_STOP_Z_MAX = ballistaBoltCrossZ(SKY_BALLISTA.pitchMax);
+
+/**
+ * Unit registry keyed by the unitType string used in level data. Adding a new
+ * enemy (goblin flyer, boss) is one entry here plus its asset manifest entry.
+ */
+export const UNIT_TYPES: Record<string, UnitTypeDef> = {
+  'pirate-ship': {
+    assetId: 'pirate-ship',
+    movement: 'default-ship',
+    faction: 'attacker',
+    cruiseY: SHIP_Y,
+    armed: true,
+    rotor: false,
+    wake: true,
+    stopZMin: SHIP_STOP_Z_MIN,
+    stopZMax: SHIP_STOP_Z_MAX,
+  },
+  bombardier: {
+    assetId: 'bombardier',
+    movement: 'default-flyer',
+    faction: 'attacker',
+    cruiseY: FLYER_Y,
+    armed: false,
+    rotor: true,
+    wake: false,
+    stopZMin: FLYER_STOP_Z_MIN,
+    stopZMax: FLYER_STOP_Z_MAX,
+  },
+};
+
+/**
  * Ripples a moving unit drags across the surface. Strength is the wake's
  * amplitude multiplier; the ship halves its radius while it is not under way.
  */
@@ -210,14 +304,7 @@ export const designList: LevelSpec[] = [
     name: 'design',
     waves: [
       {
-        units: [
-          'pirate-ship',
-          'pirate-ship',
-          'pirate-ship',
-          'pirate-ship',
-          'pirate-ship',
-          'pirate-ship',
-        ],
+        units: ['bombardier', 'bombardier', 'bombardier'],
       },
     ],
   },

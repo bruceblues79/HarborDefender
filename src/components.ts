@@ -6,7 +6,7 @@
  */
 
 import { createComponent, defineComponents } from '@iwsdk/core';
-import { COMBAT } from './level-config.js';
+import { COMBAT, PROPELLER_SPIN_RAD, SHIP_Y } from './level-config.js';
 
 /** Marks the ocean body entity so OceanSystem can find it via query. */
 export const OceanTag = createComponent('OceanTag', {});
@@ -77,12 +77,26 @@ export const ShipMovement = createComponent('ShipMovement', {
   targetZ: { type: 'Float32', default: 0 },
   /** Forward speed (m/s). */
   speed: { type: 'Float32', default: 0.4 },
+  /** World y held while under way — ships at the waterline, flyers aloft. */
+  cruiseY: { type: 'Float32', default: SHIP_Y },
   /** Gap (m) kept behind a same-type ship ahead along the travel direction. */
   stopDistance: { type: 'Float32', default: 1.1 },
   /** Lateral half-width (m) used for "ahead of me" obstacle checks. */
   laneHalfWidth: { type: 'Float32', default: 0.35 },
   /** Set while a ship ahead keeps this one waiting. */
   blocked: { type: 'Boolean', default: false },
+});
+
+/**
+ * Driven rotor of a flying unit (the bombardier's tandem propellers).
+ * Presence of this component *is* the tag "has a spinning rotor":
+ * PropellerSpinSystem resolves the model's `propellers` node and turns each
+ * child rotor about its local +Y. A hovering flyer keeps its rotors turning,
+ * so motion state does not gate the spin.
+ */
+export const PropellerSpin = createComponent('PropellerSpin', {
+  /** Rotor speed, radians per second. */
+  speed: { type: 'Float32', default: PROPELLER_SPIN_RAD },
 });
 
 /**
@@ -351,6 +365,7 @@ export default defineComponents([
   LevelDirector,
   UnitTag,
   ShipMovement,
+  PropellerSpin,
   SpawnFade,
   Billboard,
   PanelScaleAnim,
