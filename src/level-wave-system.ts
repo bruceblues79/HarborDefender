@@ -55,8 +55,9 @@ const MUZZLE_LOCAL_Z = -0.2;
  *
  * - a `muzzle` — under the embedded gun_rotate pivot for gunned units
  *   (identical placement to the city cannon, local z = -0.2 at the barrel
- *   tip), or at the bounding box's bottom centre for units with no gun pivot
- *   (the bombardier): its bomb-release point under the belly;
+ *   tip). Pivotless units adopt the GLB-borne `muzzle` when the model ships
+ *   one (the bombardier: baked at its bomb's centroid); only a model without
+ *   one falls back to the bounding box's bottom centre.
  * - a `cannon_mount` yaw wrapper that owns the WHOLE deck gun. The GLB's
  *   gun_rotate pivot sits on the fixed pedestal's central axis, and the
  *   wrapper copies that position before attach(), so yawing the mount spins

@@ -203,6 +203,12 @@ export const CannonAim = createComponent('CannonAim', {
   pitchMinDeg: { type: 'Float32', default: COMBAT.aimPitchMin },
   /** Per-entity elevation ceiling (deg) — stock cannon: COMBAT.aimPitchMax. */
   pitchMaxDeg: { type: 'Float32', default: COMBAT.aimPitchMax },
+  /**
+   * Vertical drag sign for a gun_rotate-zone drag: false keeps the shared
+   * "pull down -> muzzle down" mapping; true inverts it (the sky ballista's
+   * body pulls down -> muzzle lifts). Horizontal mapping is never inverted.
+   */
+  pitchDragInvert: { type: 'Boolean', default: false },
 });
 
 /**

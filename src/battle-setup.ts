@@ -264,6 +264,9 @@ export function startBattle(world: World): void {
                 pitchDeg: SKY_BALLISTA.pitchDefault,
                 pitchMinDeg: SKY_BALLISTA.pitchMin,
                 pitchMaxDeg: SKY_BALLISTA.pitchMax,
+                // Dragging the swivel body inverts the vertical mapping:
+                // pull down lifts the bolt head, the rack-hand feel.
+                pitchDragInvert: true,
               });
               unitEntity.addComponent(CannonFire, {
                 interval: COMBAT.ballistaFireInterval,
