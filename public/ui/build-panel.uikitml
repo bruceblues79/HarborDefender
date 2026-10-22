@@ -1,15 +1,37 @@
 <!--
   Build panel, opened by any defense slot's build button: 75 × 100 UIKit
-  units = 0.75 m × 1 m at scale 1 (flat mode runs a 1.5x factor). Column of
-  two unit rows — emblem, name, price — plus a wallet readout in the header
-  and a dismiss button at the foot. Prices are rewritten at open time by
-  BuildPanelSystem (trade-in discount while the slot's occupant is alive):
-  a dynamic readout is a Panel with an id wrapping one text child, whose
-  Text component gets its `text` property rewritten. Labels stay Latin —
-  the bundled font atlas has no CJK glyph coverage. Panel surface matches
-  the pause menu: glass over #ffffffaa. render-order 18 keeps it under the
-  menu button (20) and above the world overlays (health bars 8/9, hit
-  flash 10).
+  units = 0.75 m × 1 m at scale 1 (flat mode runs a 1.5x factor). A bare
+  header (one centered "gold <money>" line, deep-brown #4d311a ≈ L 0.2,
+  nudged toward the panel top by a 4pt root top padding) over a scrollable
+  slot list — overflow: scroll makes the area a native uikit scroll region
+  (drag/fling/wheel, clipping included); scrollbar-width: 0 hides the
+  built-in white scrollbar rail — and a dark-gray dismiss button pinned to
+  the foot (the list stretches flex-grow 1; rows stack from the start).
+  Rows use the <button> tag deliberately: <Panel> pulls the horizon kit's
+  panelMaterialClass default (globally re-registered as GlassMaterial), and
+  glass-tinted children wash mid-gray class backgrounds out to white —
+  Container (button) renders the class color exactly. BuildPanelSystem
+  rewrites the two real rows' prices at open time (trade-in discount while
+  the slot's occupant is alive), binds their clicks, and hides the row of
+  the unit currently occupying the opening slot through a classList swap
+  (.build-row-hidden): runtime setProperties display would lose to the
+  class layer, so hiding must be class-driven. Four placeholder rows (Item
+  1–4, 9999, lucide bolt icon) share the real row design but carry no id —
+  inert. Icons load through the <svg> tag's src (uikit Svg component:
+  SVGLoader vector meshes, MeshBasicMaterial, tone-mapped off, scaled from
+  the file's viewBox into the element box): cannon from the game-icons set,
+  bow from boxicons, bolt from lucide; fills/strokes hardcoded #f2f4f7
+  because currentColor resolves to black in SVGLoader. The build-time
+  UIKitML validator rejects viewBox on the element, so the svg files keep
+  it and the src form is used instead of inlining the markup; src resolves
+  against the page base URL (not the .uikitml location), hence the ui/
+  prefix. Every non-colored container declares background-color #00000000:
+  uikit containers default to an opaque white surface. Slot palette:
+  mid-gray #5d646d rows with white names (#f2f4f7, font 4) and warm gold
+  prices (#ffd977, font 6). Labels stay Latin — the bundled font atlas has
+  no CJK glyph coverage. Panel surface matches the pause menu: glass over
+  #ffffffaa. render-order 18 keeps it under the menu button (20) and above
+  the world overlays (health bars 8/9, hit flash 10).
 -->
 <style>
   .build-root {
@@ -20,10 +42,10 @@
     height: 100;
     border-radius: 6;
     render-order: 18;
-    padding-top: 8;
-    padding-right: 8;
+    padding-top: 4;
+    padding-right: 4;
     padding-bottom: 8;
-    padding-left: 8;
+    padding-left: 4;
     panel-material-class: glass;
     background-color: #ffffffaa;
   }
@@ -31,81 +53,86 @@
   .build-header {
     display: flex;
     flex-direction: row;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
-    width: 59;
+    width: 67;
     height: 12;
-  }
-
-  .header-title {
-    display: flex;
-    color: #26262b;
-    font-size: 7;
-    font-weight: 700;
+    background-color: #00000000;
   }
 
   .wallet-value {
     display: flex;
-    color: #26262b;
-    font-size: 7;
+    color: #4d311a;
+    font-size: 6.3;
     font-weight: 700;
+    background-color: #00000000;
   }
 
   .build-rows {
     display: flex;
     flex-direction: column;
-    justify-content: space-evenly;
+    justify-content: flex-start;
     align-items: center;
-    width: 59;
-    height: 56;
+    width: 67;
+    flex-grow: 1;
+    gap: 3;
+    overflow: scroll;
+    scrollbar-width: 0;
+    background-color: #00000000;
   }
 
   .build-row {
     display: flex;
     flex-direction: row;
     align-items: center;
-    width: 59;
-    height: 18;
-    background-color: #26262b;
+    width: 67;
+    height: 13;
+    background-color: #5d646d;
     border-radius: 3;
     padding-top: 0;
-    padding-right: 5;
+    padding-right: 4;
     padding-bottom: 0;
-    padding-left: 5;
+    padding-left: 4;
     cursor: pointer;
   }
 
   .build-row:hover {
-    background-color: #3a3a42;
+    background-color: #6a717a;
   }
 
   .build-row:active {
-    background-color: #1c1c21;
+    background-color: #515861;
   }
 
-  .row-emblem {
+  .build-row-hidden {
+    display: none;
+  }
+
+  .row-icon {
     display: flex;
-    width: 8;
-    height: 8;
-    border-radius: 4;
+    width: 9;
+    height: 9;
+    background-color: #00000000;
   }
 
   .row-name {
     display: flex;
     flex-grow: 1;
-    color: #ffffff;
-    font-size: 6;
+    color: #f2f4f7;
+    font-size: 4;
     font-weight: 700;
     text-align: left;
     padding-left: 4;
+    background-color: #00000000;
   }
 
   .row-price {
     display: flex;
     color: #ffd977;
-    font-size: 7;
+    font-size: 6;
     font-weight: 700;
     text-align: right;
+    background-color: #00000000;
   }
 
   .build-dismiss {
@@ -113,9 +140,9 @@
     flex-direction: row;
     justify-content: center;
     align-items: center;
-    width: 59;
+    width: 67;
     height: 12;
-    background-color: #26262b;
+    background-color: #3a3f46;
     color: #ffffff;
     font-size: 6;
     font-weight: 700;
@@ -125,25 +152,44 @@
   }
 
   .build-dismiss:hover {
-    background-color: #3a3a42;
+    background-color: #464c55;
   }
 </style>
 
 <Panel class="build-root">
   <Panel class="build-header">
-    <Panel class="header-title">BUILD</Panel>
-    <Panel id="wallet-value" class="wallet-value">200</Panel>
+    <Panel id="wallet-value" class="wallet-value">gold 200</Panel>
   </Panel>
   <Panel class="build-rows">
     <button id="row-cannon" class="build-row">
-      <Panel class="row-emblem" background-color="#8a929c"></Panel>
+      <svg class="row-icon" src="ui/icons/cannon.svg" />
       <Panel class="row-name">Cannon</Panel>
       <Panel id="price-cannon" class="row-price">80</Panel>
     </button>
     <button id="row-sky-ballista" class="build-row">
-      <Panel class="row-emblem" background-color="#a97e4f"></Panel>
-      <Panel class="row-name">AA Ballista</Panel>
+      <svg class="row-icon" src="ui/icons/bow-filled.svg" />
+      <Panel class="row-name">Ballista</Panel>
       <Panel id="price-sky-ballista" class="row-price">120</Panel>
+    </button>
+    <button class="build-row">
+      <svg class="row-icon" src="ui/icons/bolt.svg" />
+      <Panel class="row-name">Item 1</Panel>
+      <Panel class="row-price">9999</Panel>
+    </button>
+    <button class="build-row">
+      <svg class="row-icon" src="ui/icons/bolt.svg" />
+      <Panel class="row-name">Item 2</Panel>
+      <Panel class="row-price">9999</Panel>
+    </button>
+    <button class="build-row">
+      <svg class="row-icon" src="ui/icons/bolt.svg" />
+      <Panel class="row-name">Item 3</Panel>
+      <Panel class="row-price">9999</Panel>
+    </button>
+    <button class="build-row">
+      <svg class="row-icon" src="ui/icons/bolt.svg" />
+      <Panel class="row-name">Item 4</Panel>
+      <Panel class="row-price">9999</Panel>
     </button>
   </Panel>
   <button id="build-dismiss" class="build-dismiss">CLOSE</button>

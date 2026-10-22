@@ -28,6 +28,14 @@ import type { DefenseUnitId } from './level-config.js';
 import { getDefenseSlotInfo, replaceDefenseUnit } from './battle-setup.js';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
 
+/** Minimal shape of a uikit element's runtime class list (class layer). */
+type UiElement = Object3D & {
+  classList: {
+    add(...classes: string[]): unknown;
+    remove(...classes: string[]): unknown;
+  };
+};
+
 /**
  * Fixed world anchor over the wall top — the wall already carries height
  * (units sit at y 0.8), so the panel floats just above it with a slight +Z
@@ -35,7 +43,7 @@ import { CameraOrbitSystem } from './camera-orbit-system.js';
  * the orbit camera (flat) and a player standing at the battlement (XR) both
  * read it face-on.
  */
-const PANEL_ANCHOR = { x: 0, y: 1.45, z: -0.4 };
+const PANEL_ANCHOR = { x: 0, y: 1.75, z: -0.4 };
 /**
  * Per-environment scale over the panel's authored 0.75 × 1 m: XR runs the
  * authored size exactly, flat mode grows it 1.5x for readability across the
@@ -50,10 +58,12 @@ const PANEL_FACTORS = { xr: 1, flat: 1.5 };
  * the billboarded panel; its rows list the placeable units with live prices
  * — full price into a destroyed (empty) slot, the in-place trade-in price
  * (full minus the occupant's value × ECONOMY.replaceDiscount) while it is
- * alive. Picking a row swaps the slot's occupant via replaceDefenseUnit,
- * deducts from the wallet and closes; dismiss closes without spending.
- * While the tag sits on the director the build buttons render grayed and
- * refuse presses (DefenseButtonSystem's half of the contract).
+ * alive. The occupant's own row stays hidden: the panel only lists units
+ * that can actually be placed into this slot. Picking a row swaps the
+ * slot's occupant via replaceDefenseUnit, deducts from the wallet and
+ * closes; dismiss closes without spending. While the tag sits on the
+ * director the build buttons render grayed and refuse presses
+ * (DefenseButtonSystem's half of the contract).
  */
 export class BuildPanelSystem extends createSystem({
   directors: { required: [LevelDirector] },
@@ -70,6 +80,10 @@ export class BuildPanelSystem extends createSystem({
   /** Environment the panel scale was last applied for; a flip re-applies. */
   private factorsEnvironment: boolean | null = null;
   private readonly prices = new Map<DefenseUnitId, Text | null>();
+  /** Slot list rows keyed by unit — hidden while that unit occupies the open slot. */
+  private readonly rows = new Map<DefenseUnitId, UiElement | null>();
+  /** Units whose row is currently class-hidden; guards redundant class swaps. */
+  private readonly hiddenRows = new Set<DefenseUnitId>();
   private walletText: Text | null = null;
 
   init(): void {
@@ -95,19 +109,23 @@ export class BuildPanelSystem extends createSystem({
         // One interactable over the whole panel routes presses into the
         // UIKitML documents (same pattern as the scene-authored panels).
         panelEntity.addComponent(RayInteractable);
+        // The whole panel surface blocks the camera rig: rows, the scroll
+        // list, the header, the gaps between them — a drag anywhere on the
+        // glass must never orbit the flat camera.
+        this.registerUiBlocker(panel);
 
         for (const unitId of PLACEABLE_UNITS) {
           this.prices.set(
             unitId,
             this.resolveText(panel.getElementById(`price-${unitId}`)),
           );
-          const row = panel.getElementById(`row-${unitId}`);
+          const row = panel.getElementById(`row-${unitId}`) as UiElement | null;
           if (row) {
             row.addEventListener('click', () => this.onRowPicked(unitId));
             this.cleanupFuncs.push(() =>
               row.removeEventListener('click', () => this.onRowPicked(unitId)),
             );
-            this.registerUiBlocker(row);
+            this.rows.set(unitId, row);
           }
         }
         this.walletText = this.resolveText(
@@ -119,7 +137,6 @@ export class BuildPanelSystem extends createSystem({
           this.cleanupFuncs.push(() =>
             dismiss.removeEventListener('click', () => this.closePanel()),
           );
-          this.registerUiBlocker(dismiss);
         }
 
         // The tag may have been raised while the asset was still loading:
@@ -200,17 +217,49 @@ export class BuildPanelSystem extends createSystem({
     return Math.max(0, full - credit);
   }
 
-  /** Rewrite every row's price and the wallet readout from live state. */
+  /**
+   * Rewrite every row's price and the wallet readout from live state, and
+   * hide the row of the unit currently occupying the open slot — the panel
+   * lists only units you could actually place there.
+   */
   private refreshRows(director: Entity): void {
+    const slot = Number(director.getValue(BuildOpen, 'slot'));
+    const info = getDefenseSlotInfo(slot);
+    const occupant =
+      info && !info.entity.hasComponent(Destroyed) ? info.unit : null;
     for (const unitId of PLACEABLE_UNITS) {
+      const row = this.rows.get(unitId);
+      if (row) this.setRowHidden(unitId, row, unitId === occupant);
       this.prices
         .get(unitId)
         ?.setProperties({ text: String(this.priceFor(director, unitId)) });
     }
     if (this.walletText && director.hasComponent(Wallet)) {
       this.walletText.setProperties({
-        text: String(Math.floor(director.getValue(Wallet, 'money') as number)),
+        text: `gold ${Math.floor(director.getValue(Wallet, 'money') as number)}`,
       });
+    }
+  }
+
+  /**
+   * Show/hide a row through its class list: runtime setProperties display
+   * writes the base property layer, which the markup's .build-row class
+   * layer outranks — only a class swap reliably toggles visibility.
+   */
+  private setRowHidden(
+    unitId: DefenseUnitId,
+    row: UiElement,
+    hidden: boolean,
+  ): void {
+    if (hidden === this.hiddenRows.has(unitId)) return;
+    if (hidden) {
+      row.classList.remove('build-row');
+      row.classList.add('build-row-hidden');
+      this.hiddenRows.add(unitId);
+    } else {
+      row.classList.remove('build-row-hidden');
+      row.classList.add('build-row');
+      this.hiddenRows.delete(unitId);
     }
   }
 
