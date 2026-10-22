@@ -30,6 +30,7 @@ import { SpawnFadeSystem } from './spawn-fade-system.js';
 import { SplashSystem } from './splash-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { installXRButton } from './xr-button.js';
+import { installHandPriorityArbitration } from './xr-hand-arbitration.js';
 
 World.create(
   document.getElementById('scene-container') as HTMLDivElement,
@@ -47,6 +48,10 @@ World.create(
     ).ray.visual;
     rayVisual.rayDisplayMode = RayDisplayMode.Visible;
   }
+
+  // 手部优先仲裁：跳过 runtime 注入的无 gamepad 虚拟控制器，防止其抢走 primary
+  // （Swan 浏览器捏合时注入，导致射线变蓝后指针永久失效，见 xr-hand-arbitration.ts）
+  installHandPriorityArbitration(world);
 
   world.registerSystem(CameraOrbitSystem);
   world.registerSystem(OceanSystem);
