@@ -6,7 +6,7 @@
  */
 
 import { createComponent, defineComponents } from '@iwsdk/core';
-import { COMBAT, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y } from './level-config.js';
+import { COMBAT, ECONOMY, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y } from './level-config.js';
 
 /** Marks the ocean body entity so OceanSystem can find it via query. */
 export const OceanTag = createComponent('OceanTag', {});
@@ -393,10 +393,54 @@ export const DieBurst = createComponent('DieBurst', {
   floorBounce: { type: 'Float32', default: 0 },
 });
 
+/**
+ * Player wallet — the economy's single truth, carried by the director entity
+ * next to LevelDirector. RepairSystem is the only per-frame writer (repair
+ * drain); BuildPanelSystem deducts on a build; LevelWaveSystem resets it to
+ * ECONOMY.startMoney on begin / restart / welcome.
+ */
+export const Wallet = createComponent('Wallet', {
+  /** Money the player currently holds. */
+  money: { type: 'Float32', default: ECONOMY.startMoney },
+});
+
+/**
+ * Explicit tag: this defender is under active repair — health rises and
+ * money drains until the pool is full, the wallet empties, the unit dies or
+ * the player toggles the repair button again. Added/removed by
+ * DefenseButtonSystem (the button command), drained by RepairSystem.
+ */
+export const Repairing = createComponent('Repairing', {});
+
+/**
+ * Explicit tag: the shared build panel is open, targeting the defense slot
+ * in `slot`. Added by DefenseButtonSystem (build button click), removed by
+ * BuildPanelSystem (row purchased) — its presence grays every build button.
+ */
+export const BuildOpen = createComponent('BuildOpen', {
+  /** Index into DEFENSE_SLOTS the open panel builds into. */
+  slot: { type: 'Int32', default: 0 },
+});
+
+/**
+ * One world-space build/repair button on the wall's land face: a flat
+ * low-poly icon extrusion with an invisible enlarged hit proxy, its own
+ * material (repair breathes via emissive, build grays via color). Defense-
+ * ButtonSystem owns the visuals; the press itself is InputSystem's `Pressed`
+ * tag (mouse / touch / XR ray share the path).
+ */
+export const DefenseButton = createComponent('DefenseButton', {
+  /** Index into DEFENSE_SLOTS this button serves. */
+  slot: { type: 'Int32', default: 0 },
+  /** 'build' | 'repair'. */
+  kind: { type: 'String', default: 'build' },
+});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
   LevelDirector,
+  Wallet,
   UnitTag,
   ShipMovement,
   PropellerSpin,
@@ -421,4 +465,7 @@ export default defineComponents([
   HitFlash,
   DieBurstTag,
   DieBurst,
+  Repairing,
+  BuildOpen,
+  DefenseButton,
 ]);

@@ -139,6 +139,66 @@ export const DEFENSE_SLOTS: DefenseSlotDef[] = [
   { x: 1.2, unit: 'cannon' },
 ];
 
+/** Unit ids the build panel can mount into a slot — the row order it renders. */
+export const PLACEABLE_UNITS: DefenseUnitId[] = ['cannon', 'sky-ballista'];
+
+/**
+ * Build/repair buttons, two per defense slot, mounted on the wall's land
+ * (+Z) face below each unit: build on the left, repair on the right. Icons
+ * are flat low-poly extrusions facing +Z with an enlarged invisible hit
+ * proxy over each, so a thumb or XR ray never has to hit the glyph itself.
+ */
+export const DEFENSE_BUTTONS = {
+  /** Button centre height — a quarter metre below the wall top (y 0.8). */
+  y: 0.55,
+  /** Button centre z — a hand's width off the wall's land face (z -0.6). */
+  z: -0.48,
+  /** Half-gap between the build and repair buttons around the slot centre. */
+  spacingX: 0.115,
+  /** Icon span (m) — the shape's ~1-unit outline maps to this. */
+  iconSize: 0.14,
+  /** Icon extrusion depth (m) — thin plate, sticker-like in silhouette. */
+  iconDepth: 0.012,
+  /** Invisible hit-proxy box span (m), deliberately larger than the icon. */
+  proxySize: 0.24,
+  /** Icon tints (sRGB hex, -10% saturation): brass hammer, green wrench. */
+  buildColor: 0xd1a249,
+  repairColor: 0x63af63,
+  /** Build-button tint while the build panel owns the screen (置灰). */
+  disabledColor: 0x5a5a60,
+  /**
+   * Repair breathing: DefenseButtonSystem scales the icon up sinusoidally —
+   * peak extra scale breatheScale (0.22 = +22%) at breatheSpeed rad/s. The
+   * material stays a flat unlit tint; the motion is the whole effect.
+   */
+  breatheSpeed: 4.25,
+  breatheScale: 0.22,
+};
+
+/**
+ * Economy knobs: money the player starts with, repair throughput/cost and
+ * build prices. Mirrors docs/design/combat.md — change both together.
+ */
+export const ECONOMY = {
+  /** Money the run starts (and every RESTART / MAIN re-entry) with. */
+  startMoney: 200,
+  /** Health points restored per second while a unit repairs (100 pool). */
+  repairHpPerSecond: 10,
+  /** Money drained per second while a unit repairs. */
+  repairCostPerSecond: 8,
+  /**
+   * Replace discount: while a slot's unit is alive (not Destroyed), its
+   * value × this factor is credited off the new unit's price — same-value
+   * swaps cost half.
+   */
+  replaceDiscount: 0.5,
+  /** Full price per unit id for a build into an empty (destroyed) slot. */
+  unitPrices: {
+    cannon: 80,
+    'sky-ballista': 120,
+  } as Record<DefenseUnitId, number>,
+};
+
 /**
  * Anti-air ballista aim envelope: fixed high elevation against flyers —
  * default 75° up, at most 20° of depression, never above 75°.

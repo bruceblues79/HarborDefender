@@ -1,0 +1,150 @@
+<!--
+  Build panel, opened by any defense slot's build button: 75 × 100 UIKit
+  units = 0.75 m × 1 m at scale 1 (flat mode runs a 1.5x factor). Column of
+  two unit rows — emblem, name, price — plus a wallet readout in the header
+  and a dismiss button at the foot. Prices are rewritten at open time by
+  BuildPanelSystem (trade-in discount while the slot's occupant is alive):
+  a dynamic readout is a Panel with an id wrapping one text child, whose
+  Text component gets its `text` property rewritten. Labels stay Latin —
+  the bundled font atlas has no CJK glyph coverage. Panel surface matches
+  the pause menu: glass over #ffffffaa. render-order 18 keeps it under the
+  menu button (20) and above the world overlays (health bars 8/9, hit
+  flash 10).
+-->
+<style>
+  .build-root {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 75;
+    height: 100;
+    border-radius: 6;
+    render-order: 18;
+    padding-top: 8;
+    padding-right: 8;
+    padding-bottom: 8;
+    padding-left: 8;
+    panel-material-class: glass;
+    background-color: #ffffffaa;
+  }
+
+  .build-header {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    width: 59;
+    height: 12;
+  }
+
+  .header-title {
+    display: flex;
+    color: #26262b;
+    font-size: 7;
+    font-weight: 700;
+  }
+
+  .wallet-value {
+    display: flex;
+    color: #26262b;
+    font-size: 7;
+    font-weight: 700;
+  }
+
+  .build-rows {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    align-items: center;
+    width: 59;
+    height: 56;
+  }
+
+  .build-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 59;
+    height: 18;
+    background-color: #26262b;
+    border-radius: 3;
+    padding-top: 0;
+    padding-right: 5;
+    padding-bottom: 0;
+    padding-left: 5;
+    cursor: pointer;
+  }
+
+  .build-row:hover {
+    background-color: #3a3a42;
+  }
+
+  .build-row:active {
+    background-color: #1c1c21;
+  }
+
+  .row-emblem {
+    display: flex;
+    width: 8;
+    height: 8;
+    border-radius: 4;
+  }
+
+  .row-name {
+    display: flex;
+    flex-grow: 1;
+    color: #ffffff;
+    font-size: 6;
+    font-weight: 700;
+    text-align: left;
+    padding-left: 4;
+  }
+
+  .row-price {
+    display: flex;
+    color: #ffd977;
+    font-size: 7;
+    font-weight: 700;
+    text-align: right;
+  }
+
+  .build-dismiss {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    width: 59;
+    height: 12;
+    background-color: #26262b;
+    color: #ffffff;
+    font-size: 6;
+    font-weight: 700;
+    text-align: center;
+    border-radius: 3;
+    cursor: pointer;
+  }
+
+  .build-dismiss:hover {
+    background-color: #3a3a42;
+  }
+</style>
+
+<Panel class="build-root">
+  <Panel class="build-header">
+    <Panel class="header-title">BUILD</Panel>
+    <Panel id="wallet-value" class="wallet-value">200</Panel>
+  </Panel>
+  <Panel class="build-rows">
+    <button id="row-cannon" class="build-row">
+      <Panel class="row-emblem" background-color="#8a929c"></Panel>
+      <Panel class="row-name">Cannon</Panel>
+      <Panel id="price-cannon" class="row-price">80</Panel>
+    </button>
+    <button id="row-sky-ballista" class="build-row">
+      <Panel class="row-emblem" background-color="#a97e4f"></Panel>
+      <Panel class="row-name">AA Ballista</Panel>
+      <Panel id="price-sky-ballista" class="row-price">120</Panel>
+    </button>
+  </Panel>
+  <button id="build-dismiss" class="build-dismiss">CLOSE</button>
+</Panel>

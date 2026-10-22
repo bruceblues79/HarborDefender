@@ -23,13 +23,16 @@ import { CameraOrbitSystem } from './camera-orbit-system.js';
 import {
   CannonAim,
   CannonFire,
+  DefenseButton,
   Destroyed,
   Health,
   HitCore,
   OceanTag,
+  Repairing,
 } from './components.js';
-import { COMBAT, BALLISTA_MUZZLE_LOCAL_Y, BALLISTA_MUZZLE_LOCAL_Z, DEFENSE_SLOTS, SKY_BALLISTA } from './level-config.js';
+import { COMBAT, BALLISTA_MUZZLE_LOCAL_Y, BALLISTA_MUZZLE_LOCAL_Z, DEFENSE_BUTTONS, DEFENSE_SLOTS, SKY_BALLISTA } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
+import { createDefenseButtonRig } from './defense-buttons.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
@@ -66,6 +69,144 @@ function decorateCombatPrototype(
 }
 
 /**
+ * Mount one defender into a defense slot: clone the unit's prototype, place
+ * it on the wall top facing the sea, hand it the full combat kit and file it
+ * into the battery registry. Shared by the initial battery build and
+ * build-panel replacements — a replacement is this mount with the old
+ * occupant stripped first (replaceDefenseUnit below).
+ */
+function mountDefenseUnit(
+  world: World,
+  slotIndex: number,
+  unitId: DefenseUnitId,
+): Entity {
+  const slot = DEFENSE_SLOTS[slotIndex];
+  const prototype = unitId === 'cannon' ? cannonPrototype : ballistaPrototype;
+  if (!prototype) throw new Error(`battle-setup: unit "${unitId}" not loaded`);
+  const unit = prototype.clone(true);
+  unit.position.set(slot.x, 0.8, -0.8);
+  // Runtime-instantiated GLB meshes keep three.js defaults
+  // (both false); scene-JSON assets get these via content flags.
+  unit.traverse((child: Object3D) => {
+    if ((child as Mesh).isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+  const unitEntity = world.createTransformEntity(unit);
+  // RayInteractable makes the unit pressable (mouse / touch / XR ray);
+  // CannonAim hands it to the shared aim system, with per-entity pitch
+  // limits so the ballista's high-elevation envelope rides the same
+  // component.
+  unitEntity.addComponent(RayInteractable);
+  if (unitId === 'cannon') {
+    unitEntity.addComponent(CannonAim);
+    unitEntity.addComponent(CannonFire, { unitType: 'cannon' });
+    // Defender hit core: pirate shells arriving within this radius are
+    // consumed by ShellHitSystem, which charges the cannon's health pool per
+    // hit (knockout = Destroyed tag + hidden).
+    unitEntity.addComponent(HitCore, {
+      radius: COMBAT.defenderCoreRadius,
+      faction: 'defender',
+      unitType: 'cannon',
+    });
+    unitEntity.addComponent(Health, {
+      current: COMBAT.unitHealth,
+      max: COMBAT.unitHealth,
+    });
+    defenseEntities.push({
+      entity: unitEntity,
+      unit: unitId,
+      defaultPitchDeg: COMBAT.aimPitchDefault,
+      slot: slotIndex,
+    });
+  } else {
+    // Anti-air ballista: fixed 75° elevation with 20° of depression, and a
+    // full combat kit. It fires straight bolts (gravityScale 0 — the flight
+    // model the flyer's berth band FLYER_STOP_Z_* is derived from) that are
+    // recycled once they climb past COMBAT.boltReclaimY, and carries the
+    // same HitCore/Health pool as a cannon so ships and bombardiers can
+    // knock it out (17.5% / 15% per hit) and the defeat check counts it.
+    unitEntity.addComponent(CannonAim, {
+      pitchDeg: SKY_BALLISTA.pitchDefault,
+      pitchMinDeg: SKY_BALLISTA.pitchMin,
+      pitchMaxDeg: SKY_BALLISTA.pitchMax,
+      // Dragging the swivel body inverts the vertical mapping: pull down
+      // lifts the bolt head, the rack-hand feel.
+      pitchDragInvert: true,
+    });
+    unitEntity.addComponent(CannonFire, {
+      interval: COMBAT.ballistaFireInterval,
+      unitType: 'sky-ballista',
+      gravityScale: 0,
+      bolt: true,
+    });
+    unitEntity.addComponent(HitCore, {
+      radius: COMBAT.defenderCoreRadius,
+      faction: 'defender',
+      unitType: 'sky-ballista',
+    });
+    unitEntity.addComponent(Health, {
+      current: COMBAT.unitHealth,
+      max: COMBAT.unitHealth,
+    });
+    defenseEntities.push({
+      entity: unitEntity,
+      unit: unitId,
+      defaultPitchDeg: SKY_BALLISTA.pitchDefault,
+      slot: slotIndex,
+    });
+  }
+  battlefieldObjects.push(unit);
+  return unitEntity;
+}
+
+/**
+ * The entity and unit id currently mounted in a defense slot. Destroyed
+ * units still count as mounted — callers check the Destroyed tag for
+ * "needs building" and alive-but-damaged for the replace discount.
+ */
+export function getDefenseSlotInfo(
+  slotIndex: number,
+): { entity: Entity; unit: DefenseUnitId } | undefined {
+  return defenseEntities.find((entry) => entry.slot === slotIndex);
+}
+
+/**
+ * Swap a slot's occupant for a freshly mounted unit. The old unit loses its
+ * combat components (every combat query drops it this frame), is hidden and
+ * is forgotten by the battery registry — hidden forever like a knockout, so
+ * its entity index is never freed and reused. Money handling stays with the
+ * caller (BuildPanelSystem); this is the structural swap only.
+ */
+export function replaceDefenseUnit(
+  world: World,
+  slotIndex: number,
+  unitId: DefenseUnitId,
+): Entity {
+  const old = defenseEntities.find((entry) => entry.slot === slotIndex);
+  if (old) {
+    const { entity } = old;
+    entity.removeComponent(CannonAim);
+    entity.removeComponent(CannonFire);
+    entity.removeComponent(HitCore);
+    entity.removeComponent(Health);
+    entity.removeComponent(Destroyed);
+    entity.removeComponent(Repairing);
+    const object3D = entity.object3D;
+    if (object3D) {
+      object3D.visible = false;
+      // Leave the battlefield-reveal set too, or the next battle entry
+      // would resurrect the stripped ghost on top of its replacement.
+      const battlefieldIndex = battlefieldObjects.indexOf(object3D);
+      if (battlefieldIndex !== -1) battlefieldObjects.splice(battlefieldIndex, 1);
+    }
+    defenseEntities.splice(defenseEntities.indexOf(old), 1);
+  }
+  return mountDefenseUnit(world, slotIndex, unitId);
+}
+
+/**
  * Battlefield persistence: the ocean, wall and cannons are built once per
  * page load and kept alive across MAIN-menu round trips (hidden, never
  * disposed — their geometry/materials are shared with the cached GLTF
@@ -86,8 +227,17 @@ interface DefenseEntity {
   entity: Entity;
   unit: DefenseUnitId;
   defaultPitchDeg: number;
+  /** Index into DEFENSE_SLOTS this unit occupies. */
+  slot: number;
 }
 const defenseEntities: DefenseEntity[] = [];
+
+/**
+ * Unit prototypes loaded once by startBattle; build-panel replacements clone
+ * from them exactly like the initial battery does.
+ */
+let cannonPrototype: Object3D | null = null;
+let ballistaPrototype: Object3D | null = null;
 
 /**
  * One-shot battle start flow: hide the welcome panel, show the loading
@@ -205,91 +355,47 @@ export function startBattle(world: World): void {
           // pivot stays independent; both prototypes carry the muzzle and
           // hit_core helpers, so cannons and ballistas alike are armed,
           // targetable combatants.
-          const cannonPrototype = cannonGltf.scene;
+          cannonPrototype = cannonGltf.scene;
           decorateCombatPrototype(cannonPrototype, 0, -0.2);
-          const ballistaPrototype = ballistaGltf.scene;
+          ballistaPrototype = ballistaGltf.scene;
           decorateCombatPrototype(
             ballistaPrototype,
             BALLISTA_MUZZLE_LOCAL_Y,
             BALLISTA_MUZZLE_LOCAL_Z,
           );
-          for (const slot of DEFENSE_SLOTS) {
-            const isCannon = slot.unit === 'cannon';
-            const unit = (isCannon ? cannonPrototype : ballistaPrototype).clone(
-              true,
-            );
-            unit.position.set(slot.x, 0.8, -0.8);
-            unit.traverse((child: Object3D) => {
-              if ((child as Mesh).isMesh) {
-                child.castShadow = true;
-                child.receiveShadow = true;
-              }
-            });
-            const unitEntity = world.createTransformEntity(unit);
-            // RayInteractable makes the unit pressable (mouse / touch / XR
-            // ray); CannonAim hands it to the shared aim system, with
-            // per-entity pitch limits so the ballista's high-elevation
-            // envelope rides the same component.
-            unitEntity.addComponent(RayInteractable);
-            if (isCannon) {
-              unitEntity.addComponent(CannonAim);
-              unitEntity.addComponent(CannonFire, { unitType: 'cannon' });
-              // Defender hit core: pirate shells arriving within this radius
-              // are consumed by ShellHitSystem, which charges the cannon's
-              // health pool per hit (knockout = Destroyed tag + hidden).
-              unitEntity.addComponent(HitCore, {
-                radius: COMBAT.defenderCoreRadius,
-                faction: 'defender',
-                unitType: 'cannon',
-              });
-              unitEntity.addComponent(Health, {
-                current: COMBAT.unitHealth,
-                max: COMBAT.unitHealth,
-              });
-              defenseEntities.push({
-                entity: unitEntity,
-                unit: slot.unit,
-                defaultPitchDeg: COMBAT.aimPitchDefault,
-              });
-            } else {
-              // Anti-air ballista: fixed 75° elevation with 20° of
-              // depression, and a full combat kit. It fires straight bolts
-              // (gravityScale 0 — the flight model the flyer's berth band
-              // FLYER_STOP_Z_* is derived from) that are recycled once they
-              // climb past COMBAT.boltReclaimY, and carries the same
-              // HitCore/Health pool as a cannon so ships and bombardiers
-              // can knock it out (17.5% / 15% per hit) and the defeat check
-              // counts it.
-              unitEntity.addComponent(CannonAim, {
-                pitchDeg: SKY_BALLISTA.pitchDefault,
-                pitchMinDeg: SKY_BALLISTA.pitchMin,
-                pitchMaxDeg: SKY_BALLISTA.pitchMax,
-                // Dragging the swivel body inverts the vertical mapping:
-                // pull down lifts the bolt head, the rack-hand feel.
-                pitchDragInvert: true,
-              });
-              unitEntity.addComponent(CannonFire, {
-                interval: COMBAT.ballistaFireInterval,
-                unitType: 'sky-ballista',
-                gravityScale: 0,
-                bolt: true,
-              });
-              unitEntity.addComponent(HitCore, {
-                radius: COMBAT.defenderCoreRadius,
-                faction: 'defender',
-                unitType: 'sky-ballista',
-              });
-              unitEntity.addComponent(Health, {
-                current: COMBAT.unitHealth,
-                max: COMBAT.unitHealth,
-              });
-              defenseEntities.push({
-                entity: unitEntity,
-                unit: slot.unit,
-                defaultPitchDeg: SKY_BALLISTA.pitchDefault,
-              });
+          for (
+            let slotIndex = 0;
+            slotIndex < DEFENSE_SLOTS.length;
+            slotIndex++
+          ) {
+            mountDefenseUnit(world, slotIndex, DEFENSE_SLOTS[slotIndex].unit);
+          }
+
+          // Build/repair buttons: two per slot on the wall's land face —
+          // build left, repair right. Persistent battlefield objects like the
+          // units (hidden on MAIN, revealed on re-entry); they keep serving
+          // destroyed slots so the player can rebuild from the panel.
+          for (
+            let slotIndex = 0;
+            slotIndex < DEFENSE_SLOTS.length;
+            slotIndex++
+          ) {
+            for (const kind of ['build', 'repair'] as const) {
+              const rig = createDefenseButtonRig(kind);
+              rig.position.set(
+                DEFENSE_SLOTS[slotIndex].x +
+                  (kind === 'build'
+                    ? -DEFENSE_BUTTONS.spacingX
+                    : DEFENSE_BUTTONS.spacingX),
+                DEFENSE_BUTTONS.y,
+                DEFENSE_BUTTONS.z,
+              );
+              world
+                .createTransformEntity(rig)
+                .addComponent(RayInteractable)
+                .addComponent(DefenseButton, { slot: slotIndex, kind });
+              battlefieldObjects.push(rig);
             }
-            battlefieldObjects.push(unit);
           }
           battlefieldReady = true;
 
@@ -350,6 +456,7 @@ export function resetCannonAim(): void {
 export function restoreCannons(): void {
   for (const { entity } of defenseEntities) {
     entity.removeComponent(Destroyed);
+    entity.removeComponent(Repairing);
     if (entity.object3D) entity.object3D.visible = true;
     entity.setValue(Health, 'current', Number(entity.getValue(Health, 'max')));
   }

@@ -47,6 +47,12 @@ export default defineAssets({
     name: 'Result Panel',
     priority: 'critical',
   },
+  'build-panel': {
+    url: publicAssetUrl('ui/build-panel.uikitml'),
+    type: AssetType.UIKitML,
+    name: 'Build Panel',
+    priority: 'critical',
+  },
   // Key must end with ".hdr": IWSDK's EnvironmentSystem sniffs the file type
   // from the raw src suffix BEFORE resolving manifest keys, so a key without
   // the extension would be loaded as a plain (non-decodable) texture.
