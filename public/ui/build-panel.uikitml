@@ -17,12 +17,11 @@
   the slot's occupant is alive), binds their clicks, and hides the row of
   the unit currently occupying the opening slot through a classList swap
   (.build-row-hidden): runtime setProperties display would lose to the
-  class layer, so hiding must be class-driven. Four placeholder rows (Item
-  1–4, 9999, lucide bolt icon) share the real row design but carry no id —
-  inert. Icons load through the <svg> tag's src (uikit Svg component:
+  class layer, so hiding must be class-driven. Icons load through the
+  <svg> tag's src (uikit Svg component:
   SVGLoader vector meshes, MeshBasicMaterial, tone-mapped off, scaled from
   the file's viewBox into the element box): cannon from the game-icons set,
-  bow from boxicons, bolt from lucide; fills/strokes hardcoded #f2f4f7
+  bow from boxicons; fills hardcoded #f2f4f7
   because currentColor resolves to black in SVGLoader. The build-time
   UIKitML validator rejects viewBox on the element, so the svg files keep
   it and the src form is used instead of inlining the markup; src resolves
@@ -175,26 +174,6 @@
       <svg class="row-icon" src="ui/icons/bow-filled.svg" />
       <Panel class="row-name">Ballista</Panel>
       <Panel id="price-sky-ballista" class="row-price">120</Panel>
-    </button>
-    <button class="build-row">
-      <svg class="row-icon" src="ui/icons/bolt.svg" />
-      <Panel class="row-name">Item 1</Panel>
-      <Panel class="row-price">9999</Panel>
-    </button>
-    <button class="build-row">
-      <svg class="row-icon" src="ui/icons/bolt.svg" />
-      <Panel class="row-name">Item 2</Panel>
-      <Panel class="row-price">9999</Panel>
-    </button>
-    <button class="build-row">
-      <svg class="row-icon" src="ui/icons/bolt.svg" />
-      <Panel class="row-name">Item 3</Panel>
-      <Panel class="row-price">9999</Panel>
-    </button>
-    <button class="build-row">
-      <svg class="row-icon" src="ui/icons/bolt.svg" />
-      <Panel class="row-name">Item 4</Panel>
-      <Panel class="row-price">9999</Panel>
     </button>
   </Panel>
   <button id="build-dismiss" class="build-dismiss">CLOSE</button>
