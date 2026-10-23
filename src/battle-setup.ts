@@ -307,12 +307,14 @@ export function startBattle(world: World): void {
           });
           cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
 
-          const [oceanGltf, wallGltf, cannonGltf, ballistaGltf] =
+          const [oceanGltf, wallGltf, cannonGltf, ballistaGltf, buildButtonGltf, repairButtonGltf] =
             await Promise.all([
               AssetManager.loadGLTFById('ocean-body'),
               AssetManager.loadGLTFById('harbor-wall'),
               AssetManager.loadGLTFById('cannon'),
               AssetManager.loadGLTFById('sky-ballista'),
+              AssetManager.loadGLTFById('defense-button-build'),
+              AssetManager.loadGLTFById('defense-button-repair'),
             ]);
 
           // Swap the GLB's placeholder material for the wave shader
@@ -381,7 +383,12 @@ export function startBattle(world: World): void {
             slotIndex++
           ) {
             for (const kind of ['build', 'repair'] as const) {
-              const rig = createDefenseButtonRig(kind);
+              const rig = createDefenseButtonRig(
+                kind,
+                kind === 'build'
+                  ? buildButtonGltf.scene
+                  : repairButtonGltf.scene,
+              );
               rig.position.set(
                 DEFENSE_SLOTS[slotIndex].x +
                   (kind === 'build'

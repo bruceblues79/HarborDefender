@@ -86,6 +86,18 @@ export default defineAssets({
     name: 'Sky Ballista',
     priority: 'background',
   },
+  'defense-button-build': {
+    url: publicAssetUrl('gltf/defense-button-build.glb'),
+    type: AssetType.GLTF,
+    name: 'Defense Button Build',
+    priority: 'background',
+  },
+  'defense-button-repair': {
+    url: publicAssetUrl('gltf/defense-button-repair.glb'),
+    type: AssetType.GLTF,
+    name: 'Defense Button Repair',
+    priority: 'background',
+  },
   'ballista-bolt': {
     url: publicAssetUrl('gltf/ballista-bolt.glb'),
     type: AssetType.GLTF,

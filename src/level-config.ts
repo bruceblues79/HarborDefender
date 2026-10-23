@@ -145,8 +145,10 @@ export const PLACEABLE_UNITS: DefenseUnitId[] = ['cannon', 'sky-ballista'];
 /**
  * Build/repair buttons, two per defense slot, mounted on the wall's land
  * (+Z) face below each unit: build on the left, repair on the right. Icons
- * are flat low-poly extrusions facing +Z with an enlarged invisible hit
- * proxy over each, so a thumb or XR ray never has to hit the glyph itself.
+ * are designed GLB assets (npm run export-assets) — flat mechanical glyphs
+ * with colour zones baked into vertex colors — facing +Z, with an enlarged
+ * invisible hit proxy over each, so a thumb or XR ray never has to hit the
+ * glyph itself.
  */
 export const DEFENSE_BUTTONS = {
   /** Button centre height — a quarter metre below the wall top (y 0.8). */
@@ -155,21 +157,16 @@ export const DEFENSE_BUTTONS = {
   z: -0.48,
   /** Half-gap between the build and repair buttons around the slot centre. */
   spacingX: 0.115,
-  /** Icon span (m) — the shape's ~1-unit outline maps to this. */
-  iconSize: 0.14,
-  /** Icon extrusion depth (m) — thin plate, sticker-like in silhouette. */
-  iconDepth: 0.012,
   /** Invisible hit-proxy box span (m), deliberately larger than the icon. */
   proxySize: 0.24,
-  /** Icon tints (sRGB hex, -10% saturation): brass hammer, green wrench. */
-  buildColor: 0xd1a249,
-  repairColor: 0x63af63,
-  /** Build-button tint while the build panel owns the screen (置灰). */
+  /** Build-icon material colour while enabled (multiplies baked colors). */
+  enabledColor: 0xffffff,
+  /** Build-icon dimmer while the build panel owns the screen (置灰). */
   disabledColor: 0x5a5a60,
   /**
    * Repair breathing: DefenseButtonSystem scales the icon up sinusoidally —
    * peak extra scale breatheScale (0.22 = +22%) at breatheSpeed rad/s. The
-   * material stays a flat unlit tint; the motion is the whole effect.
+   * baked vertex colors never change; the motion is the whole effect.
    */
   breatheSpeed: 4.25,
   breatheScale: 0.22,

@@ -6,7 +6,7 @@
  */
 
 import { createSystem, Mesh, Pressed } from '@iwsdk/core';
-import type { Entity, MeshBasicMaterial } from '@iwsdk/core';
+import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
 import {
   BuildOpen,
   DefenseButton,
@@ -131,11 +131,13 @@ export class DefenseButtonSystem extends createSystem({
       const slot = Number(entity.getValue(DefenseButton, 'slot'));
       if (String(entity.getValue(DefenseButton, 'kind')) === 'build') {
         icon.scale.setScalar(1);
-        // The icon template is a MeshBasicMaterial (see defense-buttons.ts).
-        (icon.material as MeshBasicMaterial).color.setHex(
+        // The icon's colour zones are baked into vertex colors; the material
+        // colour multiplies them, so enabled = white (true baked tints) and
+        // disabled = the gray dimmer from level-config.
+        (icon.material as MeshStandardMaterial).color.setHex(
           buildDisabled
             ? DEFENSE_BUTTONS.disabledColor
-            : DEFENSE_BUTTONS.buildColor,
+            : DEFENSE_BUTTONS.enabledColor,
         );
       } else {
         const info = getDefenseSlotInfo(slot);
