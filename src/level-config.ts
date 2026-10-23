@@ -177,8 +177,8 @@ export const DEFENSE_BUTTONS = {
 
 /**
  * Economy knobs: money the player starts with, kill bounties, repair
- * throughput/cost and build prices. Mirrors docs/design/combat.md — change
- * both together.
+ * throughput/cost and unit book values. Mirrors docs/design/combat.md —
+ * change both together.
  */
 export const ECONOMY = {
   /** Money the run starts (and every RESTART / MAIN re-entry) with. */
@@ -191,14 +191,17 @@ export const ECONOMY = {
   repairCostPerSecond: 8,
   /**
    * Replace discount: while a slot's unit is alive (not Destroyed), its
-   * value × this factor is credited off the new unit's price — same-value
-   * swaps cost half.
+   * book value (unitValues) × this factor is credited off the new unit's
+   * price — 200 × 0.3 = a flat 60 trade-in credit.
    */
-  replaceDiscount: 0.5,
-  /** Full price per unit id for a build into an empty (destroyed) slot. */
-  unitPrices: {
-    cannon: 80,
-    'sky-ballista': 120,
+  replaceDiscount: 0.3,
+  /**
+   * Book value per unit id: the ONLY price knob — an empty or destroyed
+   * slot builds at full value, a live swap pays the value difference.
+   */
+  unitValues: {
+    cannon: 200,
+    'sky-ballista': 200,
   } as Record<DefenseUnitId, number>,
 };
 

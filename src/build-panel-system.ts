@@ -56,9 +56,10 @@ const PANEL_FACTORS = { xr: 1, flat: 1.5 };
  *
  * A BuildOpen tag on the director (added by a build-button press) reveals
  * the billboarded panel; its rows list the placeable units with live prices
- * — full price into a destroyed (empty) slot, the in-place trade-in price
- * (full minus the occupant's value × ECONOMY.replaceDiscount) while it is
- * alive. The occupant's own row stays hidden: the panel only lists units
+ * — full book value into a destroyed (empty) slot, the in-place trade-in
+ * price (value minus the occupant's book value × ECONOMY.replaceDiscount)
+ * while it is alive. The occupant's own row stays hidden: the panel only
+ * lists units
  * that can actually be placed into this slot. Picking a row swaps the
  * slot's occupant via replaceDefenseUnit, deducts from the wallet and
  * closes; dismiss closes without spending. While the tag sits on the
@@ -196,18 +197,19 @@ export class BuildPanelSystem extends createSystem({
   }
 
   /**
-   * Trade-in price for unitId into the slot the panel was opened for: the
-   * occupant's destroyed slot pays full price; a live occupant credits
-   * value × replaceDiscount (same-value swap = half price).
+   * Price for unitId into the slot the panel was opened for: an empty or
+   * destroyed slot pays the book value in full (200); a live occupant turns
+   * the swap into a value difference — the new unit's book value minus the
+   * old unit's depreciated value (200 − 200×0.3 = 140, either direction).
    */
   private priceFor(director: Entity, unitId: DefenseUnitId): number {
     const slot = Number(director.getValue(BuildOpen, 'slot'));
     const info = getDefenseSlotInfo(slot);
-    const full = ECONOMY.unitPrices[unitId] ?? 0;
-    if (!info || info.entity.hasComponent(Destroyed)) return full;
+    const price = ECONOMY.unitValues[unitId] ?? 0;
+    if (!info || info.entity.hasComponent(Destroyed)) return price;
     const credit =
-      (ECONOMY.unitPrices[info.unit] ?? 0) * ECONOMY.replaceDiscount;
-    return Math.max(0, full - credit);
+      (ECONOMY.unitValues[info.unit] ?? 0) * ECONOMY.replaceDiscount;
+    return Math.max(0, price - credit);
   }
 
   /**
