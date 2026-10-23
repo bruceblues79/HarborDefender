@@ -55,6 +55,7 @@
 | 语义 | level-config.ts 常量 | 当前值 |
 |---|---|---|
 | 每局起始金钱（START / RESTART 均重置） | `ECONOMY.startMoney` | 200 |
+| 击毁奖励（敌方单位死亡瞬间入账，统一价） | `ECONOMY.killReward` | 200 |
 | 修理回血速度（每秒） | `ECONOMY.repairHpPerSecond` | 10 |
 | 修理扣钱速度（每秒，回血期间持续扣） | `ECONOMY.repairCostPerSecond` | 8 |
 | 换防折扣（在防单位价值的折价抵扣） | `ECONOMY.replaceDiscount` | 0.5 |
@@ -68,6 +69,25 @@
 - 建设通过**锤子按钮**打开共享建设面板：选中目标单位换上；
   槽内单位存活时按「新单位全价 − 旧单位价值 × 5 折」结算（同价值互换 = 半价），
   槽内单位已毁则全价重建
+
+## 击毁价值（bounty，收入侧）
+
+击毁奖励是金钱的唯一收入来源，起始金只是初始资本。
+
+| 敌方单位 | unitType | 击毁奖励 |
+|:--------:|:--------:|:--------:|
+| 海盗船 | `pirate-ship` | **200g** |
+| 投弹飞行器 | `bombardier` | **200g** |
+
+- 当前为**统一价**：所有敌方目标击毁均奖励 200g（设计定值，姑且承认）
+- 奖励入全局钱包（`Wallet`，挂在 director 实体上），不区分击毁者是谁，
+  在敌方单位被判定死亡的瞬间一次性入账（`ShellHitSystem` 死亡分支）；
+  残血、逃跑、波次结束均不清算
+- 新敌方单位加入时默认沿用统一价；需要差异化（如 Boss 高赏金）时再拆成
+  per-unit 列，表结构不变
+- 入账落点：`ShellHitSystem` 攻击方死亡分支 → `Wallet.money +=
+  ECONOMY.killReward`（映射见上方经济表）；暂停期间不入账（系统整帧
+  early-return），GameOver 后火炮静默、不再产生击杀
 
 ## 当前节拍（由表推导，改表后重算）
 

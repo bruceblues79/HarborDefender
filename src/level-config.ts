@@ -176,12 +176,15 @@ export const DEFENSE_BUTTONS = {
 };
 
 /**
- * Economy knobs: money the player starts with, repair throughput/cost and
- * build prices. Mirrors docs/design/combat.md — change both together.
+ * Economy knobs: money the player starts with, kill bounties, repair
+ * throughput/cost and build prices. Mirrors docs/design/combat.md — change
+ * both together.
  */
 export const ECONOMY = {
   /** Money the run starts (and every RESTART / MAIN re-entry) with. */
   startMoney: 200,
+  /** Bounty credited the instant an attacker unit dies (unified price). */
+  killReward: 200,
   /** Health points restored per second while a unit repairs (100 pool). */
   repairHpPerSecond: 10,
   /** Money drained per second while a unit repairs. */

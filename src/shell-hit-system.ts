@@ -22,8 +22,9 @@ import {
   ShellTag,
   SplashFade,
   WakeSource,
+  Wallet,
 } from './components.js';
-import { COMBAT, DAMAGE_MATRIX, OCEAN } from './level-config.js';
+import { COMBAT, DAMAGE_MATRIX, ECONOMY, OCEAN } from './level-config.js';
 
 /**
  * Distance-based hit resolution between airborne shells and combatants'
@@ -181,6 +182,9 @@ export class ShellHitSystem extends createSystem({
     core.setValue(Health, 'current', Math.max(0, hp));
     if (hp > 0) return;
     if (String(core.getValue(HitCore, 'faction')) === 'attacker') {
+      // Kill bounty: one unified price per attacker sunk, paid into the
+      // director's wallet — the same pool repairs and builds drain.
+      this.creditKillReward();
       const at = this.corePositions.get(core.index);
       if (at) {
         this.spawnDieBurst(at, true);
@@ -195,6 +199,18 @@ export class ShellHitSystem extends createSystem({
       if (at) this.spawnDieBurst(at, false);
       core.addComponent(Destroyed);
       if (core.object3D) core.object3D.visible = false;
+    }
+  }
+
+  /**
+   * Pay the kill bounty into the director's wallet. Runs on the death frame
+   * only (never per ship per frame); several kills in one sweep each pay.
+   */
+  private creditKillReward(): void {
+    for (const director of this.queries.directors.entities) {
+      const money = Number(director.getValue(Wallet, 'money'));
+      director.setValue(Wallet, 'money', money + ECONOMY.killReward);
+      return;
     }
   }
 
