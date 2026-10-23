@@ -134,6 +134,15 @@ export const PanelScaleAnim = createComponent('PanelScaleAnim', {
 });
 
 /**
+ * Marks a RayInteractable whose presses belong to its own UI — the flat-mode
+ * camera rig (CameraOrbitSystem) refuses to orbit/pinch any pointer that is
+ * pressed on an entity carrying this tag, exactly like it does for cannon
+ * aim drags. Attach to the ROOT entity of a UIKitML panel so every child
+ * element (rows, scroll areas, padding gaps) is covered by one tag.
+ */
+export const CameraBlocker = createComponent('CameraBlocker', {});
+
+/**
  * Marks a pooled projectile — cannonball or straight ballista bolt, both
  * living in CannonFireSystem's pools (bolt copies additionally carry
  * BoltTag, which routes them to their own free query). A projectile is free

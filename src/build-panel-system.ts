@@ -17,6 +17,7 @@ import type { Entity, Object3D } from '@iwsdk/core';
 import {
   Billboard,
   BuildOpen,
+  CameraBlocker,
   Destroyed,
   GameOver,
   GamePaused,
@@ -26,7 +27,6 @@ import {
 import { ECONOMY, PLACEABLE_UNITS } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
 import { getDefenseSlotInfo, replaceDefenseUnit } from './battle-setup.js';
-import { CameraOrbitSystem } from './camera-orbit-system.js';
 
 /** Minimal shape of a uikit element's runtime class list (class layer). */
 type UiElement = Object3D & {
@@ -111,8 +111,11 @@ export class BuildPanelSystem extends createSystem({
         panelEntity.addComponent(RayInteractable);
         // The whole panel surface blocks the camera rig: rows, the scroll
         // list, the header, the gaps between them — a drag anywhere on the
-        // glass must never orbit the flat camera.
-        this.registerUiBlocker(panel);
+        // glass must never orbit the flat camera. The ECS tag rides the
+        // same Hovered/Pressed route the cannon aim drags use, so it also
+        // holds for touch where synthetic pointerIds never match native
+        // ones (the per-element addUiBlocker path fails there).
+        panelEntity.addComponent(CameraBlocker);
 
         for (const unitId of PLACEABLE_UNITS) {
           this.prices.set(
@@ -149,16 +152,6 @@ export class BuildPanelSystem extends createSystem({
       .catch((err: unknown) => {
         console.error('Failed to load build panel:', err);
       });
-  }
-
-  /** Keep presses on the panel from reaching the flat camera rig. */
-  private registerUiBlocker(element: Object3D): void {
-    const cameraSystem = this.world
-      .getSystems()
-      .find((system): system is CameraOrbitSystem =>
-        system instanceof CameraOrbitSystem,
-      );
-    cameraSystem?.addUiBlocker(element);
   }
 
   /**

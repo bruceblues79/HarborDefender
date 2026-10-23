@@ -6,7 +6,9 @@
   slot list — overflow: scroll makes the area a native uikit scroll region
   (drag/fling/wheel, clipping included); scrollbar-width: 0 hides the
   built-in white scrollbar rail — and a dark-gray dismiss button pinned to
-  the foot (the list stretches flex-grow 1; rows stack from the start).
+  the foot. The column splits by flex ratio: header 0.1 / rows 0.8 / foot
+  0.1 (every child height 0 so the grow factors own the full space); the
+  rows stack from the start and scroll, they never stretch to fill.
   Rows use the <button> tag deliberately: <Panel> pulls the horizon kit's
   panelMaterialClass default (globally re-registered as GlassMaterial), and
   glass-tinted children wash mid-gray class backgrounds out to white —
@@ -56,7 +58,8 @@
     justify-content: center;
     align-items: center;
     width: 67;
-    height: 12;
+    flex-grow: 0.1;
+    height: 0;
     background-color: #00000000;
   }
 
@@ -74,7 +77,8 @@
     justify-content: flex-start;
     align-items: center;
     width: 67;
-    flex-grow: 1;
+    flex-grow: 0.8;
+    height: 0;
     gap: 3;
     overflow: scroll;
     scrollbar-width: 0;
@@ -141,7 +145,8 @@
     justify-content: center;
     align-items: center;
     width: 67;
-    height: 12;
+    flex-grow: 0.1;
+    height: 0;
     background-color: #3a3f46;
     color: #ffffff;
     font-size: 6;

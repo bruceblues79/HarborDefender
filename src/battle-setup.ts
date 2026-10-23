@@ -131,9 +131,9 @@ function mountDefenseUnit(
       pitchDeg: SKY_BALLISTA.pitchDefault,
       pitchMinDeg: SKY_BALLISTA.pitchMin,
       pitchMaxDeg: SKY_BALLISTA.pitchMax,
-      // Dragging the swivel body inverts the vertical mapping: pull down
-      // lifts the bolt head, the rack-hand feel.
-      pitchDragInvert: true,
+      // Vertical drag maps directly (no inversion): pull down -> muzzle down,
+      // matching the cannon barrel feel.
+      pitchDragInvert: false,
     });
     unitEntity.addComponent(CannonFire, {
       interval: COMBAT.ballistaFireInterval,

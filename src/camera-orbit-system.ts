@@ -14,7 +14,7 @@ import {
   Vector3,
   VisibilityState,
 } from '@iwsdk/core';
-import { CannonAim } from './components.js';
+import { CannonAim, CameraBlocker } from './components.js';
 
 /**
  * Browser-mode (non-immersive) orbit camera rig.
@@ -51,6 +51,11 @@ type DragMode = 'none' | 'orbit' | 'pinch';
 export class CameraOrbitSystem extends createSystem({
   // Watched so a drag that belongs to a cannon never also orbits the camera.
   cannons: { required: [CannonAim] },
+  // Watched so a drag that belongs to a CameraBlocker panel (build panel,
+  // pause menu) never also orbits the camera. Same ECS route as cannons:
+  // Hovered/Pressed tags, immune to the touch pointerId mismatch between
+  // native events and pointer-events' synthetic ids.
+  blockers: { required: [CameraBlocker] },
 }) {
   // Orbit state. Seed matches the welcome/loading pose from
   // iwsdk.config.json — camera (0,1.25,2) looking level at (0,1.25,-1.5) — so
@@ -154,6 +159,11 @@ export class CameraOrbitSystem extends createSystem({
    * Register a UIKitML button whose presses must never reach the camera rig —
    * the same contract the welcome button gets at init. Systems owning runtime
    * panels (pause menu) call this once per button when the panel resolves.
+   *
+   * Legacy per-element path: it matches the pointer-events synthetic
+   * pointerId against native ids, which holds for mouse but not for touch
+   * (the library assigns counter-based ids there). Whole-panel roots should
+   * prefer the CameraBlocker tag, which rides the Hovered/Pressed ECS route.
    */
   addUiBlocker(element: Object3D): void {
     element.addEventListener('pointerdown', this.onUiPointerDown);
@@ -172,9 +182,10 @@ export class CameraOrbitSystem extends createSystem({
     }
     // Press started on a UI element: ignore this pointer for the gesture.
     if (this.blockedPointers.has(e.pointerId)) return;
-    // Press started on a cannon: the aim drag owns it (Hovered is already set
-    // for a mouse; touch gets Pressed one frame later, covered in onMove).
-    if (this.anyCannon(Hovered)) {
+    // Press started on a cannon or a blocker panel: the UI/aim drag owns it
+    // (Hovered is already set for a mouse; touch gets Pressed one frame
+    // later, covered in onMove).
+    if (this.anyCannon(Hovered) || this.anyBlocker(Hovered)) {
       this.blockedPointers.add(e.pointerId);
       return;
     }
@@ -202,10 +213,10 @@ export class CameraOrbitSystem extends createSystem({
     // re-anchoring after a finger lifts never jumps from a stale coordinate.
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    // A cannon press owns this gesture (covers the touch case where Pressed
-    // lands a frame after pointerdown): stay anchored on every anchor so
-    // resuming the camera after the drag never jumps.
-    if (this.anyCannon(Pressed)) {
+    // A cannon or blocker-panel press owns this gesture (covers the touch
+    // case where Pressed lands a frame after pointerdown): stay anchored on
+    // every anchor so resuming the camera after the drag never jumps.
+    if (this.anyCannon(Pressed) || this.anyBlocker(Pressed)) {
       this.orbitLast.x = e.clientX;
       this.orbitLast.y = e.clientY;
       if (this.pointers.size === 2) {
@@ -320,6 +331,14 @@ export class CameraOrbitSystem extends createSystem({
   /** True while any cannon carries the given transient interaction tag. */
   private anyCannon(tag: typeof Hovered | typeof Pressed): boolean {
     for (const entity of this.queries.cannons.entities) {
+      if (entity.hasComponent(tag)) return true;
+    }
+    return false;
+  }
+
+  /** True while any CameraBlocker panel carries the given interaction tag. */
+  private anyBlocker(tag: typeof Hovered | typeof Pressed): boolean {
+    for (const entity of this.queries.blockers.entities) {
       if (entity.hasComponent(tag)) return true;
     }
     return false;
