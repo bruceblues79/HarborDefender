@@ -10,10 +10,12 @@ import projectOptions from 'virtual:iwsdk-project';
 import { BallisticSystem } from './ballistic-system.js';
 import { BillboardSystem } from './billboard-system.js';
 import { startBattle } from './battle-setup.js';
+import { BuildPanelSystem } from './build-panel-system.js';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
 import { CannonAimSystem } from './cannon-aim-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
 import { Billboard } from './components.js';
+import { DefenseButtonSystem } from './defense-button-system.js';
 import { DieBurstSystem } from './die-burst-system.js';
 import { HitFlashSystem } from './hit-flash-system.js';
 import { HealthBarSystem } from './health-bar-system.js';
@@ -23,6 +25,7 @@ import { OceanSystem } from './ocean-system.js';
 import { PanelScaleSystem } from './panel-scale-system.js';
 import { PirateFireSystem } from './pirate-fire-system.js';
 import { PropellerSpinSystem } from './propeller-spin-system.js';
+import { RepairSystem } from './repair-system.js';
 import { ResultPanelSystem } from './result-panel-system.js';
 import { ShellHitSystem } from './shell-hit-system.js';
 import { ShipMovementSystem } from './ship-movement-system.js';
@@ -30,6 +33,7 @@ import { SpawnFadeSystem } from './spawn-fade-system.js';
 import { SplashSystem } from './splash-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { installXRButton } from './xr-button.js';
+import { installHandPriorityArbitration } from './xr-hand-arbitration.js';
 
 World.create(
   document.getElementById('scene-container') as HTMLDivElement,
@@ -47,6 +51,10 @@ World.create(
     ).ray.visual;
     rayVisual.rayDisplayMode = RayDisplayMode.Visible;
   }
+
+  // 手部优先仲裁：跳过 runtime 注入的无 gamepad 虚拟控制器，防止其抢走 primary
+  // （Swan 浏览器捏合时注入，导致射线变蓝后指针永久失效，见 xr-hand-arbitration.ts）
+  installHandPriorityArbitration(world);
 
   world.registerSystem(CameraOrbitSystem);
   world.registerSystem(OceanSystem);
@@ -70,6 +78,13 @@ World.create(
   world.registerSystem(HitFlashSystem, { priority: 15 });
   world.registerSystem(DieBurstSystem, { priority: 15 });
   world.registerSystem(SplashSystem, { priority: 15 });
+  // Repair drain: the only per-frame wallet writer, on the simulation tier
+  // so pauses and outcomes freeze it like every other sim system.
+  world.registerSystem(RepairSystem, { priority: 12 });
+  // Build/repair button commands: a sim-tier consumer of the transient
+  // Pressed tags; it opens the build panel through the director's BuildOpen
+  // tag and keeps the button visuals (gray-out, breathing) current.
+  world.registerSystem(DefenseButtonSystem, { priority: 16 });
   // UI tier, after the camera updates so billboards track this frame's view.
   world.registerSystem(PanelScaleSystem, { priority: 30 });
   world.registerSystem(StartPanelSystem, { priority: 30 });
@@ -79,6 +94,9 @@ World.create(
   // End-of-run result panel: qualifies on GameOver (victory / defeat) and
   // hands RESTART / MAIN to MenuSystem's shared reset sequences.
   world.registerSystem(ResultPanelSystem, { priority: 33 });
+  // Shared build panel: qualifies on the director's BuildOpen tag, owns the
+  // row prices / wallet readout and the structural unit swaps.
+  world.registerSystem(BuildPanelSystem, { priority: 34 });
   world.registerSystem(BillboardSystem, { priority: 31 });
   // Health bars: after the simulation tier so each frame's yaw cancels the
   // unit's freshest rotation; keeps billboarding through pauses like the

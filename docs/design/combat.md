@@ -48,6 +48,27 @@
 | 开火许可线（各停泊带远端，spawn 时写入 `PirateCannon.fireLineZ`） | `UnitTypeDef.stopZMin` | 船 -1.75 / 飞行器 -1.80 |
 | 伤害矩阵全部格子 | `DAMAGE_MATRIX`（键 `攻击方->受击方`） | 见上文矩阵；上两行 `shellDamage`/`pirateShellDamage` 即矩阵的 cannon→ship / ship→cannon 格 |
 
+## 经济系统（economy）
+
+金钱是建造与修理的唯一货币，真值在 `ECONOMY`（`src/level-config.ts`）。
+
+| 语义 | level-config.ts 常量 | 当前值 |
+|---|---|---|
+| 每局起始金钱（START / RESTART 均重置） | `ECONOMY.startMoney` | 200 |
+| 修理回血速度（每秒） | `ECONOMY.repairHpPerSecond` | 10 |
+| 修理扣钱速度（每秒，回血期间持续扣） | `ECONOMY.repairCostPerSecond` | 8 |
+| 换防折扣（在防单位价值的折价抵扣） | `ECONOMY.replaceDiscount` | 0.5 |
+| 加农炮建造价（空位全价） | `ECONOMY.unitPrices.cannon` | 80 |
+| 防空弩建造价（空位全价） | `ECONOMY.unitPrices['sky-ballista']` | 120 |
+
+规则：
+
+- 修理由玩家通过城防单位旁的**扳手按钮**开关：持续回血 + 持续扣钱，
+  血满 / 钱尽 / 单位被毁任一条件终止；修理中扳手呼吸高亮
+- 建设通过**锤子按钮**打开共享建设面板：选中目标单位换上；
+  槽内单位存活时按「新单位全价 − 旧单位价值 × 5 折」结算（同价值互换 = 半价），
+  槽内单位已毁则全价重建
+
 ## 当前节拍（由表推导，改表后重算）
 
 - 城防炮沉一艘船：ceil(100 / 20) = **5 发**；单炮理论 12.5–15s（含抖动）

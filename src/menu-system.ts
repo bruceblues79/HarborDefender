@@ -20,12 +20,12 @@ import {
 import type { Entity } from '@iwsdk/core';
 import {
   Billboard,
+  CameraBlocker,
   GameOver,
   GamePaused,
   GameStarted,
   LevelDirector,
 } from './components.js';
-import { CameraOrbitSystem } from './camera-orbit-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
 import {
@@ -183,6 +183,11 @@ export class MenuSystem extends createSystem({
         // the rig and its descendants, routing clicks into the UIKitML
         // documents (same pattern as the scene-authored welcome panel).
         this.panelEntity.addComponent(RayInteractable);
+        // Presses anywhere on the rig (call button, menu panel, gaps) belong
+        // to the menu — the flat camera rig must never orbit them. The ECS
+        // tag rides Hovered/Pressed, so it also holds for touch where the
+        // per-element addUiBlocker path's pointerId match fails.
+        this.panelEntity.addComponent(CameraBlocker);
 
         // Panels load while the welcome screen is still up; park them closed
         // until the START gate opens.
@@ -198,11 +203,6 @@ export class MenuSystem extends createSystem({
   }
 
   private wireMenuButtons(): void {
-    const cameraSystem = this.world
-      .getSystems()
-      .find((system): system is CameraOrbitSystem =>
-        system instanceof CameraOrbitSystem,
-      );
     const callButton = this.callButton?.getElementById('menu-call-button');
     const menuMain = this.menuPanel?.getElementById('menu-main-button');
     const menuRestart = this.menuPanel?.getElementById('menu-restart-button');
@@ -227,11 +227,6 @@ export class MenuSystem extends createSystem({
       this.closeMenu();
     });
     bind(menuResume, () => this.closeMenu());
-
-    // Keep presses on the menu from reaching the flat camera rig.
-    for (const element of [callButton, menuMain, menuRestart, menuResume]) {
-      if (element) cameraSystem?.addUiBlocker(element);
-    }
   }
 
   /** START gate opened: reveal the rig with only the call button visible. */

@@ -15,6 +15,7 @@ import {
 } from '@iwsdk/core';
 import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
 import {
+  BuildOpen,
   Destroyed,
   GameOver,
   GamePaused,
@@ -28,10 +29,12 @@ import {
   SpawnFade,
   UnitTag,
   WakeSource,
+  Wallet,
 } from './components.js';
 import {
   activeLevelList,
   COMBAT,
+  ECONOMY,
   OCEAN,
   OCEAN_FAR_Z,
   PACING,
@@ -144,6 +147,9 @@ export class LevelWaveSystem extends createSystem({
   init(): void {
     const director = this.world.createEntity();
     director.addComponent(LevelDirector, { phase: 'waiting-start' });
+    // Player wallet rides the director; RepairSystem drains it per frame,
+    // BuildPanelSystem deducts builds, this system resets it per run.
+    director.addComponent(Wallet);
     this.director = director;
 
     for (const [type, def] of Object.entries(UNIT_TYPES)) {
@@ -164,6 +170,7 @@ export class LevelWaveSystem extends createSystem({
     // qualify and hides everything on its dismiss.
     this.director.addComponent(GameStarted);
     this.director.removeComponent(GameOver);
+    this.director.setValue(Wallet, 'money', ECONOMY.startMoney);
     this.enterLevel(0);
   }
 
@@ -175,6 +182,7 @@ export class LevelWaveSystem extends createSystem({
     this.disposeAttackers();
     this.director.removeComponent(GameStarted);
     this.director.removeComponent(GameOver);
+    this.director.removeComponent(BuildOpen);
     this.director.setValue(LevelDirector, 'levelIndex', 0);
     this.director.setValue(LevelDirector, 'waveIndex', 0);
     this.director.setValue(LevelDirector, 'pendingUnits', 0);
@@ -191,6 +199,8 @@ export class LevelWaveSystem extends createSystem({
   restartLevel(): void {
     this.disposeAttackers();
     this.director.removeComponent(GameOver);
+    this.director.removeComponent(BuildOpen);
+    this.director.setValue(Wallet, 'money', ECONOMY.startMoney);
     const index = Math.min(
       Math.max(0, this.levelIndex()),
       activeLevelList.length - 1,
