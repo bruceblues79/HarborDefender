@@ -1,180 +1,154 @@
 <!--
-  Build panel, opened by any defense slot's build button: 75 × 100 UIKit
-  units = 0.75 m × 1 m at scale 1 (flat mode runs a 1.5x factor). A bare
-  header (one centered "gold <money>" line, deep-brown #4d311a ≈ L 0.2,
-  nudged toward the panel top by a 4pt root top padding) over a scrollable
-  slot list — overflow: scroll makes the area a native uikit scroll region
-  (drag/fling/wheel, clipping included); scrollbar-width: 0 hides the
-  built-in white scrollbar rail — and a dark-gray dismiss button pinned to
-  the foot. The column splits by flex ratio: header 0.1 / rows 0.8 / foot
-  0.1 (every child height 0 so the grow factors own the full space); the
-  rows stack from the start and scroll, they never stretch to fill.
-  Rows use the <button> tag deliberately: <Panel> pulls the horizon kit's
-  panelMaterialClass default (globally re-registered as GlassMaterial), and
-  glass-tinted children wash mid-gray class backgrounds out to white —
-  Container (button) renders the class color exactly. BuildPanelSystem
-  rewrites the two real rows' prices at open time (trade-in discount while
-  the slot's occupant is alive), binds their clicks, and hides the row of
-  the unit currently occupying the opening slot through a classList swap
-  (.build-row-hidden): runtime setProperties display would lose to the
-  class layer, so hiding must be class-driven. Icons load through the
-  <svg> tag's src (uikit Svg component:
-  SVGLoader vector meshes, MeshBasicMaterial, tone-mapped off, scaled from
-  the file's viewBox into the element box): cannon from the game-icons set,
-  bow from boxicons; fills hardcoded #f2f4f7
-  because currentColor resolves to black in SVGLoader. The build-time
-  UIKitML validator rejects viewBox on the element, so the svg files keep
-  it and the src form is used instead of inlining the markup; src resolves
-  against the page base URL (not the .uikitml location), hence the ui/
-  prefix. Every non-colored container declares background-color #00000000:
-  uikit containers default to an opaque white surface. Slot palette:
-  mid-gray #5d646d rows with white names (#f2f4f7, font 4) and warm gold
-  prices (#ffd977, font 6). Labels stay Latin — the bundled font atlas has
-  no CJK glyph coverage. Panel surface matches the pause menu: glass over
-  #ffffffaa. render-order 18 keeps it under the menu button (20) and above
-  the world overlays (health bars 8/9, hit flash 10).
+  Build dock, opened by any defense slot's build button: a compact pill that
+  floats at one constant height above the clicked slot (BuildPanelSystem sets
+  x from the slot, y/z fixed) and yaws to the camera via Billboard(lockY).
+  The root is a transparent flex column: a small circular CLOSE button
+  centered above a stadium-shaped bar — uniform border-radius = half the bar
+  height rounds both side ends — holding one circular unit button per
+  placeable unit, each with the unit icon and the live price overlaid inside
+  the circle. The bar is a left-aligned flex row and a native uikit scroll
+  region (overflow: scroll, scrollbar hidden via scrollbar-width: 0): with
+  more placeable units than fit, the extra circles drag in from the right.
+  The bar is sized to two and a half button slots (padding 2 + 10 + gap 2 +
+  10 + gap 2 + a half button 5 + padding 2 = 33): the tail stays empty while
+  only two units exist, and a future third unit renders half-clipped at the
+  right rim — the natural drag-me hint. Buttons use the <button> tag
+  deliberately: <Panel> pulls the
+  horizon kit's glass default (panelMaterialClass globally re-registered as
+  GlassMaterial) and washes mid-gray class backgrounds out to white —
+  Container (button) renders the class color exactly; the bar itself keeps
+  panel-material-class: glass over #ffffffaa to match the pause-menu surface.
+  BuildPanelSystem rewrites each price at open time (trade-in discount while
+  the slot's occupant is alive), binds the clicks, and drives a three-state
+  class per unit button: .dock-unit (default), .dock-unit-off (price above
+  the current wallet — dimmed, replacing the old header's wallet readout)
+  and .dock-unit-hidden (that unit already occupies the opening slot).
+  Runtime setProperties display would lose to the class layer, so every
+  state change must be class-driven. Icons load through the <svg> tag's src
+  (uikit Svg component: SVGLoader vector meshes, MeshBasicMaterial,
+  tone-mapped off): cannon from the game-icons set, bow from boxicons; fills
+  hardcoded #f2f4f7 because currentColor resolves to black in SVGLoader, and
+  src resolves against the page base URL (not the .uikitml location), hence
+  the ui/ prefix. Every non-colored container declares background-color
+  #00000000: uikit containers default to an opaque white surface. Labels
+  stay Latin — the bundled font atlas has no CJK glyph coverage. Dock
+  palette: mid-gray #5d646d circles with warm gold prices (#ffd977), dark
+  gray #3a3f46 close button, matching the retired list rows. render-order 18
+  keeps the dock under the menu button (20) and above the world overlays
+  (health bars 8/9, hit flash 10).
 -->
 <style>
-  .build-root {
+  .build-dock {
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: 75;
-    height: 100;
-    border-radius: 6;
+    gap: 1.5;
+    width: 33;
+    height: 20.5;
     render-order: 18;
-    padding-top: 4;
-    padding-right: 4;
-    padding-bottom: 8;
-    padding-left: 4;
-    panel-material-class: glass;
-    background-color: #ffffffaa;
+    background-color: #00000000;
   }
 
-  .build-header {
+  .dock-close {
     display: flex;
-    flex-direction: row;
     justify-content: center;
     align-items: center;
-    width: 67;
-    flex-grow: 0.1;
-    height: 0;
-    background-color: #00000000;
-  }
-
-  .wallet-value {
-    display: flex;
-    color: #4d311a;
-    font-size: 6.3;
-    font-weight: 700;
-    background-color: #00000000;
-  }
-
-  .build-rows {
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    align-items: center;
-    width: 67;
-    flex-grow: 0.8;
-    height: 0;
-    gap: 3;
-    overflow: scroll;
-    scrollbar-width: 0;
-    background-color: #00000000;
-  }
-
-  .build-row {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    width: 67;
-    height: 13;
-    background-color: #5d646d;
-    border-radius: 3;
-    padding-top: 0;
-    padding-right: 4;
-    padding-bottom: 0;
-    padding-left: 4;
-    cursor: pointer;
-  }
-
-  .build-row:hover {
-    background-color: #6a717a;
-  }
-
-  .build-row:active {
-    background-color: #515861;
-  }
-
-  .build-row-hidden {
-    display: none;
-  }
-
-  .row-icon {
-    display: flex;
-    width: 9;
-    height: 9;
-    background-color: #00000000;
-  }
-
-  .row-name {
-    display: flex;
-    flex-grow: 1;
-    color: #f2f4f7;
-    font-size: 4;
-    font-weight: 700;
-    text-align: left;
-    padding-left: 4;
-    background-color: #00000000;
-  }
-
-  .row-price {
-    display: flex;
-    color: #ffd977;
-    font-size: 6;
-    font-weight: 700;
-    text-align: right;
-    background-color: #00000000;
-  }
-
-  .build-dismiss {
-    display: flex;
-    flex-direction: row;
-    justify-content: center;
-    align-items: center;
-    width: 67;
-    flex-grow: 0.1;
-    height: 0;
+    width: 6;
+    height: 6;
     background-color: #3a3f46;
     color: #ffffff;
-    font-size: 6;
+    font-size: 3.5;
     font-weight: 700;
     text-align: center;
     border-radius: 3;
     cursor: pointer;
   }
 
-  .build-dismiss:hover {
+  .dock-close:hover {
     background-color: #464c55;
+  }
+
+  .dock-bar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 2;
+    width: 33;
+    height: 13;
+    padding-left: 2;
+    padding-right: 2;
+    overflow: scroll;
+    scrollbar-width: 0;
+    border-radius: 6.5;
+    panel-material-class: glass;
+    background-color: #ffffffaa;
+  }
+
+  .dock-unit {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0.8;
+    width: 10;
+    height: 10;
+    background-color: #5d646d;
+    border-radius: 5;
+    cursor: pointer;
+  }
+
+  .dock-unit:hover {
+    background-color: #6a717a;
+  }
+
+  .dock-unit:active {
+    background-color: #515861;
+  }
+
+  .dock-unit-off {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0.8;
+    width: 10;
+    height: 10;
+    background-color: #41464d;
+    border-radius: 5;
+  }
+
+  .dock-unit-hidden {
+    display: none;
+  }
+
+  .unit-icon {
+    display: flex;
+    width: 4.5;
+    height: 4.5;
+    background-color: #00000000;
+  }
+
+  .unit-price {
+    display: flex;
+    color: #ffd977;
+    font-size: 2.8;
+    font-weight: 700;
+    text-align: center;
+    background-color: #00000000;
   }
 </style>
 
-<Panel class="build-root">
-  <Panel class="build-header">
-    <Panel id="wallet-value" class="wallet-value">gold 200</Panel>
-  </Panel>
-  <Panel class="build-rows">
-    <button id="row-cannon" class="build-row">
-      <svg class="row-icon" src="ui/icons/cannon.svg" />
-      <Panel class="row-name">Cannon</Panel>
-      <Panel id="price-cannon" class="row-price">80</Panel>
+<Panel class="build-dock">
+  <button id="build-dismiss" class="dock-close">X</button>
+  <Panel class="dock-bar">
+    <button id="row-cannon" class="dock-unit">
+      <svg class="unit-icon" src="ui/icons/cannon.svg" />
+      <Panel id="price-cannon" class="unit-price">200</Panel>
     </button>
-    <button id="row-sky-ballista" class="build-row">
-      <svg class="row-icon" src="ui/icons/bow-filled.svg" />
-      <Panel class="row-name">Ballista</Panel>
-      <Panel id="price-sky-ballista" class="row-price">120</Panel>
+    <button id="row-sky-ballista" class="dock-unit">
+      <svg class="unit-icon" src="ui/icons/bow-filled.svg" />
+      <Panel id="price-sky-ballista" class="unit-price">200</Panel>
     </button>
   </Panel>
-  <button id="build-dismiss" class="build-dismiss">CLOSE</button>
 </Panel>
