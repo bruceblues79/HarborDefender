@@ -151,14 +151,20 @@ export const PLACEABLE_UNITS: DefenseUnitId[] = ['cannon', 'sky-ballista'];
  * glyph itself.
  */
 export const DEFENSE_BUTTONS = {
-  /** Button centre height — a quarter metre below the wall top (y 0.8). */
-  y: 0.55,
+  /** Button centre height — a small lift above the wall's land face (y 0.8). */
+  y: 0.65,
   /** Button centre z — a hand's width off the wall's land face (z -0.6). */
   z: -0.48,
   /** Half-gap between the build and repair buttons around the slot centre. */
   spacingX: 0.115,
-  /** Invisible hit-proxy box span (m), deliberately larger than the icon. */
-  proxySize: 0.24,
+  /**
+   * Invisible hit proxies (m), one per kind: tall boxes sized over the 1.2x
+   * glyphs (hammer wide, wrench narrow) and trimmed in X so the build/repair
+   * pair — and neighbouring slots — never overlap. The Z depth stays thin:
+   * just enough plane for ray detection, no thick invisible wall.
+   */
+  proxyBuild: { x: 0.18, y: 0.2, z: 0.04 },
+  proxyRepair: { x: 0.11, y: 0.2, z: 0.04 },
   /** Build-icon material colour while enabled (multiplies baked colors). */
   enabledColor: 0xffffff,
   /** Build-icon dimmer while the build panel owns the screen (置灰). */

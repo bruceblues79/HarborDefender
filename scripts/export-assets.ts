@@ -1420,13 +1420,14 @@ function createBombardierExport(): Object3D {
 // ---------------------------------------------------------------------------
 
 // Shares the cannon/ballista palette (brass, steel, dark iron) plus the two
-// identity tints the HUD already used: brass for build, signal green for
+// identity tints the HUD already used: brass for build, camo olive for
 // repair. Flat crisp zones — jitter stays far below the unit mottle.
 const BTN_BRASS = 0xd1a249;
 const BTN_STEEL = 0x737b84;
 const BTN_STEEL_LIGHT = 0x9aa2aa;
 const BTN_IRON_DARK = 0x474c53;
-const BTN_GREEN = 0x63af63;
+/** Camouflage olive — the wrench's identity green, naturally darker. */
+const BTN_GREEN = 0x556b2f;
 
 /** Base plate thickness (m); the front face lands at z = +0.0065. */
 const BUTTON_PLATE_DEPTH = 0.013;
@@ -1535,7 +1536,7 @@ function buttonRoot(name: string, geometry: BufferGeometry): Object3D {
  * collar and grip strap over a dark iron tapered handle.
  *
  * - Origin: icon centre on the wall plane; the glyph faces +Z (land face).
- * - Envelope ~0.134 × 0.126 m, one merged mesh, one draw call.
+ * - Envelope ~0.161 × 0.151 m (1.2x baked in), one merged mesh, one draw call.
  */
 function createDefenseButtonBuildExport(): Object3D {
   const rand = makeRandom(20261023);
@@ -1575,16 +1576,20 @@ function createDefenseButtonBuildExport(): Object3D {
   paint(grip, BTN_BRASS, 0.015, rand);
   parts.push(grip);
 
-  return buttonRoot('defense-button-build', mergeParts(parts));
+  // 1.2x presence baked into the geometry (not a node scale — the runtime
+  // state system writes the icon node's scale every frame).
+  const merged = mergeParts(parts);
+  merged.scale(1.2, 1.2, 1.2);
+  return buttonRoot('defense-button-build', merged);
 }
 
 /**
- * Repair mark — a service wrench, signal-green identity family: green body
+ * Repair mark — a service wrench, camo-olive identity family: olive body
  * with a chamfered open-end jaw, waisted shaft and ring foot, a proud steel
  * collar reinforcing the ring, and a brass hex boss on the shaft.
  *
  * - Origin: icon centre on the wall plane; the glyph faces +Z (land face).
- * - Envelope ~0.068 × 0.135 m, one merged mesh, one draw call.
+ * - Envelope ~0.082 × 0.162 m (1.2x baked in), one merged mesh, one draw call.
  */
 function createDefenseButtonRepairExport(): Object3D {
   const rand = makeRandom(20261023);
@@ -1618,7 +1623,10 @@ function createDefenseButtonRepairExport(): Object3D {
   parts.push(frontBoss(0, -0.047, 0.0195, 0.0125, 24, BTN_STEEL, rand));
   parts.push(frontBoss(0, 0.006, 0.009, null, 6, BTN_BRASS, rand));
 
-  return buttonRoot('defense-button-repair', mergeParts(parts));
+  // 1.2x presence baked into the geometry (see the build mark).
+  const merged = mergeParts(parts);
+  merged.scale(1.2, 1.2, 1.2);
+  return buttonRoot('defense-button-repair', merged);
 }
 
 // ---------------------------------------------------------------------------

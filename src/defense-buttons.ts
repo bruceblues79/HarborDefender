@@ -25,16 +25,29 @@ import { DEFENSE_BUTTONS } from './level-config.js';
  *
  * The invisible hit proxy is a box that renders nothing (colorWrite off) yet
  * stays raycastable — object.visible is what raycasters key on, not material
- * color. It is deliberately larger than the glyph so a thumb or XR ray never
- * has to land on the icon itself.
+ * color. Each kind's box is deliberately larger than its glyph so a thumb or
+ * XR ray never has to land on the icon itself, and is trimmed in X so the
+ * build/repair pair never overlap.
  */
 
-/** Shared invisible-hit-proxy geometry/material — renders nothing, hits all. */
-const PROXY_GEOMETRY = new BoxGeometry(
-  DEFENSE_BUTTONS.proxySize,
-  DEFENSE_BUTTONS.proxySize,
-  DEFENSE_BUTTONS.proxySize / 2,
-);
+/**
+ * Shared invisible-hit-proxy geometry/material per kind — renders nothing,
+ * hits all. Tall boxes sized over the baked 1.2x glyphs and trimmed in X so
+ * the build/repair pair (and neighbouring slots) never overlap: a raycast
+ * landing in the seam always has exactly one winner.
+ */
+const PROXY_GEOMETRIES = {
+  build: new BoxGeometry(
+    DEFENSE_BUTTONS.proxyBuild.x,
+    DEFENSE_BUTTONS.proxyBuild.y,
+    DEFENSE_BUTTONS.proxyBuild.z,
+  ),
+  repair: new BoxGeometry(
+    DEFENSE_BUTTONS.proxyRepair.x,
+    DEFENSE_BUTTONS.proxyRepair.y,
+    DEFENSE_BUTTONS.proxyRepair.z,
+  ),
+} as const;
 const PROXY_MATERIAL = new MeshBasicMaterial({
   colorWrite: false,
   depthWrite: false,
@@ -64,7 +77,7 @@ export function createDefenseButtonRig(
     }
   });
 
-  const proxy = new Mesh(PROXY_GEOMETRY, PROXY_MATERIAL);
+  const proxy = new Mesh(PROXY_GEOMETRIES[kind], PROXY_MATERIAL);
   proxy.name = 'button-proxy';
   proxy.castShadow = false;
   proxy.receiveShadow = false;
