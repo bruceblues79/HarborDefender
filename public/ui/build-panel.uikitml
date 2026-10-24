@@ -6,7 +6,14 @@
   centered above a stadium-shaped bar — uniform border-radius = half the bar
   height rounds both side ends — holding one circular unit button per
   placeable unit, each with the unit icon and the live price overlaid inside
-  the circle. The bar is a left-aligned flex row and a native uikit scroll
+  the circle. The top row centers one dark group — wallet badge and round close
+  button side by side (same height 6 and radius, reading as a single
+  segmented pill) — instead of pinning the badge to the rim; the badge is
+  sized for "9999g", the worst-case wallet, so the digits never resize the
+  group. Placement beside the close button rather than under the bar keeps
+  the column's total height, and with it the clearance to the
+  health bars below, unchanged. The bar is a left-aligned flex row
+  and a native uikit scroll
   region (overflow: scroll, scrollbar hidden via scrollbar-width: 0): with
   more placeable units than fit, the extra circles drag in from the right.
   The bar is sized to two and a half button slots (padding 2 + 10 + gap 2 +
@@ -21,8 +28,9 @@
   BuildPanelSystem rewrites each price at open time (trade-in discount while
   the slot's occupant is alive), binds the clicks, and drives a three-state
   class per unit button: .dock-unit (default), .dock-unit-off (price above
-  the current wallet — dimmed, replacing the old header's wallet readout)
-  and .dock-unit-hidden (that unit already occupies the opening slot).
+  the current wallet — dimmed) and .dock-unit-hidden (that unit already
+  occupies the opening slot) — and rewrites the wallet badge every frame
+  while the dock is open, so gold spent or earned elsewhere shows live.
   Runtime setProperties display would lose to the class layer, so every
   state change must be class-driven. Icons load through the <svg> tag's src
   (uikit Svg component: SVGLoader vector meshes, MeshBasicMaterial,
@@ -46,6 +54,36 @@
     width: 33;
     height: 20.5;
     render-order: 18;
+    background-color: #00000000;
+  }
+
+  .dock-top {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 2;
+    width: 33;
+    height: 6;
+    background-color: #00000000;
+  }
+
+  .wallet-badge {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 12;
+    height: 6;
+    background-color: #3a3f46;
+    border-radius: 3;
+  }
+
+  .wallet-text {
+    display: flex;
+    color: #ffd977;
+    font-size: 2.8;
+    font-weight: 700;
+    text-align: center;
     background-color: #00000000;
   }
 
@@ -140,7 +178,12 @@
 </style>
 
 <Panel class="build-dock">
-  <button id="build-dismiss" class="dock-close">X</button>
+  <Panel class="dock-top">
+    <button class="wallet-badge">
+      <Panel id="wallet-value" class="wallet-text">0g</Panel>
+    </button>
+    <button id="build-dismiss" class="dock-close">X</button>
+  </Panel>
   <Panel class="dock-bar">
     <button id="row-cannon" class="dock-unit">
       <svg class="unit-icon" src="ui/icons/cannon.svg" />

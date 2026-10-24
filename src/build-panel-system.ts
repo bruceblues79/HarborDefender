@@ -66,9 +66,8 @@ const PANEL_FACTORS = { xr: 1, flat: 1.8 };
  * (empty) slot, the in-place trade-in price (value minus the occupant's
  * book value × ECONOMY.replaceDiscount) while it is alive. The occupant's
  * own button stays hidden, and a button whose price exceeds the wallet
- * renders dimmed (the old header's wallet readout, made per-button): the
- * dock only offers units that can actually be placed and paid into this
- * slot. Picking a button swaps the slot's occupant via replaceDefenseUnit,
+ * renders dimmed; the top-row badge beside the close button shows the live
+ * gold. Picking a button swaps the slot's occupant via replaceDefenseUnit,
  * deducts from the wallet and closes; the round close button above the bar
  * dismisses without spending. While the tag sits on the director the build
  * buttons render grayed and refuse presses (DefenseButtonSystem's half of
@@ -89,6 +88,8 @@ export class BuildPanelSystem extends createSystem({
   /** Environment the panel scale was last applied for; a flip re-applies. */
   private factorsEnvironment: boolean | null = null;
   private readonly prices = new Map<DefenseUnitId, Text | null>();
+  /** Live gold readout in the top-row badge, next to the close button. */
+  private walletText: Text | null = null;
   /** Unit buttons keyed by unit — driven through the three-state class below. */
   private readonly rows = new Map<DefenseUnitId, UiElement | null>();
   /** Class currently applied per unit button; guards redundant class swaps. */
@@ -144,6 +145,9 @@ export class BuildPanelSystem extends createSystem({
           }
         }
         const dismiss = panel.getElementById('build-dismiss');
+        this.walletText = this.resolveText(
+          panel.getElementById('wallet-value'),
+        );
         if (dismiss) {
           dismiss.addEventListener('click', () => this.closePanel());
           this.cleanupFuncs.push(() =>
@@ -223,8 +227,9 @@ export class BuildPanelSystem extends createSystem({
   /**
    * Rewrite every button's price from live state, and drive its three-state
    * class: the unit occupying the open slot hides its own button, a price
-   * above the current wallet dims the button (the retired header's wallet
-   * readout, made per-button), the rest stay in the default style.
+   * above the current wallet dims the button, the rest stay in the default
+   * style. The top-row badge mirrors the wallet, so gold spent or earned
+   * elsewhere shows live while the dock is open.
    */
   private refreshRows(director: Entity): void {
     const slot = Number(director.getValue(BuildOpen, 'slot'));
@@ -234,6 +239,9 @@ export class BuildPanelSystem extends createSystem({
     const money = director.hasComponent(Wallet)
       ? (director.getValue(Wallet, 'money') as number)
       : Number.POSITIVE_INFINITY;
+    if (this.walletText && director.hasComponent(Wallet)) {
+      this.walletText.setProperties({ text: `${Math.floor(money)}g` });
+    }
     for (const unitId of PLACEABLE_UNITS) {
       const row = this.rows.get(unitId);
       const price = this.priceFor(director, unitId);
