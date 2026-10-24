@@ -145,57 +145,66 @@ export const PLACEABLE_UNITS: DefenseUnitId[] = ['cannon', 'sky-ballista'];
 /**
  * Build/repair buttons, two per defense slot, mounted on the wall's land
  * (+Z) face below each unit: build on the left, repair on the right. Icons
- * are flat low-poly extrusions facing +Z with an enlarged invisible hit
- * proxy over each, so a thumb or XR ray never has to hit the glyph itself.
+ * are designed GLB assets (npm run export-assets) — flat mechanical glyphs
+ * with colour zones baked into vertex colors — facing +Z, with an enlarged
+ * invisible hit proxy over each, so a thumb or XR ray never has to hit the
+ * glyph itself.
  */
 export const DEFENSE_BUTTONS = {
-  /** Button centre height — a quarter metre below the wall top (y 0.8). */
-  y: 0.55,
+  /** Button centre height — a small lift above the wall's land face (y 0.8). */
+  y: 0.65,
   /** Button centre z — a hand's width off the wall's land face (z -0.6). */
   z: -0.48,
   /** Half-gap between the build and repair buttons around the slot centre. */
   spacingX: 0.115,
-  /** Icon span (m) — the shape's ~1-unit outline maps to this. */
-  iconSize: 0.14,
-  /** Icon extrusion depth (m) — thin plate, sticker-like in silhouette. */
-  iconDepth: 0.012,
-  /** Invisible hit-proxy box span (m), deliberately larger than the icon. */
-  proxySize: 0.24,
-  /** Icon tints (sRGB hex, -10% saturation): brass hammer, green wrench. */
-  buildColor: 0xd1a249,
-  repairColor: 0x63af63,
-  /** Build-button tint while the build panel owns the screen (置灰). */
+  /**
+   * Invisible hit proxies (m), one per kind: tall boxes sized over the 1.2x
+   * glyphs (hammer wide, wrench narrow) and trimmed in X so the build/repair
+   * pair — and neighbouring slots — never overlap. The Z depth stays thin:
+   * just enough plane for ray detection, no thick invisible wall.
+   */
+  proxyBuild: { x: 0.18, y: 0.2, z: 0.04 },
+  proxyRepair: { x: 0.11, y: 0.2, z: 0.04 },
+  /** Build-icon material colour while enabled (multiplies baked colors). */
+  enabledColor: 0xffffff,
+  /** Build-icon dimmer while the build panel owns the screen (置灰). */
   disabledColor: 0x5a5a60,
   /**
    * Repair breathing: DefenseButtonSystem scales the icon up sinusoidally —
    * peak extra scale breatheScale (0.22 = +22%) at breatheSpeed rad/s. The
-   * material stays a flat unlit tint; the motion is the whole effect.
+   * baked vertex colors never change; the motion is the whole effect.
    */
   breatheSpeed: 4.25,
   breatheScale: 0.22,
 };
 
 /**
- * Economy knobs: money the player starts with, repair throughput/cost and
- * build prices. Mirrors docs/design/combat.md — change both together.
+ * Economy knobs: money the player starts with, kill bounties, repair
+ * throughput/cost and unit book values. Mirrors docs/design/combat.md —
+ * change both together.
  */
 export const ECONOMY = {
   /** Money the run starts (and every RESTART / MAIN re-entry) with. */
   startMoney: 200,
+  /** Bounty credited the instant an attacker unit dies (unified price). */
+  killReward: 200,
   /** Health points restored per second while a unit repairs (100 pool). */
   repairHpPerSecond: 10,
   /** Money drained per second while a unit repairs. */
   repairCostPerSecond: 8,
   /**
    * Replace discount: while a slot's unit is alive (not Destroyed), its
-   * value × this factor is credited off the new unit's price — same-value
-   * swaps cost half.
+   * book value (unitValues) × this factor is credited off the new unit's
+   * price — 200 × 0.3 = a flat 60 trade-in credit.
    */
-  replaceDiscount: 0.5,
-  /** Full price per unit id for a build into an empty (destroyed) slot. */
-  unitPrices: {
-    cannon: 80,
-    'sky-ballista': 120,
+  replaceDiscount: 0.3,
+  /**
+   * Book value per unit id: the ONLY price knob — an empty or destroyed
+   * slot builds at full value, a live swap pays the value difference.
+   */
+  unitValues: {
+    cannon: 200,
+    'sky-ballista': 200,
   } as Record<DefenseUnitId, number>,
 };
 

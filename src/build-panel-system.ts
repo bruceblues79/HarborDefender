@@ -24,7 +24,12 @@ import {
   LevelDirector,
   Wallet,
 } from './components.js';
-import { ECONOMY, PLACEABLE_UNITS } from './level-config.js';
+import {
+  DEFENSE_SLOTS,
+  ECONOMY,
+  PLACEABLE_UNITS,
+  WALL_CENTER_Z,
+} from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
 import { getDefenseSlotInfo, replaceDefenseUnit } from './battle-setup.js';
 
@@ -37,33 +42,36 @@ type UiElement = Object3D & {
 };
 
 /**
- * Fixed world anchor over the wall top — the wall already carries height
- * (units sit at y 0.8), so the panel floats just above it with a slight +Z
- * lean off the land face, between the wall and the viewer; billboarded, so
- * the orbit camera (flat) and a player standing at the battlement (XR) both
- * read it face-on.
+ * Fixed world anchor of the dock: x follows the opened slot
+ * (DEFENSE_SLOTS[slot].x) and z sits exactly on the wall centre line — the
+ * same xz the mounted units stand at (battle-setup) — so the bar hangs
+ * straight over the unit it builds for. The height clears every defender
+ * health bar (bbox top + margin, worst case ≈ 1.6) with room to spare; the
+ * Billboard(lockY) component on the dock entity yaws it toward the viewer.
  */
-const PANEL_ANCHOR = { x: 0, y: 1.75, z: -0.4 };
+const BAR_ANCHOR = { y: 1.85, z: WALL_CENTER_Z };
 /**
- * Per-environment scale over the panel's authored 0.75 × 1 m: XR runs the
- * authored size exactly, flat mode grows it 1.5x for readability across the
- * orbit camera's ~5 m stand-off (same pattern as the pause menu factors).
+ * Per-environment scale over the dock's authored 0.33 × 0.205 m: XR runs
+ * the authored size exactly, flat mode grows it 1.8x for readability across
+ * the orbit camera's ~5 m stand-off (same pattern as the pause menu factors).
  */
-const PANEL_FACTORS = { xr: 1, flat: 1.5 };
+const PANEL_FACTORS = { xr: 1, flat: 1.8 };
 
 /**
- * The shared build panel — the only writer of the BuildOpen lifecycle.
+ * The shared build dock — the only writer of the BuildOpen lifecycle.
  *
  * A BuildOpen tag on the director (added by a build-button press) reveals
- * the billboarded panel; its rows list the placeable units with live prices
- * — full price into a destroyed (empty) slot, the in-place trade-in price
- * (full minus the occupant's value × ECONOMY.replaceDiscount) while it is
- * alive. The occupant's own row stays hidden: the panel only lists units
- * that can actually be placed into this slot. Picking a row swaps the
- * slot's occupant via replaceDefenseUnit, deducts from the wallet and
- * closes; dismiss closes without spending. While the tag sits on the
- * director the build buttons render grayed and refuse presses
- * (DefenseButtonSystem's half of the contract).
+ * the billboarded dock over that slot: one circular button per placeable
+ * unit with the live price overlaid — full book value into a destroyed
+ * (empty) slot, the in-place trade-in price (value minus the occupant's
+ * book value × ECONOMY.replaceDiscount) while it is alive. The occupant's
+ * own button stays hidden, and a button whose price exceeds the wallet
+ * renders dimmed; the top-row badge beside the close button shows the live
+ * gold. Picking a button swaps the slot's occupant via replaceDefenseUnit,
+ * deducts from the wallet and closes; the round close button above the bar
+ * dismisses without spending. While the tag sits on the director the build
+ * buttons render grayed and refuse presses (DefenseButtonSystem's half of
+ * the contract).
  */
 export class BuildPanelSystem extends createSystem({
   directors: { required: [LevelDirector] },
@@ -80,11 +88,12 @@ export class BuildPanelSystem extends createSystem({
   /** Environment the panel scale was last applied for; a flip re-applies. */
   private factorsEnvironment: boolean | null = null;
   private readonly prices = new Map<DefenseUnitId, Text | null>();
-  /** Slot list rows keyed by unit — hidden while that unit occupies the open slot. */
-  private readonly rows = new Map<DefenseUnitId, UiElement | null>();
-  /** Units whose row is currently class-hidden; guards redundant class swaps. */
-  private readonly hiddenRows = new Set<DefenseUnitId>();
+  /** Live gold readout in the top-row badge, next to the close button. */
   private walletText: Text | null = null;
+  /** Unit buttons keyed by unit — driven through the three-state class below. */
+  private readonly rows = new Map<DefenseUnitId, UiElement | null>();
+  /** Class currently applied per unit button; guards redundant class swaps. */
+  private readonly unitClasses = new Map<DefenseUnitId, string>();
 
   init(): void {
     this.loadPanel();
@@ -103,7 +112,11 @@ export class BuildPanelSystem extends createSystem({
       .then((panel) => {
         this.panel = panel;
         panel.visible = false;
-        panel.position.set(PANEL_ANCHOR.x, PANEL_ANCHOR.y, PANEL_ANCHOR.z);
+        panel.position.set(
+          DEFENSE_SLOTS[0].x,
+          BAR_ANCHOR.y,
+          BAR_ANCHOR.z,
+        );
         const panelEntity = this.world.createTransformEntity(panel);
         panelEntity.addComponent(Billboard, { lockY: true });
         // One interactable over the whole panel routes presses into the
@@ -131,10 +144,10 @@ export class BuildPanelSystem extends createSystem({
             this.rows.set(unitId, row);
           }
         }
+        const dismiss = panel.getElementById('build-dismiss');
         this.walletText = this.resolveText(
           panel.getElementById('wallet-value'),
         );
-        const dismiss = panel.getElementById('build-dismiss');
         if (dismiss) {
           dismiss.addEventListener('click', () => this.closePanel());
           this.cleanupFuncs.push(() =>
@@ -196,67 +209,80 @@ export class BuildPanelSystem extends createSystem({
   }
 
   /**
-   * Trade-in price for unitId into the slot the panel was opened for: the
-   * occupant's destroyed slot pays full price; a live occupant credits
-   * value × replaceDiscount (same-value swap = half price).
+   * Price for unitId into the slot the panel was opened for: an empty or
+   * destroyed slot pays the book value in full (200); a live occupant turns
+   * the swap into a value difference — the new unit's book value minus the
+   * old unit's depreciated value (200 − 200×0.3 = 140, either direction).
    */
   private priceFor(director: Entity, unitId: DefenseUnitId): number {
     const slot = Number(director.getValue(BuildOpen, 'slot'));
     const info = getDefenseSlotInfo(slot);
-    const full = ECONOMY.unitPrices[unitId] ?? 0;
-    if (!info || info.entity.hasComponent(Destroyed)) return full;
+    const price = ECONOMY.unitValues[unitId] ?? 0;
+    if (!info || info.entity.hasComponent(Destroyed)) return price;
     const credit =
-      (ECONOMY.unitPrices[info.unit] ?? 0) * ECONOMY.replaceDiscount;
-    return Math.max(0, full - credit);
+      (ECONOMY.unitValues[info.unit] ?? 0) * ECONOMY.replaceDiscount;
+    return Math.max(0, price - credit);
   }
 
   /**
-   * Rewrite every row's price and the wallet readout from live state, and
-   * hide the row of the unit currently occupying the open slot — the panel
-   * lists only units you could actually place there.
+   * Rewrite every button's price from live state, and drive its three-state
+   * class: the unit occupying the open slot hides its own button, a price
+   * above the current wallet dims the button, the rest stay in the default
+   * style. The top-row badge mirrors the wallet, so gold spent or earned
+   * elsewhere shows live while the dock is open.
    */
   private refreshRows(director: Entity): void {
     const slot = Number(director.getValue(BuildOpen, 'slot'));
     const info = getDefenseSlotInfo(slot);
     const occupant =
       info && !info.entity.hasComponent(Destroyed) ? info.unit : null;
+    const money = director.hasComponent(Wallet)
+      ? (director.getValue(Wallet, 'money') as number)
+      : Number.POSITIVE_INFINITY;
+    if (this.walletText && director.hasComponent(Wallet)) {
+      this.walletText.setProperties({ text: `${Math.floor(money)}g` });
+    }
     for (const unitId of PLACEABLE_UNITS) {
       const row = this.rows.get(unitId);
-      if (row) this.setRowHidden(unitId, row, unitId === occupant);
+      const price = this.priceFor(director, unitId);
       this.prices
         .get(unitId)
-        ?.setProperties({ text: String(this.priceFor(director, unitId)) });
-    }
-    if (this.walletText && director.hasComponent(Wallet)) {
-      this.walletText.setProperties({
-        text: `gold ${Math.floor(director.getValue(Wallet, 'money') as number)}`,
-      });
+        ?.setProperties({ text: String(price) });
+      if (!row) continue;
+      let next: string;
+      if (unitId === occupant) {
+        next = 'dock-unit-hidden';
+      } else if (price > money) {
+        next = 'dock-unit-off';
+      } else {
+        next = 'dock-unit';
+      }
+      this.setUnitClass(unitId, row, next);
     }
   }
 
   /**
-   * Show/hide a row through its class list: runtime setProperties display
-   * writes the base property layer, which the markup's .build-row class
-   * layer outranks — only a class swap reliably toggles visibility.
+   * Show/hide/dim a unit button through its class list: runtime setProperties
+   * display writes the base property layer, which the markup's .dock-unit
+   * class layer outranks — only a class swap reliably toggles the state.
    */
-  private setRowHidden(
+  private setUnitClass(
     unitId: DefenseUnitId,
     row: UiElement,
-    hidden: boolean,
+    next: string,
   ): void {
-    if (hidden === this.hiddenRows.has(unitId)) return;
-    if (hidden) {
-      row.classList.remove('build-row');
-      row.classList.add('build-row-hidden');
-      this.hiddenRows.add(unitId);
-    } else {
-      row.classList.remove('build-row-hidden');
-      row.classList.add('build-row');
-      this.hiddenRows.delete(unitId);
+    if (this.unitClasses.get(unitId) === next) return;
+    for (const candidate of ['dock-unit', 'dock-unit-off', 'dock-unit-hidden']) {
+      row.classList.remove(candidate);
     }
+    row.classList.add(next);
+    this.unitClasses.set(unitId, next);
   }
 
-  /** BuildOpen mounted: reveal the panel and price the rows for that slot. */
+  /**
+   * BuildOpen mounted: move the dock over that slot (x follows the slot, y/z
+   * constant), reveal it and price the buttons.
+   */
   private openPanel(director: Entity): void {
     if (!this.panel) {
       // The panel asset has not finished loading yet; drop the command —
@@ -264,6 +290,9 @@ export class BuildPanelSystem extends createSystem({
       director.removeComponent(BuildOpen);
       return;
     }
+    const slot = Number(director.getValue(BuildOpen, 'slot'));
+    const def = DEFENSE_SLOTS[slot];
+    if (def) this.panel.position.set(def.x, BAR_ANCHOR.y, BAR_ANCHOR.z);
     this.applyVisibility();
     this.applyPanelScale();
     this.refreshRows(director);
