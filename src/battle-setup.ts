@@ -18,7 +18,7 @@ import {
   World,
   loadUIKitMLAsset,
 } from '@iwsdk/core';
-import type { Entity } from '@iwsdk/core';
+import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
 import {
   CannonAim,
@@ -30,7 +30,7 @@ import {
   OceanTag,
   Repairing,
 } from './components.js';
-import { COMBAT, BALLISTA_MUZZLE_LOCAL_Y, BALLISTA_MUZZLE_LOCAL_Z, DEFENSE_BUTTONS, DEFENSE_SLOTS, SKY_BALLISTA } from './level-config.js';
+import { COMBAT, BALLISTA_MUZZLE_LOCAL_Y, BALLISTA_MUZZLE_LOCAL_Z, DEFENSE_BUTTONS, DEFENSE_PAD, DEFENSE_SLOTS, SKY_BALLISTA } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
 import { createDefenseButtonRig } from './defense-buttons.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
@@ -84,7 +84,7 @@ function mountDefenseUnit(
   const prototype = unitId === 'cannon' ? cannonPrototype : ballistaPrototype;
   if (!prototype) throw new Error(`battle-setup: unit "${unitId}" not loaded`);
   const unit = prototype.clone(true);
-  unit.position.set(slot.x, 0.8, -0.8);
+  unit.position.set(slot.x, 0.8 + DEFENSE_PAD.height, -0.8);
   // Runtime-instantiated GLB meshes keep three.js defaults
   // (both false); scene-JSON assets get these via content flags.
   unit.traverse((child: Object3D) => {
@@ -219,6 +219,18 @@ let battleStarted = false;
 const battlefieldObjects: Object3D[] = [];
 
 /**
+ * Per-slot pedestal pad materials — each pad clone gets its own instance so
+ * DefensePadSystem breathes only the empty slots (all at the same phase,
+ * so the glowing ones still pulse in lockstep). Null until the first build.
+ */
+const defensePadMaterials: (MeshStandardMaterial | null)[] = [];
+export function getDefensePadMaterial(
+  slotIndex: number,
+): MeshStandardMaterial | null {
+  return defensePadMaterials[slotIndex] ?? null;
+}
+
+/**
  * Every mounted defender with the pose it resets to on battle re-entry.
  * Cannons reset to the stock half-raised barrel; the ballista to its fixed
  * 75° anti-air elevation (its per-entity pitchMin/pitchMax differ).
@@ -307,7 +319,7 @@ export function startBattle(world: World): void {
           });
           cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
 
-          const [oceanGltf, wallGltf, cannonGltf, ballistaGltf, buildButtonGltf, repairButtonGltf] =
+          const [oceanGltf, wallGltf, cannonGltf, ballistaGltf, buildButtonGltf, repairButtonGltf, padGltf] =
             await Promise.all([
               AssetManager.loadGLTFById('ocean-body'),
               AssetManager.loadGLTFById('harbor-wall'),
@@ -315,6 +327,7 @@ export function startBattle(world: World): void {
               AssetManager.loadGLTFById('sky-ballista'),
               AssetManager.loadGLTFById('defense-button-build'),
               AssetManager.loadGLTFById('defense-button-repair'),
+              AssetManager.loadGLTFById('defense-pad'),
             ]);
 
           // Swap the GLB's placeholder material for the wave shader
@@ -371,6 +384,36 @@ export function startBattle(world: World): void {
             slotIndex++
           ) {
             mountDefenseUnit(world, slotIndex, DEFENSE_SLOTS[slotIndex].unit);
+          }
+
+          // Empty-slot pedestal pads: one permanent disc per slot, standing
+          // on the wall top (pure scenery — no RayInteractable; the build
+          // buttons stay the only build entry). Each clone gets its own
+          // material instance so DefensePadSystem breathes only empty slots.
+          const padPrototype = padGltf.scene;
+          for (
+            let slotIndex = 0;
+            slotIndex < DEFENSE_SLOTS.length;
+            slotIndex++
+          ) {
+            const pad = padPrototype.clone(true);
+            pad.position.set(DEFENSE_SLOTS[slotIndex].x, 0.8, -0.8);
+            pad.traverse((child: Object3D) => {
+              if ((child as Mesh).isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+              }
+            });
+            const padMesh = pad.getObjectByName(
+              'defense-pad-mesh',
+            ) as Mesh | null;
+            if (padMesh) {
+              padMesh.material = (padMesh.material as MeshStandardMaterial).clone();
+              defensePadMaterials[slotIndex] =
+                padMesh.material as MeshStandardMaterial;
+            }
+            world.createTransformEntity(pad);
+            battlefieldObjects.push(pad);
           }
 
           // Build/repair buttons: two per slot on the wall's land face —

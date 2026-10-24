@@ -16,6 +16,7 @@ import { CannonAimSystem } from './cannon-aim-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
 import { Billboard } from './components.js';
 import { DefenseButtonSystem } from './defense-button-system.js';
+import { DefensePadSystem } from './defense-pad-system.js';
 import { DieBurstSystem } from './die-burst-system.js';
 import { HitFlashSystem } from './hit-flash-system.js';
 import { HealthBarSystem } from './health-bar-system.js';
@@ -85,6 +86,9 @@ World.create(
   // Pressed tags; it opens the build panel through the director's BuildOpen
   // tag and keeps the button visuals (gray-out, breathing) current.
   world.registerSystem(DefenseButtonSystem, { priority: 16 });
+  // Empty-slot pad breathing: the pure visual over the battery registry —
+  // one shared-material emissiveIntensity write per frame, no phase gate.
+  world.registerSystem(DefensePadSystem, { priority: 17 });
   // UI tier, after the camera updates so billboards track this frame's view.
   world.registerSystem(PanelScaleSystem, { priority: 30 });
   world.registerSystem(StartPanelSystem, { priority: 30 });

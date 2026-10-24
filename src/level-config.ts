@@ -179,6 +179,24 @@ export const DEFENSE_BUTTONS = {
 };
 
 /**
+ * Empty-slot pedestal pads: a permanent Ø0.38 × 0.04 m disc under every
+ * defense slot (defense-pad.glb, npm run export-assets). Pure scenery —
+ * no ray, no click path; the build buttons stay the build entry. A slot
+ * with no live occupant breathes: DefensePadSystem raises that pad's own
+ * material's emissiveIntensity sinusoidally — the GLB bakes the warm-gold
+ * emissive colour at full strength, so the runtime writes one scalar per
+ * pad; every empty pad pulses in lockstep (same phase accumulator).
+ */
+export const DEFENSE_PAD = {
+  /** Pad height (m): the step every mounted unit stands on. */
+  height: 0.04,
+  /** Breathing speed (rad/s) — ~0.6 Hz. */
+  breatheSpeed: 3.8,
+  /** Emissive-intensity amplitude: intensity sweeps 0..breatheAmp. */
+  breatheAmp: 0.3,
+};
+
+/**
  * Economy knobs: money the player starts with, kill bounties, repair
  * throughput/cost and unit book values. Mirrors docs/design/combat.md —
  * change both together.

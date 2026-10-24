@@ -46,8 +46,9 @@ type UiElement = Object3D & {
  * (DEFENSE_SLOTS[slot].x) and z sits exactly on the wall centre line — the
  * same xz the mounted units stand at (battle-setup) — so the bar hangs
  * straight over the unit it builds for. The height clears every defender
- * health bar (bbox top + margin, worst case ≈ 1.6) with room to spare; the
- * Billboard(lockY) component on the dock entity yaws it toward the viewer.
+ * health bar (bbox top + margin, worst case ≈ 1.64 with units standing 0.04
+ * higher on the pedestal pads) with room to spare; the Billboard(lockY)
+ * component on the dock entity yaws it toward the viewer.
  */
 const BAR_ANCHOR = { y: 1.85, z: WALL_CENTER_Z };
 /**

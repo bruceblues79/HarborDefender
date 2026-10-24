@@ -1630,6 +1630,106 @@ function createDefenseButtonRepairExport(): Object3D {
 }
 
 // ---------------------------------------------------------------------------
+// Defense pad (empty-slot pedestal disc under every defense slot)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cement-gray pedestal pad: a flat-shaded 16-sided drum, Ø0.38 × 0.04 m, no
+ * bevel. One merged mesh (~64 triangles); all colour is vertex-baked mottle
+ * on one white roughness-0.75 dielectric — the harbor-wall material family.
+ *
+ * - Origin: centre of the contact face; y = 0 sits on the wall top, so a
+ *   unit stepping onto the pad stands one pad-height higher.
+ * - The material bakes a full-strength warm-gold emissive: the runtime
+ *   breathes empty slots by writing material.emissiveIntensity only (one
+ *   shared instance across every clone, so all pads pulse in lockstep).
+ */
+function createDefensePadExport(): Object3D {
+  const rand = makeRandom(20261024);
+
+  // 16-sided drum. CylinderGeometry(16) is exactly 64 triangles (32 wall +
+  // 32 caps); toNonIndexed + computeVertexNormals bake per-face normals so
+  // the sides read as 16 flat facets and the caps as flat 16-gon lids.
+  const geometry = new CylinderGeometry(0.1893375, 0.1893375, 0.04, 16);
+  geometry.translate(0, 0.02, 0); // y = 0 is the contact face
+  const flat = geometry.toNonIndexed();
+  flat.computeVertexNormals();
+
+  // Large, low-contrast cement mottle baked into vertex colors — the wall's
+  // recipe scaled to the disc: soft value-noise field plus a few big stains.
+  const pos = flat.attributes.position as BufferAttribute;
+  const blotches: Blotch[] = [];
+  for (let b = 0; b < 8; b++) {
+    blotches.push({
+      cx: (rand() - 0.5) * 0.62,
+      cy: rand() * 0.26,
+      cz: (rand() - 0.5) * 0.62,
+      radius: 0.12 + rand() * 0.2,
+      strength: 0.3 + rand() * 0.3,
+    });
+  }
+  const colors = new Float32Array(pos.count * 3);
+  const color = new Color();
+  for (let i = 0; i < pos.count; i++) {
+    const px = pos.getX(i);
+    const py = pos.getY(i);
+    const pz = pos.getZ(i);
+
+    const h =
+      valueNoise3(px * 3, py * 3, pz * 3) * 0.6 +
+      valueNoise3(px * 8, py * 8, pz * 8) * 0.4;
+
+    let stain = 0;
+    for (const b of blotches) {
+      const dx = px - b.cx;
+      const dy = py - b.cy;
+      const dz = pz - b.cz;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d < b.radius) {
+        const t = d / b.radius;
+        const f = t < 0.75 ? 1 : 1 - (t - 0.75) / 0.25;
+        const v = f * b.strength;
+        if (v > stain) stain = v;
+      }
+    }
+
+    const jitter = (rand() - 0.5) * 0.04;
+    const brightness = 0.84 + h * 0.16 + jitter;
+    const stainShade = 1 - stain * 0.12;
+    color.setRGB(
+      0.62 * brightness * stainShade,
+      0.62 * brightness * stainShade,
+      0.61 * brightness * stainShade,
+      SRGBColorSpace,
+    );
+    colors[i * 3 + 0] = color.r;
+    colors[i * 3 + 1] = color.g;
+    colors[i * 3 + 2] = color.b;
+  }
+  flat.setAttribute('color', new BufferAttribute(colors, 3));
+
+  const material = new MeshStandardMaterial({
+    name: 'defense-pad',
+    color: 0xffffff,
+    roughness: 0.75,
+    metalness: 0,
+    vertexColors: true,
+    // Empty-slot glow, baked at full strength so the runtime only ever
+    // writes the one emissiveIntensity scalar.
+    emissive: 0xffc46a,
+    emissiveIntensity: 1,
+  });
+
+  const mesh = new Mesh(flat, material);
+  mesh.name = 'defense-pad-mesh';
+
+  const root = new Object3D();
+  root.name = 'defense-pad';
+  root.add(mesh);
+  return root;
+}
+
+// ---------------------------------------------------------------------------
 // Export driver
 // ---------------------------------------------------------------------------
 
@@ -1692,4 +1792,8 @@ await exportGLB(createBombardierExport(), 'bombardier-v3.glb');
 // names keep them isolated from any stale caching.
 await exportGLB(createDefenseButtonBuildExport(), 'defense-button-build.glb');
 await exportGLB(createDefenseButtonRepairExport(), 'defense-button-repair.glb');
+// defense pads: the empty-slot pedestal discs leave runtime primitives for a
+// designed, vertex-coloured GLB asset; a fresh file name keeps it isolated
+// from any stale caching.
+await exportGLB(createDefensePadExport(), 'defense-pad.glb');
 console.log('\nDone. GLBs written to public/gltf/');
