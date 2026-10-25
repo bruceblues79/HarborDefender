@@ -1649,16 +1649,18 @@ function createDefensePadExport(): Object3D {
   const rand = makeRandom(20261024);
 
   // 16-sided drum. CylinderGeometry(16) is exactly 64 triangles (32 wall +
-  // 32 caps); toNonIndexed + computeVertexNormals bake per-face normals so
-  // the sides read as 16 flat facets and the caps as flat 16-gon lids.
+  // 32 caps) and ships exactly the 45°-auto-smooth normals we want baked:
+  // wall vertices carry smooth radial normals (the 22.5° facet dihedral reads
+  // as one continuous drum), caps carry their own axis normals, and wall/cap
+  // vertices live in separate ranges so the 90° rim edge stays hard. Never
+  // toNonIndexed + recompute here — that bakes per-face normals and the drum
+  // falls apart into 16 visibly faceted bands under the tilted key light.
   const geometry = new CylinderGeometry(0.1893375, 0.1893375, 0.04, 16);
   geometry.translate(0, 0.02, 0); // y = 0 is the contact face
-  const flat = geometry.toNonIndexed();
-  flat.computeVertexNormals();
 
   // Large, low-contrast cement mottle baked into vertex colors — the wall's
   // recipe scaled to the disc: soft value-noise field plus a few big stains.
-  const pos = flat.attributes.position as BufferAttribute;
+  const pos = geometry.attributes.position as BufferAttribute;
   const blotches: Blotch[] = [];
   for (let b = 0; b < 8; b++) {
     blotches.push({
@@ -1707,7 +1709,7 @@ function createDefensePadExport(): Object3D {
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
   }
-  flat.setAttribute('color', new BufferAttribute(colors, 3));
+  geometry.setAttribute('color', new BufferAttribute(colors, 3));
 
   const material = new MeshStandardMaterial({
     name: 'defense-pad',
@@ -1721,7 +1723,7 @@ function createDefensePadExport(): Object3D {
     emissiveIntensity: 1,
   });
 
-  const mesh = new Mesh(flat, material);
+  const mesh = new Mesh(geometry, material);
   mesh.name = 'defense-pad-mesh';
 
   const root = new Object3D();
