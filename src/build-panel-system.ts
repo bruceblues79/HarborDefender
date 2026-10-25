@@ -97,7 +97,6 @@ export class BuildPanelSystem extends createSystem({
   private panel: UIKitMLAsset | null = null;
   /** Environment the panel scale was last applied for; a flip re-applies. */
   private factorsEnvironment: boolean | null = null;
-  private readonly prices = new Map<DefenseUnitId, Text | null>();
   /** Live gold readout in the top-row badge, next to the close button. */
   private walletText: Text | null = null;
   /** Unit buttons keyed by unit — driven through the three-state class below. */
@@ -106,8 +105,6 @@ export class BuildPanelSystem extends createSystem({
   private readonly unitClasses = new Map<DefenseUnitId, string>();
   /** The recycle button below the bar: sells the slot's live occupant. */
   private recycleRow: UiElement | null = null;
-  /** Gold "+N" readout inside the recycle button. */
-  private recyclePrice: Text | null = null;
   /** Class currently applied to the recycle button; guards redundant swaps. */
   private recycleClass: string | null = null;
 
@@ -147,10 +144,6 @@ export class BuildPanelSystem extends createSystem({
         panelEntity.addComponent(CameraBlocker);
 
         for (const unitId of PLACEABLE_UNITS) {
-          this.prices.set(
-            unitId,
-            this.resolveText(panel.getElementById(`price-${unitId}`)),
-          );
           const row = panel.getElementById(`row-${unitId}`) as UiElement | null;
           if (row) {
             row.addEventListener('click', () => this.onRowPicked(unitId));
@@ -180,9 +173,6 @@ export class BuildPanelSystem extends createSystem({
           );
           this.recycleRow = recycle;
         }
-        this.recyclePrice = this.resolveText(
-          panel.getElementById('price-recycle'),
-        );
 
         // The tag may have been raised while the asset was still loading:
         // catch up immediately.
@@ -254,13 +244,12 @@ export class BuildPanelSystem extends createSystem({
   }
 
   /**
-   * Rewrite every button's price from live state, and drive its three-state
-   * class: the unit occupying the open slot hides its own button, a price
-   * above the current wallet dims the button, the rest stay in the default
-   * style. The top-row badge mirrors the wallet, so gold spent or earned
-   * elsewhere shows live while the dock is open. The recycle button below
-   * mirrors the slot's occupancy: live occupant → active with a gold
-   * +refund, empty or destroyed slot → dimmed.
+   * Drive every button's three-state class from live state: the unit
+   * occupying the open slot hides its own button, a price above the current
+   * wallet dims the button, the rest stay in the default style. The top-row
+   * badge mirrors the wallet, so gold spent or earned elsewhere shows live
+   * while the dock is open. The recycle button below mirrors the slot's
+   * occupancy: live occupant → active, empty or destroyed slot → dimmed.
    */
   private refreshRows(director: Entity): void {
     const slot = Number(director.getValue(BuildOpen, 'slot'));
@@ -275,11 +264,8 @@ export class BuildPanelSystem extends createSystem({
     }
     for (const unitId of PLACEABLE_UNITS) {
       const row = this.rows.get(unitId);
-      const price = this.priceFor(director, unitId);
-      this.prices
-        .get(unitId)
-        ?.setProperties({ text: String(price) });
       if (!row) continue;
+      const price = this.priceFor(director, unitId);
       let next: string;
       if (unitId === occupant) {
         next = 'dock-unit-hidden';
@@ -291,16 +277,6 @@ export class BuildPanelSystem extends createSystem({
       this.setUnitClass(unitId, row, next);
     }
     if (this.recycleRow) {
-      // The refund only exists while something live stands in the slot; an
-      // empty slot keeps the last written value — the dimmed state already
-      // says the button is unavailable.
-      if (occupant) {
-        this.recyclePrice?.setProperties({
-          text: `+${Math.floor(
-            (ECONOMY.unitValues[occupant] ?? 0) * ECONOMY.replaceDiscount,
-          )}`,
-        });
-      }
       this.setRecycleClass(
         this.recycleRow,
         occupant ? 'dock-recycle' : 'dock-recycle-off',

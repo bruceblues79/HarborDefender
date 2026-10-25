@@ -4,9 +4,18 @@
   x from the slot, y/z fixed) and yaws to the camera via Billboard(lockY).
   The root is a transparent flex column: a small circular CLOSE button
   centered above a stadium-shaped bar — uniform border-radius = half the bar
-  height rounds both side ends — holding one circular unit button per
-  placeable unit, each with the unit icon and the live price overlaid inside
-  the circle. The top row centers one dark group — wallet badge and round close
+  height rounds both side ends — holding one circular icon button per
+  placeable unit, icon only: the overlaid live prices were removed (the
+  wallet badge above already states the gold, and the glyph kept scattering
+  under the digits). Icons are sized 4.5 — the largest the game-icons
+  cannon glyph has ever rendered correctly inside the Ø10 circle. Uikit
+  containers do not clip children (border-radius is not a mask), and past
+  ~5 the cannon glyph scattered into fragments in every file variant
+  tried — the original 512-unit path, a scale(0.046875) group wrapper, and
+  a script-baked 0..24 path — while the mdi-family icons (recycle, bow:
+  0..24 content) draw exactly even at 7. The dock keeps one shared icon
+  size, so all three icons sit at the proven 4.5 with the cannon restored
+  to its original cannon.svg. The top row centers one dark group — wallet badge and round close
   button side by side (same height 6 and radius, reading as a single
   segmented pill) — instead of pinning the badge to the rim; the badge is
   sized for "9999g", the worst-case wallet, so the digits never resize the
@@ -27,7 +36,7 @@
   panel-material-class: glass over #ffffffaa to match the pause-menu surface.
   A recycle button hangs centered below the bar: it sells the opening
   slot's live occupant for its depreciated book value (book value ×
-  ECONOMY.replaceDiscount, shown as a gold "+60") and shares the unit
+  ECONOMY.replaceDiscount) and shares the unit
   buttons' visual language, but carries a red icon (#e5484d) so the income
   reads as a sale rather than a purchase. It dims (.dock-recycle-off) when
   the slot has no live occupant — nothing to sell — instead of hiding, so
@@ -35,10 +44,10 @@
   sell capability stays discoverable. The row deliberately grows the dock
   downward into the health-bar band (anchor and bar stay put); the dock's
   render-order 18 already outranks the bars (8/9), so it stays in front.
-  BuildPanelSystem rewrites each price at open time (trade-in discount while
-  the slot's occupant is alive), binds the clicks, and drives a three-state
-  class per unit button: .dock-unit (default), .dock-unit-off (price above
-  the current wallet — dimmed) and .dock-unit-hidden (that unit already
+  BuildPanelSystem binds the clicks and drives a three-state
+  class per unit button: .dock-unit (default), .dock-unit-off (its price
+  above the current wallet — dimmed; the number itself is not shown) and
+  .dock-unit-hidden (that unit already
   occupies the opening slot) — and rewrites the wallet badge every frame
   while the dock is open, so gold spent or earned elsewhere shows live.
   Runtime setProperties display would lose to the class layer, so every
@@ -50,8 +59,9 @@
   the ui/ prefix. Every non-colored container declares background-color
   #00000000: uikit containers default to an opaque white surface. Labels
   stay Latin — the bundled font atlas has no CJK glyph coverage. Dock
-  palette: mid-gray #5d646d circles with warm gold prices (#ffd977), dark
-  gray #3a3f46 close button, matching the retired list rows. render-order 18
+  palette: mid-gray #5d646d circles; dark
+  gray #3a3f46 close button, matching the
+  retired list rows. render-order 18
   keeps the dock under the menu button (20) and above the world overlays
   (health bars 8/9, hit flash 10).
 -->
@@ -138,7 +148,6 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    gap: 0.8;
     width: 10;
     height: 10;
     background-color: #5d646d;
@@ -159,7 +168,6 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    gap: 0.8;
     width: 10;
     height: 10;
     background-color: #41464d;
@@ -175,7 +183,6 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    gap: 0.8;
     width: 10;
     height: 10;
     background-color: #5d646d;
@@ -196,7 +203,6 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    gap: 0.8;
     width: 10;
     height: 10;
     background-color: #41464d;
@@ -207,15 +213,6 @@
     display: flex;
     width: 4.5;
     height: 4.5;
-    background-color: #00000000;
-  }
-
-  .unit-price {
-    display: flex;
-    color: #ffd977;
-    font-size: 2.8;
-    font-weight: 700;
-    text-align: center;
     background-color: #00000000;
   }
 </style>
@@ -230,15 +227,12 @@
   <Panel class="dock-bar">
     <button id="row-cannon" class="dock-unit">
       <svg class="unit-icon" src="ui/icons/cannon.svg" />
-      <Panel id="price-cannon" class="unit-price">200</Panel>
     </button>
     <button id="row-sky-ballista" class="dock-unit">
       <svg class="unit-icon" src="ui/icons/bow-filled.svg" />
-      <Panel id="price-sky-ballista" class="unit-price">200</Panel>
     </button>
   </Panel>
   <button id="dock-recycle" class="dock-recycle">
     <svg class="unit-icon" src="ui/icons/recycle.svg" />
-    <Panel id="price-recycle" class="unit-price">+60</Panel>
   </button>
 </Panel>
