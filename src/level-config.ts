@@ -140,11 +140,11 @@ export interface DefenseSlotDef {
  * player builds them up from the starting gold.
  */
 export const DEFENSE_SLOTS: DefenseSlotDef[] = [
-  { x: -1.2, unit: 'cannon' },
-  { x: -0.6, unit: null },
+  { x: -1.2, unit: null },
+  { x: -0.6, unit: 'cannon' },
   { x: 0, unit: 'cannon' },
-  { x: 0.6, unit: null },
-  { x: 1.2, unit: 'cannon' },
+  { x: 0.6, unit: 'cannon' },
+  { x: 1.2, unit: null },
 ];
 
 /** Unit ids the build panel can mount into a slot — the row order it renders. */
