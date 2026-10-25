@@ -10,45 +10,53 @@ import { AssetType, defineAssets } from '@iwsdk/core';
 const publicAssetUrl = (filePath: string): string =>
   `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
 
+// UI documents are fetched by URL at runtime, and nginx sends no Cache-Control
+// for them, so a client may reuse a stale copy across deploys (seen on Huawei
+// Browser). Versioning the URL makes every deploy a fresh resource. Binary
+// assets keep unversioned URLs: glTF is renamed for incompatible swaps, and
+// the HDR is sniffed by key suffix.
+const uiAssetUrl = (filePath: string): string =>
+  `${publicAssetUrl(filePath)}?v=${__BUILD_VERSION__}`;
+
 export default defineAssets({
   'welcome-panel': {
-    url: publicAssetUrl('ui/welcome.uikitml'),
+    url: uiAssetUrl('ui/welcome.uikitml'),
     type: AssetType.UIKitML,
     name: 'Welcome Panel',
     priority: 'critical',
   },
   'loading-panel': {
-    url: publicAssetUrl('ui/loading.uikitml'),
+    url: uiAssetUrl('ui/loading.uikitml'),
     type: AssetType.UIKitML,
     name: 'Loading Panel',
     priority: 'critical',
   },
   'start-panel': {
-    url: publicAssetUrl('ui/start.uikitml'),
+    url: uiAssetUrl('ui/start.uikitml'),
     type: AssetType.UIKitML,
     name: 'Start Panel',
     priority: 'critical',
   },
   'menu-call': {
-    url: publicAssetUrl('ui/menu-call.uikitml'),
+    url: uiAssetUrl('ui/menu-call.uikitml'),
     type: AssetType.UIKitML,
     name: 'Menu Call',
     priority: 'critical',
   },
   'pause-menu': {
-    url: publicAssetUrl('ui/pause-menu.uikitml'),
+    url: uiAssetUrl('ui/pause-menu.uikitml'),
     type: AssetType.UIKitML,
     name: 'Pause Menu',
     priority: 'critical',
   },
   'result-panel': {
-    url: publicAssetUrl('ui/result.uikitml'),
+    url: uiAssetUrl('ui/result.uikitml'),
     type: AssetType.UIKitML,
     name: 'Result Panel',
     priority: 'critical',
   },
   'build-panel': {
-    url: publicAssetUrl('ui/build-panel.uikitml'),
+    url: uiAssetUrl('ui/build-panel.uikitml'),
     type: AssetType.UIKitML,
     name: 'Build Panel',
     priority: 'critical',
