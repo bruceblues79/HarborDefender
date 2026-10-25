@@ -30,6 +30,7 @@ import {
   UnitTag,
   WakeSource,
   Wallet,
+  WingFlap,
 } from './components.js';
 import {
   activeLevelList,
@@ -482,14 +483,20 @@ export class LevelWaveSystem extends createSystem({
       });
     }
     // The rotor is also a unit-sheet fact: PropellerSpinSystem turns the
-    // model's `propellers` children for as long as the unit lives.
+    // model's `propellers` children for as long as the unit lives. Driven
+    // wings are the same deal: WingFlapSystem swings `wing_left`/`wing_right`
+    // around their shoulder axle.
     if (def.rotor) {
       entity.addComponent(PropellerSpin);
     }
+    if (def.flap) {
+      entity.addComponent(WingFlap);
+    }
     // Combat: attacker hit core (defender shells are consumed inside it) and
     // — for armed units — the deck-gun ability with the unit sheet's own
-    // fire interval (pirate ships 3 s, the bombardier 2 s between bombs)
-    // and its own fire line, the far edge of its berth band.
+    // fire interval (pirate ships 3 s, the bombardier 2 s, the ornithopter
+    // 1.2 s between shots) and its own fire line, the far edge of its berth
+    // band. `stone` reroutes the shots to the pooled-stone free query.
     entity.addComponent(HitCore, {
       radius: COMBAT.attackerCoreRadius,
       faction: def.faction,
@@ -499,6 +506,7 @@ export class LevelWaveSystem extends createSystem({
       entity.addComponent(PirateCannon, {
         interval: def.fireInterval,
         fireLineZ: def.stopZMin,
+        stone: def.stone,
       });
     }
     return true;

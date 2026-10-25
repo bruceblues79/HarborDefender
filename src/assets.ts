@@ -122,4 +122,10 @@ export default defineAssets({
     name: 'Bombardier',
     priority: 'background',
   },
+  ornithopter: {
+    url: publicAssetUrl('gltf/ornithopter.glb'),
+    type: AssetType.GLTF,
+    name: 'Ornithopter',
+    priority: 'background',
+  },
 });
