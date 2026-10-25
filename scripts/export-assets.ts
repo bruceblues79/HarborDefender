@@ -21,6 +21,7 @@ import {
   CylinderGeometry,
   DoubleSide,
   ExtrudeGeometry,
+  IcosahedronGeometry,
   LatheGeometry,
   Mesh,
   MeshStandardMaterial,
@@ -1630,6 +1631,441 @@ function createDefenseButtonRepairExport(): Object3D {
 }
 
 // ---------------------------------------------------------------------------
+// Defense pad (empty-slot pedestal disc under every defense slot)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cement-gray pedestal pad: a flat-shaded 16-sided drum, Ø0.38 × 0.04 m, no
+ * bevel. One merged mesh (~64 triangles); all colour is vertex-baked mottle
+ * on one white roughness-0.75 dielectric — the harbor-wall material family.
+ *
+ * - Origin: centre of the contact face; y = 0 sits on the wall top, so a
+ *   unit stepping onto the pad stands one pad-height higher.
+ * - The material bakes a full-strength warm-gold emissive: the runtime
+ *   breathes empty slots by writing material.emissiveIntensity only (one
+ *   shared instance across every clone, so all pads pulse in lockstep).
+ */
+function createDefensePadExport(): Object3D {
+  const rand = makeRandom(20261024);
+
+  // 16-sided drum. CylinderGeometry(16) is exactly 64 triangles (32 wall +
+  // 32 caps) and ships exactly the 45°-auto-smooth normals we want baked:
+  // wall vertices carry smooth radial normals (the 22.5° facet dihedral reads
+  // as one continuous drum), caps carry their own axis normals, and wall/cap
+  // vertices live in separate ranges so the 90° rim edge stays hard. Never
+  // toNonIndexed + recompute here — that bakes per-face normals and the drum
+  // falls apart into 16 visibly faceted bands under the tilted key light.
+  const geometry = new CylinderGeometry(0.1893375, 0.1893375, 0.04, 16);
+  geometry.translate(0, 0.02, 0); // y = 0 is the contact face
+
+  // Large, low-contrast cement mottle baked into vertex colors — the wall's
+  // recipe scaled to the disc: soft value-noise field plus a few big stains.
+  const pos = geometry.attributes.position as BufferAttribute;
+  const blotches: Blotch[] = [];
+  for (let b = 0; b < 8; b++) {
+    blotches.push({
+      cx: (rand() - 0.5) * 0.62,
+      cy: rand() * 0.26,
+      cz: (rand() - 0.5) * 0.62,
+      radius: 0.12 + rand() * 0.2,
+      strength: 0.3 + rand() * 0.3,
+    });
+  }
+  const colors = new Float32Array(pos.count * 3);
+  const color = new Color();
+  for (let i = 0; i < pos.count; i++) {
+    const px = pos.getX(i);
+    const py = pos.getY(i);
+    const pz = pos.getZ(i);
+
+    const h =
+      valueNoise3(px * 3, py * 3, pz * 3) * 0.6 +
+      valueNoise3(px * 8, py * 8, pz * 8) * 0.4;
+
+    let stain = 0;
+    for (const b of blotches) {
+      const dx = px - b.cx;
+      const dy = py - b.cy;
+      const dz = pz - b.cz;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d < b.radius) {
+        const t = d / b.radius;
+        const f = t < 0.75 ? 1 : 1 - (t - 0.75) / 0.25;
+        const v = f * b.strength;
+        if (v > stain) stain = v;
+      }
+    }
+
+    const jitter = (rand() - 0.5) * 0.04;
+    const brightness = 0.84 + h * 0.16 + jitter;
+    const stainShade = 1 - stain * 0.12;
+    color.setRGB(
+      0.62 * brightness * stainShade,
+      0.62 * brightness * stainShade,
+      0.61 * brightness * stainShade,
+      SRGBColorSpace,
+    );
+    colors[i * 3 + 0] = color.r;
+    colors[i * 3 + 1] = color.g;
+    colors[i * 3 + 2] = color.b;
+  }
+  geometry.setAttribute('color', new BufferAttribute(colors, 3));
+
+  const material = new MeshStandardMaterial({
+    name: 'defense-pad',
+    color: 0xffffff,
+    roughness: 0.75,
+    metalness: 0,
+    vertexColors: true,
+    // Empty-slot glow, baked at full strength so the runtime only ever
+    // writes the one emissiveIntensity scalar.
+    emissive: 0xffc46a,
+    emissiveIntensity: 1,
+  });
+
+  const mesh = new Mesh(geometry, material);
+  mesh.name = 'defense-pad-mesh';
+
+  const root = new Object3D();
+  root.name = 'defense-pad';
+  root.add(mesh);
+  return root;
+}
+
+// ---------------------------------------------------------------------------
+// Ornithopter (da Vinci mechanical flapper: canvas double wings + belly hopper)
+// ---------------------------------------------------------------------------
+
+/** Deep red canvas for wings and tail fins — the enemy flyer family tint. */
+const CANVAS_COLOR = 0xa03828;
+/** Grey stone load for the belly hopper (matches the runtime stone pool). */
+const STONE_COLOR = 0x8a8a86;
+
+// Wing profile shared by the membrane and the rib skeleton (u = span fraction
+// 0..1 from the wing root; all values in wing-local metres).
+const WING_SPAN = 0.5;
+const wingY = (u: number): number => -0.02 + 0.09 * u; // baked-in dihedral
+const wingLE = (u: number): number => -0.07 + 0.09 * u; // leading edge, swept back
+const wingChord = (u: number): number => 0.22 * (1 - u) + 0.07 * u;
+// Bat-wing finger scallops along the trailing edge.
+const wingScallop = (u: number): number =>
+  0.85 + 0.15 * Math.cos(u * Math.PI * 2.5);
+
+/**
+ * Wing membrane as a parametric grid in wing-local space: span rows along the
+ * outward X axis, chord columns from leading to trailing edge. The trailing
+ * edge scallops between fingers and the cloth billows down mid-chord; the
+ * whole wing flaps rigidly about its root axle, so no skinning vertices are
+ * needed — the flap node's rotation.z carries the animation.
+ */
+function buildWingMembrane(rand: () => number, side: number): BufferGeometry {
+  const ROWS = 10;
+  const COLS = 4;
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const base = new Color();
+
+  const point = (u: number, v: number): [number, number, number] => {
+    const tr = wingLE(u) + wingChord(u) * wingScallop(u);
+    return [
+      side * u * WING_SPAN,
+      wingY(u) - 0.018 * Math.sin(Math.PI * v) * (1 - u * 0.5),
+      wingLE(u) + (tr - wingLE(u)) * v,
+    ];
+  };
+
+  const pushTri = (
+    a: [number, number, number],
+    b: [number, number, number],
+    c: [number, number, number],
+  ): void => {
+    for (const p of [a, b, c]) {
+      positions.push(p[0], p[1], p[2]);
+      const f = 1 + (rand() * 2 - 1) * 0.025;
+      base.set(CANVAS_COLOR);
+      colors.push(
+        Math.min(1, base.r * f),
+        Math.min(1, base.g * f),
+        Math.min(1, base.b * f),
+      );
+    }
+  };
+
+  for (let r = 0; r < ROWS - 1; r++) {
+    for (let c = 0; c < COLS - 1; c++) {
+      const u0 = r / (ROWS - 1);
+      const u1 = (r + 1) / (ROWS - 1);
+      const v0 = c / (COLS - 1);
+      const v1 = (c + 1) / (COLS - 1);
+      const p00 = point(u0, v0);
+      const p01 = point(u0, v1);
+      const p10 = point(u1, v0);
+      const p11 = point(u1, v1);
+      pushTri(p00, p01, p10);
+      pushTri(p01, p11, p10);
+    }
+  }
+
+  const geo = new BufferGeometry();
+  geo.setAttribute(
+    'position',
+    new BufferAttribute(new Float32Array(positions), 3),
+  );
+  geo.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Wing skeleton under the membrane: a leading-edge spar plus four rib struts
+ * that read as the da Vinci finger bones. Straight low-segment cylinders keep
+ * the rib cost trivial; they sit just under the sagging cloth.
+ */
+function buildWingFrame(rand: () => number, side: number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  const spar = strut(
+    new Vector3(0, wingY(0), wingLE(0)),
+    new Vector3(side * WING_SPAN, wingY(1), wingLE(1)),
+    0.004,
+  );
+  paint(spar, WHEEL_COLOR, 0.04, rand);
+  parts.push(spar);
+
+  for (const u of [0.2, 0.45, 0.7, 0.95]) {
+    const y = wingY(u) - 0.001;
+    const le = wingLE(u);
+    const tr = le + wingChord(u) * wingScallop(u);
+    const rib = strut(
+      new Vector3(side * u * WING_SPAN, y, le),
+      new Vector3(side * u * WING_SPAN, y, tr),
+      0.003,
+      4,
+    );
+    paint(rib, WHEEL_COLOR, 0.04, rand);
+    parts.push(rib);
+  }
+
+  return mergeParts(parts);
+}
+
+/**
+ * Hull, deck, wing mount, tail and belly hopper in root space (y = 0 at the
+ * pod's cruise centre): an extruded boat pod with a planked deck and iron
+ * straps, shoulder posts carrying the wing axle, a stubby tail boom with red
+ * canvas fins, and an open slat basket holding the grey stone load.
+ */
+function buildOrnithopterBody(rand: () => number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  // Boat pod: side profile extruded across the beam (bow lands on -Z).
+  const podShape = new Shape();
+  podShape.moveTo(-0.24, -0.045);
+  podShape.lineTo(0.22, -0.045);
+  podShape.lineTo(0.27, 0.01);
+  podShape.lineTo(0.14, 0.05);
+  podShape.lineTo(-0.24, 0.05);
+  podShape.closePath();
+  const pod = new ExtrudeGeometry(podShape, {
+    depth: 0.15,
+    bevelEnabled: true,
+    bevelThickness: 0.004,
+    bevelSize: 0.004,
+    bevelSegments: 1,
+  });
+  pod.rotateY(Math.PI / 2);
+  pod.translate(-0.075, 0, 0);
+  paint(pod, HULL_COLOR, 0.04, rand);
+  parts.push(pod);
+
+  // Planked deck capping the pod rim, clinched by three iron straps.
+  const deck = new BoxGeometry(0.19, 0.012, 0.44);
+  deck.translate(0, 0.056, 0);
+  paint(deck, DECK_COLOR, 0.03, rand);
+  parts.push(deck);
+  for (const z of [-0.18, 0.0, 0.16]) {
+    const strap = new BoxGeometry(0.21, 0.016, 0.024);
+    strap.translate(0, 0.056, z);
+    paint(strap, BARREL_COLOR, 0.03, rand);
+    parts.push(strap);
+  }
+
+  // Shoulder posts and the wing axle: the flap pivot the wings swing on.
+  for (const sx of [-1, 1]) {
+    const post = strut(
+      new Vector3(sx * 0.05, 0.055, -0.02),
+      new Vector3(sx * 0.065, 0.085, -0.02),
+      0.006,
+    );
+    paint(post, CHEEK_COLOR, 0.04, rand);
+    parts.push(post);
+  }
+  const axle = new CylinderGeometry(0.007, 0.007, 0.2, 8);
+  axle.rotateZ(Math.PI / 2);
+  axle.translate(0, 0.085, -0.02);
+  paint(axle, BARREL_COLOR, 0.03, rand);
+  parts.push(axle);
+
+  // Tail boom with braced red canvas fins.
+  const boom = new CylinderGeometry(0.008, 0.013, 0.24, 6);
+  boom.rotateX(Math.PI / 2);
+  boom.translate(0, 0.035, 0.34);
+  paint(boom, MAST_COLOR, 0.03, rand);
+  parts.push(boom);
+  for (const sx of [-1, 1]) {
+    const brace = strut(
+      new Vector3(sx * 0.07, 0.055, 0.16),
+      new Vector3(0, 0.035, 0.32),
+      0.004,
+    );
+    paint(brace, CHEEK_COLOR, 0.04, rand);
+    parts.push(brace);
+  }
+  const fin = new BoxGeometry(0.012, 0.13, 0.11);
+  fin.translate(0, 0.1, 0.41);
+  paint(fin, CANVAS_COLOR, 0.025, rand);
+  parts.push(fin);
+  const stabiliser = new BoxGeometry(0.26, 0.012, 0.11);
+  stabiliser.translate(0, 0.045, 0.41);
+  paint(stabiliser, CANVAS_COLOR, 0.025, rand);
+  parts.push(stabiliser);
+
+  // Belly hopper: four hangers drop an open slat basket from the pod; the
+  // grey stone load heaped inside is what the muzzle throws.
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const hanger = strut(
+        new Vector3(sx * 0.03, -0.03, sz * 0.035),
+        new Vector3(sx * 0.045, -0.115, sz * 0.045),
+        0.0035,
+      );
+      paint(hanger, TRANSOM_COLOR, 0.035, rand);
+      parts.push(hanger);
+    }
+  }
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const corner = strut(
+        new Vector3(sx * 0.045, -0.115, sz * 0.045),
+        new Vector3(sx * 0.03, -0.195, sz * 0.03),
+        0.003,
+        4,
+      );
+      paint(corner, TRANSOM_COLOR, 0.035, rand);
+      parts.push(corner);
+    }
+  }
+  for (const [r, y] of [
+    [0.045, -0.115],
+    [0.03, -0.195],
+  ] as const) {
+    for (const sz of [-1, 1]) {
+      const edgeZ = strut(
+        new Vector3(-r, y, sz * r),
+        new Vector3(r, y, sz * r),
+        0.003,
+        4,
+      );
+      paint(edgeZ, TRANSOM_COLOR, 0.035, rand);
+      parts.push(edgeZ);
+      const edgeX = strut(
+        new Vector3(sz * r, y, -r),
+        new Vector3(sz * r, y, r),
+        0.003,
+        4,
+      );
+      paint(edgeX, TRANSOM_COLOR, 0.035, rand);
+      parts.push(edgeX);
+    }
+  }
+  const stoneSpots: Array<[number, number, number, number]> = [
+    [0, -0.16, 0, 0.042],
+    [0.028, -0.135, 0.012, 0.03],
+    [-0.026, -0.14, -0.012, 0.032],
+  ];
+  for (const [x, y, z, r] of stoneSpots) {
+    const stone = new IcosahedronGeometry(r, 0);
+    stone.translate(x, y, z);
+    paint(stone, STONE_COLOR, 0.06, rand);
+    parts.push(stone);
+  }
+
+  return mergeParts(parts);
+}
+
+/**
+ * Medieval mechanical flapper — the da Vinci workshop raider of the middle
+ * air band, sized between the pirate ship and the bombardier:
+ *
+ * - Origin: pod centre at the unit's cruise altitude; the pod runs z
+ *   -0.27..0.24, the wings reach x ±0.565, the hopper hangs to y -0.21.
+ * - Forward: bow on local -Z (ship/cannon convention), shared spawn yaw math.
+ * - No `gun_rotate`: PirateFireSystem yaws the whole machine at its aim
+ *   branch, and decorateShipPrototype adopts the GLB-borne `muzzle` at the
+ *   hopper's stone centroid for the stone release point.
+ * - `wing_left` / `wing_right` are unscaled flap pivots on the shoulder
+ *   axle; each carries one merged membrane+skeleton mesh. WingFlapSystem
+ *   swings them with mirrored rotation.z — pure scalar sine, no physics.
+ * - Three draw calls: merged body, merged left wing, merged right wing. All
+ *   colour is vertex-baked onto one white roughness-0.75 dielectric material
+ *   (canvas membranes read from both sides).
+ */
+function createOrnithopterExport(): Object3D {
+  const rand = makeRandom(20261025);
+
+  const material = new MeshStandardMaterial({
+    name: 'ornithopter',
+    color: 0xffffff,
+    roughness: 0.75,
+    metalness: 0,
+    vertexColors: true,
+    // The canvas wings and tail fins are thin slabs that must read from both
+    // sides, like the flyer canvas in the bombardier material.
+    side: DoubleSide,
+  });
+
+  const bodyMesh = new Mesh(buildOrnithopterBody(rand), material);
+  bodyMesh.name = 'ornithopter-body';
+
+  // Flap pivots sit on the shoulder axle, 1 cm buried inside the pod walls so
+  // the membrane root edges never show a gap to the hull.
+  const wingLeft = new Object3D();
+  wingLeft.name = 'wing_left';
+  wingLeft.position.set(-0.065, 0.085, -0.02);
+  const leftMesh = new Mesh(
+    mergeParts([buildWingMembrane(rand, -1), buildWingFrame(rand, -1)]),
+    material,
+  );
+  leftMesh.name = 'ornithopter-wing-left';
+  wingLeft.add(leftMesh);
+
+  const wingRight = new Object3D();
+  wingRight.name = 'wing_right';
+  wingRight.position.set(0.065, 0.085, -0.02);
+  const rightMesh = new Mesh(
+    mergeParts([buildWingMembrane(rand, 1), buildWingFrame(rand, 1)]),
+    material,
+  );
+  rightMesh.name = 'ornithopter-wing-right';
+  wingRight.add(rightMesh);
+
+  // Stone-release anchor at the hopper load's centroid; PirateFireSystem
+  // launches shells from this node.
+  const muzzle = new Object3D();
+  muzzle.name = 'muzzle';
+  muzzle.position.set(0, -0.16, 0);
+
+  const root = new Object3D();
+  root.name = 'ornithopter';
+  root.add(bodyMesh);
+  root.add(wingLeft);
+  root.add(wingRight);
+  root.add(muzzle);
+
+  return root;
+}
+
+// ---------------------------------------------------------------------------
 // Export driver
 // ---------------------------------------------------------------------------
 
@@ -1692,4 +2128,11 @@ await exportGLB(createBombardierExport(), 'bombardier-v3.glb');
 // names keep them isolated from any stale caching.
 await exportGLB(createDefenseButtonBuildExport(), 'defense-button-build.glb');
 await exportGLB(createDefenseButtonRepairExport(), 'defense-button-repair.glb');
+// defense pads: the empty-slot pedestal discs leave runtime primitives for a
+// designed, vertex-coloured GLB asset; a fresh file name keeps it isolated
+// from any stale caching.
+await exportGLB(createDefensePadExport(), 'defense-pad.glb');
+// ornithopter: the middle-air flapper joins the raid (task 025); wings and
+// muzzle are baked as named nodes for the runtime flap and stone systems.
+await exportGLB(createOrnithopterExport(), 'ornithopter.glb');
 console.log('\nDone. GLBs written to public/gltf/');

@@ -27,6 +27,8 @@ export type Faction = 'attacker' | 'defender';
 export interface UnitTypeDef {
   /** Asset manifest id instantiated for this unit (see src/assets.ts). */
   assetId: string;
+  /** Uniform model scale applied to every spawned clone (1 keeps GLB size). */
+  scale: number;
   /** Movement behaviour applied when the unit spawns. */
   movement: MovementPattern;
   /** Side this unit fights for. */
@@ -43,6 +45,10 @@ export interface UnitTypeDef {
   fireInterval: number;
   /** Driven rotor node — PropellerSpinSystem spins `propellers` children. */
   rotor: boolean;
+  /** Driven wing pivots — WingFlapSystem swings `wing_left`/`wing_right`. */
+  flap: boolean;
+  /** Hurls pooled stones — PirateFireSystem picks the free-stone pool. */
+  stone: boolean;
   /** Disturbs the ocean surface (WakeSource); flyers never touch water. */
   wake: boolean;
   /** Berth z bounds rolled for this unit's stop point (MIN far, MAX near). */
@@ -123,20 +129,22 @@ export type DefenseUnitId = 'cannon' | 'sky-ballista';
 export interface DefenseSlotDef {
   /** Slot centre x across the wall (m). */
   x: number;
-  /** Unit standing in the slot. */
-  unit: DefenseUnitId;
+  /** Unit standing in the slot at battle entry; null = starts empty. */
+  unit: DefenseUnitId | null;
 }
 
 /**
  * Five slots evenly spaced across the central 3 m of the 3.4 m wall
- * (0.2 m margin each side), matching the historical cannon row.
+ * (0.2 m margin each side), matching the historical cannon row. The run
+ * starts with three cannons; the two remaining slots open empty — the
+ * player builds them up from the starting gold.
  */
 export const DEFENSE_SLOTS: DefenseSlotDef[] = [
-  { x: -1.2, unit: 'cannon' },
+  { x: -1.2, unit: null },
   { x: -0.6, unit: 'cannon' },
-  { x: 0, unit: 'sky-ballista' },
+  { x: 0, unit: 'cannon' },
   { x: 0.6, unit: 'cannon' },
-  { x: 1.2, unit: 'cannon' },
+  { x: 1.2, unit: null },
 ];
 
 /** Unit ids the build panel can mount into a slot — the row order it renders. */
@@ -165,10 +173,12 @@ export const DEFENSE_BUTTONS = {
    */
   proxyBuild: { x: 0.18, y: 0.2, z: 0.04 },
   proxyRepair: { x: 0.11, y: 0.2, z: 0.04 },
-  /** Build-icon material colour while enabled (multiplies baked colors). */
-  enabledColor: 0xffffff,
-  /** Build-icon dimmer while the build panel owns the screen (置灰). */
-  disabledColor: 0x5a5a60,
+  /**
+   * Build-icon scale while its slot's dock is open — the shrunk "open" pose
+   * (pure transform, materials and hit proxies never change). Pressing the
+   * shrunk icon again toggles the dock closed.
+   */
+  openScale: 0.75,
   /**
    * Repair breathing: DefenseButtonSystem scales the icon up sinusoidally —
    * peak extra scale breatheScale (0.22 = +22%) at breatheSpeed rad/s. The
@@ -176,6 +186,24 @@ export const DEFENSE_BUTTONS = {
    */
   breatheSpeed: 4.25,
   breatheScale: 0.22,
+};
+
+/**
+ * Empty-slot pedestal pads: a permanent Ø0.38 × 0.04 m disc under every
+ * defense slot (defense-pad.glb, npm run export-assets). Pure scenery —
+ * no ray, no click path; the build buttons stay the build entry. A slot
+ * with no live occupant breathes: DefensePadSystem raises that pad's own
+ * material's emissiveIntensity sinusoidally — the GLB bakes the warm-gold
+ * emissive colour at full strength, so the runtime writes one scalar per
+ * pad; every empty pad pulses in lockstep (same phase accumulator).
+ */
+export const DEFENSE_PAD = {
+  /** Pad height (m): the step every mounted unit stands on. */
+  height: 0.04,
+  /** Breathing speed (rad/s) — ~0.6 Hz. */
+  breatheSpeed: 3.8,
+  /** Emissive-intensity amplitude: intensity sweeps 0..breatheAmp. */
+  breatheAmp: 0.3,
 };
 
 /**
@@ -195,7 +223,9 @@ export const ECONOMY = {
   /**
    * Replace discount: while a slot's unit is alive (not Destroyed), its
    * book value (unitValues) × this factor is credited off the new unit's
-   * price — 200 × 0.3 = a flat 60 trade-in credit.
+   * price — 200 × 0.3 = a flat 60 trade-in credit. Recycling a live unit
+   * pays out the same factor as an instant refund, so replace ≡ recycle +
+   * rebuild.
    */
   replaceDiscount: 0.3,
   /**
@@ -209,12 +239,14 @@ export const ECONOMY = {
 };
 
 /**
- * Anti-air ballista aim envelope: fixed high elevation against flyers —
- * default 75° up, at most 20° of depression, never above 75°.
+ * Anti-air ballista aim envelope: against flyers — default rests at the
+ * mid-range 50° between the 25° floor and the 75° ceiling. The deep 25°
+ * floor lets the bolts reach the ornithopter's middle-air band (y ≈ 2.3 at
+ * z -4.4..-2.8) instead of only the higher bombardier plane.
  */
 export const SKY_BALLISTA = {
-  pitchDefault: 75,
-  pitchMin: 55,
+  pitchDefault: 50,
+  pitchMin: 25,
   pitchMax: 75,
 };
 
@@ -248,44 +280,16 @@ export const SHIP_Y = 0.66;
 export const PROPELLER_SPIN_RAD = 8;
 
 /**
- * Sky-ballista muzzle geometry the flyer's stop band is derived from, kept
- * in step with sky-ballista.glb and its battle-setup placement:
- * - the mount stands on the wall top (y 0.8) at the wall centre z (-0.8);
- * - the `gun_rotate` pivot rides 0.21 above the floor;
- * - the loaded bolt tip (the muzzle) sits at gun_rotate-local
- *   (0, 0.063, -0.157) — assembly-local (0, 0.0525, -0.131) x the 1.2 scale.
+ * Sky-ballista muzzle geometry, kept in step with sky-ballista.glb and its
+ * battle-setup placement: the mount stands on the wall top (y 0.8) at the
+ * wall centre z (-0.8), the `gun_rotate` pivot rides 0.21 above the floor,
+ * and the loaded bolt tip (the muzzle) sits at gun_rotate-local
+ * (0, 0.063, -0.157) — assembly-local (0, 0.0525, -0.131) x the 1.2 scale.
  * battle-setup hangs the runtime `muzzle` node at exactly this offset, so
- * these constants stay the muzzle's single truth for both the node and the
- * band math below.
- */
-const BALLISTA_PIVOT_Y = 0.8 + 0.21;
-const BALLISTA_ROOT_Z = -0.8;
-/**
- * The muzzle helper battle-setup hangs under the ballista's gun_rotate pivot
- * (the loaded bolt tip). Exported so the runtime node and the band math in
- * `ballistaBoltCrossZ` share one truth.
+ * these constants stay the muzzle's single truth.
  */
 export const BALLISTA_MUZZLE_LOCAL_Y = 0.063;
 export const BALLISTA_MUZZLE_LOCAL_Z = -0.157;
-
-/**
- * z where a bolt fired at `pitchDeg` elevation crosses the flyer's cruise
- * plane. The muzzle offset rotates with the barrel (CannonAimSystem writes
- * rotation.x = pitch) and the bolt then flies along the muzzle direction
- * (0, sin e, -cos e) with no decay, so the crossing is plain trigonometry.
- */
-function ballistaBoltCrossZ(pitchDeg: number): number {
-  const e = (pitchDeg * Math.PI) / 180;
-  const muzzleY =
-    BALLISTA_PIVOT_Y +
-    BALLISTA_MUZZLE_LOCAL_Y * Math.cos(e) -
-    BALLISTA_MUZZLE_LOCAL_Z * Math.sin(e);
-  const muzzleZ =
-    BALLISTA_ROOT_Z +
-    BALLISTA_MUZZLE_LOCAL_Y * Math.sin(e) +
-    BALLISTA_MUZZLE_LOCAL_Z * Math.cos(e);
-  return muzzleZ - (FLYER_Y - muzzleY) / Math.tan(e);
-}
 
 /**
  * Ripples a moving unit drags across the surface. Strength is the wake's
@@ -339,11 +343,9 @@ export const designList: LevelSpec[] = [
     waves: [
       {
         units: [
-          'pirate-ship',
-          'pirate-ship',
-          'pirate-ship',
-          'bombardier',
-          'bombardier',
+          'ornithopter',
+          'ornithopter',
+          'ornithopter',
         ],
       },
     ],
@@ -445,10 +447,20 @@ export const COMBAT = {
   ballistaFireInterval: 1.5,
   /** Seconds between two bombs from one bombardier. */
   bombardierFireInterval: 2,
+  /** Seconds between two stones from one ornithopter. */
+  ornithopterFireInterval: 1.2,
   /**
-   * World y a shot never crosses: straight bolts (gravityScale 0 — the
-   * flight model the flyer's berth band is derived from) are never pulled
-   * down, so once one climbs past this ceiling BallisticSystem recycles it
+   * Pool size for ornithopter stones (separate from the ball pool) — sized
+   * for three concurrent flappers firing every ~1.4-1.7s with ~2s flights.
+   */
+  stonePoolSize: 8,
+  /** Stone projectile radius (m) — reads as a fist-sized hurled rock. */
+  stoneRadius: 0.05,
+  /** Grey stone tint (roughness 0.9 / metalness 0 dielectric). */
+  stoneColor: 0x8a8a86,
+  /**
+   * World y a shot never crosses: straight bolts (gravityScale 0) are never
+   * pulled down, so once one climbs past this ceiling BallisticSystem recycles it
    * silently. The ballistic arcs never get this high, so the same check is
    * safe for every pooled projectile.
    */
@@ -555,12 +567,16 @@ export const COMBAT = {
 export const DAMAGE_MATRIX: Record<string, number> = {
   'cannon->pirate-ship': COMBAT.shellDamage,
   'cannon->bombardier': 25,
+  'cannon->ornithopter': 25,
   'sky-ballista->pirate-ship': 10,
   'sky-ballista->bombardier': 20,
+  'sky-ballista->ornithopter': 20,
   'pirate-ship->cannon': COMBAT.pirateShellDamage,
   'pirate-ship->sky-ballista': 17.5,
   'bombardier->cannon': 10,
   'bombardier->sky-ballista': 12.5,
+  'ornithopter->cannon': 7.5,
+  'ornithopter->sky-ballista': 10,
 };
 
 /**
@@ -591,16 +607,38 @@ export const FLYER_Y =
   CANNON_APEX_Y + FLYER_CLEARANCE + FLYER_EXTRA_ALTITUDE;
 
 /**
- * The flyer's berth band, projected by the sky ballista's elevation envelope
- * onto the cruise plane: at pitchMax (75°) the bolt crosses nearest the wall
- * (≈ -1.23, a hand's width off the sea face but clear of it); at pitchMin
- * (60°, the default's full 15° of depression) it crosses farthest out
- * (≈ -1.80). Anywhere inside the band some elevation in [60°, 75°] reaches
- * the flyer, so the ballista can hit it once it attacks. MIN < MAX keeps the
- * ship constants' reading — MIN far out, MAX against the wall.
+ * The bombardier's berth band, now designer data instead of a bolt-line
+ * derivation: with the ballista's depression floor opened to 25° the derived
+ * far edge (≈ -4.62) would reach deep into the ornithopter's own band, so
+ * the flyer keeps its tuned explicit range — far out at -2.6, snug against
+ * the wall at -1.23 (the old 75° crossing). MIN < MAX keeps the ship
+ * constants' reading — MIN far out, MAX against the wall.
  */
-export const FLYER_STOP_Z_MIN = ballistaBoltCrossZ(SKY_BALLISTA.pitchMin);
-export const FLYER_STOP_Z_MAX = ballistaBoltCrossZ(SKY_BALLISTA.pitchMax);
+export const FLYER_STOP_Z_MIN = -2.6;
+export const FLYER_STOP_Z_MAX = -1.23;
+
+/**
+ * Ornithopter flight envelope. The middle-air band sits below the
+ * bombardier's cruise plane but inside the city cannons' reach: a 45° shell
+ * launched from y 0.941 crosses y 2.3 on its descent between z ≈ -3.0 and
+ * -5.0, so a flyer berthed in the band's core [-4.4, -3.0] stays in the
+ * 45° envelope's kill corridor, while the forward extension [-3.0, -2.8]
+ * sits this side of it — still well inside cannon range. The 25° ballista
+ * bolt line from its muzzle (y 1.134, z -0.916) crosses the band's core
+ * height range [1.8, 2.8] throughout, so the anti-air mount covers it too.
+ */
+export const ORNITHOPTER = {
+  /** Cruise altitude (m) — the unit's object-origin height. */
+  y: 2.3,
+  /** Berth band: far out at -4.4, nearest at -2.8. */
+  stopZMin: -4.4,
+  stopZMax: -2.8,
+  /** Uniform model scale — 0.9 reads 10% smaller next to the bombardier. */
+  scale: 0.9,
+  /** Wing flap frequency (rad/s) and swing amplitude (rad). */
+  flapSpeed: 40,
+  flapAmplitude: 0.35,
+};
 
 /**
  * Unit registry keyed by the unitType string used in level data. Adding a new
@@ -609,26 +647,47 @@ export const FLYER_STOP_Z_MAX = ballistaBoltCrossZ(SKY_BALLISTA.pitchMax);
 export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   'pirate-ship': {
     assetId: 'pirate-ship',
+    scale: 1,
     movement: 'default-ship',
     faction: 'attacker',
     cruiseY: SHIP_Y,
     armed: true,
     fireInterval: COMBAT.pirateFireInterval,
     rotor: false,
+    flap: false,
+    stone: false,
     wake: true,
     stopZMin: SHIP_STOP_Z_MIN,
     stopZMax: SHIP_STOP_Z_MAX,
   },
   bombardier: {
     assetId: 'bombardier',
+    scale: 1,
     movement: 'default-flyer',
     faction: 'attacker',
     cruiseY: FLYER_Y,
     armed: true,
     fireInterval: COMBAT.bombardierFireInterval,
     rotor: true,
+    flap: false,
+    stone: false,
     wake: false,
     stopZMin: FLYER_STOP_Z_MIN,
     stopZMax: FLYER_STOP_Z_MAX,
+  },
+  ornithopter: {
+    assetId: 'ornithopter',
+    scale: ORNITHOPTER.scale,
+    movement: 'default-ship',
+    faction: 'attacker',
+    cruiseY: ORNITHOPTER.y,
+    armed: true,
+    fireInterval: COMBAT.ornithopterFireInterval,
+    rotor: false,
+    flap: true,
+    stone: true,
+    wake: false,
+    stopZMin: ORNITHOPTER.stopZMin,
+    stopZMax: ORNITHOPTER.stopZMax,
   },
 };

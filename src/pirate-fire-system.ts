@@ -19,18 +19,19 @@ import {
   ShellFaction,
   ShellTag,
   ShipMovement,
+  StoneTag,
   UnitTag,
 } from './components.js';
 import { COMBAT } from './level-config.js';
 
 /**
- * Attacker fire (pirate ships and the bombardier share the ability). Firing
- * permission is a positional fact owned by this attack ability, deliberately
- * separate from ShipMovement's termination: the moment a unit crosses its
- * own fire line — PirateCannon.fireLineZ, the far edge of its berth band
- * (ships SHIP_STOP_Z_MIN, the bombardier FLYER_STOP_Z_MIN) — it may shoot,
- * it does not need to have stopped yet. Once in range and the battle has
- * started it:
+ * Attacker fire (pirate ships, the bombardier and the ornithopter share the
+ * ability). Firing permission is a positional fact owned by this attack
+ * ability, deliberately separate from ShipMovement's termination: the moment
+ * a unit crosses its own fire line — PirateCannon.fireLineZ, the far edge of
+ * its berth band (ships SHIP_STOP_Z_MIN, the bombardier FLYER_STOP_Z_MIN,
+ * the ornithopter ORNITHOPTER.stopZMin) — it may shoot, it does not need to
+ * have stopped yet. Once in range and the battle has started it:
  *
  * 1. picks one random defender hit core (a city cannon or sky ballista) and
  *    snapshots its world position as the target — mounted defenders never
@@ -39,8 +40,8 @@ import { COMBAT } from './level-config.js';
  *    with no survivor the unit holds fire until the defeat outcome lands;
  * 2. yaws onto the target: units with a cannon_mount pivot (ships) swing the
  *    whole deck gun — carriage plus barrel — and keep the hull heading; the
- *    bombardier has no gun pivot, so it yaws the entire hull, which also
- *    swings its belly muzzle nose-forward for the bomb drop;
+ *    pivotless flyers (bombardier, ornithopter) yaw the entire hull, which
+ *    also swings their belly muzzle nose-forward for the drop;
  * 3. the first shot leaves immediately when permission is granted (cooldown
  *    starts at 0); later shots follow a jittered cooldown.
  *
@@ -48,12 +49,21 @@ import { COMBAT } from './level-config.js';
  * distance / flight time and vertical velocity is solved against
  * BallisticSystem's gravity, so at t = flightTime the shell is exactly at
  * the target core. The arc stays flat because the horizontal speed is high
- * (COMBAT.pirateShellSpeed); no second flight model exists.
+ * (COMBAT.pirateShellSpeed); no second flight model exists. Units with
+ * PirateCannon.stone (the ornithopter) draw from the stone pool instead of
+ * the ball pool; the closed-form intercept is identical.
  */
 export class PirateFireSystem extends createSystem({
   ships: { required: [UnitTag, ShipMovement, PirateCannon] },
   cores: { required: [HitCore], excluded: [Destroyed] },
-  freeShells: { required: [ShellTag], excluded: [BallisticFlight, BoltTag] },
+  freeShells: {
+    required: [ShellTag],
+    excluded: [BallisticFlight, BoltTag, StoneTag],
+  },
+  freeStones: {
+    required: [ShellTag, StoneTag],
+    excluded: [BallisticFlight],
+  },
   directors: { required: [LevelDirector] },
 }) {
   /** Muzzle object per ship entity index, resolved once on qualify. */
@@ -178,8 +188,9 @@ export class PirateFireSystem extends createSystem({
    * world space (pivot origin -> target, same atan2(-dx, -dz) convention as
    * the city guns) and converted to the pivot's local frame by subtracting
    * the hull's world yaw, so the gun tracks while the ship keeps sailing on
-   * its own heading. The bombardier has no cannon_mount — it yaws the whole
-   * hull, which also swings its belly muzzle nose-forward for the drop.
+   * its own heading. The pivotless flyers (bombardier, ornithopter) yaw the
+   * whole hull, which also swings their belly muzzle nose-forward for the
+   * drop.
    */
   private aimCannon(ship: Entity): void {
     const object = ship.object3D;
@@ -202,7 +213,8 @@ export class PirateFireSystem extends createSystem({
    */
   private fire(ship: Entity): boolean {
     const muzzle = this.muzzles.get(ship.index);
-    const shell = this.firstFreeShell();
+    const wantsStone = Boolean(ship.getValue(PirateCannon, 'stone'));
+    const shell = wantsStone ? this.firstFreeStone() : this.firstFreeShell();
     const shellObject = shell?.object3D;
     if (!muzzle || !shell || !shellObject) return false;
 
@@ -247,6 +259,17 @@ export class PirateFireSystem extends createSystem({
       if (shell.hasComponent(BallisticFlight)) continue;
       this.claimed.add(shell.index);
       return shell;
+    }
+    return undefined;
+  }
+
+  /** Same discipline as firstFreeShell, over the stone pool. */
+  private firstFreeStone(): Entity | undefined {
+    for (const stone of this.queries.freeStones.entities) {
+      if (this.claimed.has(stone.index)) continue;
+      if (stone.hasComponent(BallisticFlight)) continue;
+      this.claimed.add(stone.index);
+      return stone;
     }
     return undefined;
   }

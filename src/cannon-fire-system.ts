@@ -8,6 +8,7 @@
 import {
   AssetManager,
   createSystem,
+  IcosahedronGeometry,
   Mesh,
   MeshStandardMaterial,
   SphereGeometry,
@@ -24,6 +25,7 @@ import {
   LevelDirector,
   ShellFaction,
   ShellTag,
+  StoneTag,
 } from './components.js';
 import { COMBAT } from './level-config.js';
 
@@ -33,9 +35,10 @@ import { COMBAT } from './level-config.js';
  * Pools: `COMBAT.shellPoolSize` cannonballs created synchronously at init,
  * plus `COMBAT.boltPoolSize` straight ballista bolts cloned from the
  * ballista-bolt glb once it loads (until then that pool is simply empty and
- * fire() retries shortly). All copies share geometry/materials and carry
- * ShellTag; bolts additionally carry BoltTag, which routes them to their own
- * free query so a ball-firing gun can never grab a bolt mesh and vice versa.
+ * fire() retries shortly), plus `COMBAT.stonePoolSize` ornithopter stones.
+ * All copies share geometry/materials and carry ShellTag; bolts additionally
+ * carry BoltTag and stones StoneTag, which route them to their own free
+ * queries so a ball-firing gun can never grab a bolt mesh and vice versa.
  * A projectile is free exactly while it does not carry BallisticFlight.
  * Firing never allocates — it repositions a free projectile at the muzzle
  * and hands it to BallisticSystem by adding BallisticFlight.
@@ -45,7 +48,10 @@ import { COMBAT } from './level-config.js';
  */
 export class CannonFireSystem extends createSystem({
   cannons: { required: [CannonFire], excluded: [Destroyed] },
-  freeShells: { required: [ShellTag], excluded: [BallisticFlight, BoltTag] },
+  freeShells: {
+    required: [ShellTag],
+    excluded: [BallisticFlight, BoltTag, StoneTag],
+  },
   freeBolts: {
     required: [ShellTag, BoltTag],
     excluded: [BallisticFlight],
@@ -93,6 +99,22 @@ export class CannonFireSystem extends createSystem({
           .addComponent(BoltTag);
       }
     });
+    // Stone pool: plain icosahedron rocks for the ornithopters, no glb wait.
+    const stoneGeometry = new IcosahedronGeometry(COMBAT.stoneRadius, 0);
+    const stoneMaterial = new MeshStandardMaterial({
+      color: COMBAT.stoneColor,
+      roughness: 0.9,
+      metalness: 0,
+    });
+    for (let i = 0; i < COMBAT.stonePoolSize; i++) {
+      const stone = new Mesh(stoneGeometry, stoneMaterial);
+      stone.castShadow = true;
+      stone.visible = false;
+      this.world
+        .createTransformEntity(stone)
+        .addComponent(ShellTag)
+        .addComponent(StoneTag);
+    }
     this.queries.cannons.subscribe('qualify', (entity) => {
       const muzzle = entity.object3D?.getObjectByName('muzzle');
       if (muzzle) this.muzzles.set(entity.index, muzzle);

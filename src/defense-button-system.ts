@@ -6,7 +6,7 @@
  */
 
 import { createSystem, Mesh, Pressed } from '@iwsdk/core';
-import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
+import type { Entity } from '@iwsdk/core';
 import {
   BuildOpen,
   DefenseButton,
@@ -24,19 +24,22 @@ import { getDefenseSlotInfo } from './battle-setup.js';
  *
  * Commands (a `Pressed` tag from InputSystem, one path for mouse, touch and
  * XR ray):
- * - build: opens the shared build panel on the director (BuildOpen + slot)
- *   unless it is already open — the grayed buttons below are the visual
- *   half of that contract.
+ * - build: opens the shared build panel on the director (BuildOpen + slot).
+ *   Pressed while a dock is already open it becomes toggle/switch: the open
+ *   slot's own button closes the dock, another slot's button closes the old
+ *   dock and reopens it over the new slot — remove+add of the tag fires
+ *   disqualify (hide) then qualify (reposition + reprice) inside one frame.
  * - repair: toggles the Repairing tag on the slot's mounted unit. A dead
  *   (Destroyed) slot repairs nothing; the build panel is the way back.
  *
  * Both commands share the cannon-aim phase gate: before the START gate
  * opens, while paused or after an outcome the buttons are scenery.
  *
- * Visuals (single writer for every button icon): build buttons gray
- * while BuildOpen sits on the director; repair buttons breathe — the icon
- * scales sinusoidally — exactly while their unit carries Repairing. Ten
- * scalar writes per frame at most: negligible.
+ * Visuals (single writer for every button icon): the open slot's build
+ * icon holds a shrunk "open" pose (DEFENSE_BUTTONS.openScale) — pure scale,
+ * materials never change; repair buttons breathe — the icon scales
+ * sinusoidally — exactly while their unit carries Repairing. Ten scalar
+ * writes per frame at most: negligible.
  */
 export class DefenseButtonSystem extends createSystem({
   buttons: { required: [DefenseButton] },
@@ -98,8 +101,15 @@ export class DefenseButtonSystem extends createSystem({
     const director = this.director();
     if (!director) return;
     if (String(entity.getValue(DefenseButton, 'kind')) === 'build') {
-      // Grayed buttons do not answer: the panel is already open.
-      if (director.hasComponent(BuildOpen)) return;
+      // Dock already open → toggle/switch: same slot closes, another slot
+      // moves the dock there. The remove+add pair drives the panel's
+      // disqualify/qualify lifecycle synchronously — no visible flicker.
+      if (director.hasComponent(BuildOpen)) {
+        const openSlot = Number(director.getValue(BuildOpen, 'slot'));
+        director.removeComponent(BuildOpen);
+        if (openSlot !== slot) director.addComponent(BuildOpen, { slot });
+        return;
+      }
       director.addComponent(BuildOpen, { slot });
       return;
     }
@@ -116,7 +126,6 @@ export class DefenseButtonSystem extends createSystem({
     const director = this.director();
     if (!director) return;
     const over = director.hasComponent(GameOver);
-    const buildDisabled = director.hasComponent(BuildOpen);
     this.breatheTime += delta;
     // Repair breathing is pure motion: the icon scales up sinusoidally up
     // to breatheScale over its rest size; material colors never change.
@@ -124,20 +133,20 @@ export class DefenseButtonSystem extends createSystem({
       1 +
       DEFENSE_BUTTONS.breatheScale *
         (0.5 + 0.5 * Math.sin(this.breatheTime * DEFENSE_BUTTONS.breatheSpeed));
+    // The dock's slot while open (null when closed): that slot's build icon
+    // holds the shrunk "open" pose. Scale writes are transform-only — the
+    // shared geometry/material and the enlarged hit proxies never change.
+    const openSlot = director.hasComponent(BuildOpen)
+      ? Number(director.getValue(BuildOpen, 'slot'))
+      : null;
 
     for (const entity of this.queries.buttons.entities) {
       const icon = this.icons.get(entity.index);
       if (!icon) continue;
       const slot = Number(entity.getValue(DefenseButton, 'slot'));
       if (String(entity.getValue(DefenseButton, 'kind')) === 'build') {
-        icon.scale.setScalar(1);
-        // The icon's colour zones are baked into vertex colors; the material
-        // colour multiplies them, so enabled = white (true baked tints) and
-        // disabled = the gray dimmer from level-config.
-        (icon.material as MeshStandardMaterial).color.setHex(
-          buildDisabled
-            ? DEFENSE_BUTTONS.disabledColor
-            : DEFENSE_BUTTONS.enabledColor,
+        icon.scale.setScalar(
+          openSlot === slot ? DEFENSE_BUTTONS.openScale : 1,
         );
       } else {
         const info = getDefenseSlotInfo(slot);

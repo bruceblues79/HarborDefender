@@ -16,6 +16,7 @@ import { CannonAimSystem } from './cannon-aim-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
 import { Billboard } from './components.js';
 import { DefenseButtonSystem } from './defense-button-system.js';
+import { DefensePadSystem } from './defense-pad-system.js';
 import { DieBurstSystem } from './die-burst-system.js';
 import { HitFlashSystem } from './hit-flash-system.js';
 import { HealthBarSystem } from './health-bar-system.js';
@@ -32,6 +33,7 @@ import { ShipMovementSystem } from './ship-movement-system.js';
 import { SpawnFadeSystem } from './spawn-fade-system.js';
 import { SplashSystem } from './splash-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
+import { WingFlapSystem } from './wing-flap-system.js';
 import { installXRButton } from './xr-button.js';
 import { installHandPriorityArbitration } from './xr-hand-arbitration.js';
 
@@ -64,8 +66,10 @@ World.create(
   world.registerSystem(CannonAimSystem, { priority: 8 });
   world.registerSystem(ShipMovementSystem, { priority: 10 });
   // Rotor spin rides the simulation tier: same march cadence as movement,
-  // frozen by the same pause/hold tags.
+  // frozen by the same pause/hold tags. Wing flap keeps the ornithopter's
+  // canvas beating on the same tier.
   world.registerSystem(PropellerSpinSystem, { priority: 10 });
+  world.registerSystem(WingFlapSystem, { priority: 10 });
   // Both fire systems draw from one shell pool at the same priority; pirate
   // is registered second and its live hasComponent guard keeps the two from
   // ever handing out the same shell in a frame.
@@ -85,6 +89,9 @@ World.create(
   // Pressed tags; it opens the build panel through the director's BuildOpen
   // tag and keeps the button visuals (gray-out, breathing) current.
   world.registerSystem(DefenseButtonSystem, { priority: 16 });
+  // Empty-slot pad breathing: the pure visual over the battery registry —
+  // one shared-material emissiveIntensity write per frame, no phase gate.
+  world.registerSystem(DefensePadSystem, { priority: 17 });
   // UI tier, after the camera updates so billboards track this frame's view.
   world.registerSystem(PanelScaleSystem, { priority: 30 });
   world.registerSystem(StartPanelSystem, { priority: 30 });

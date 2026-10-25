@@ -98,6 +98,12 @@ export default defineAssets({
     name: 'Defense Button Repair',
     priority: 'background',
   },
+  'defense-pad': {
+    url: publicAssetUrl('gltf/defense-pad.glb'),
+    type: AssetType.GLTF,
+    name: 'Defense Pad',
+    priority: 'background',
+  },
   'ballista-bolt': {
     url: publicAssetUrl('gltf/ballista-bolt.glb'),
     type: AssetType.GLTF,
@@ -114,6 +120,12 @@ export default defineAssets({
     url: publicAssetUrl('gltf/bombardier-v3.glb'),
     type: AssetType.GLTF,
     name: 'Bombardier',
+    priority: 'background',
+  },
+  ornithopter: {
+    url: publicAssetUrl('gltf/ornithopter.glb'),
+    type: AssetType.GLTF,
+    name: 'Ornithopter',
     priority: 'background',
   },
 });

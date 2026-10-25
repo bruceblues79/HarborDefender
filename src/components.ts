@@ -6,7 +6,7 @@
  */
 
 import { createComponent, defineComponents } from '@iwsdk/core';
-import { COMBAT, ECONOMY, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y } from './level-config.js';
+import { COMBAT, ECONOMY, ORNITHOPTER, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y } from './level-config.js';
 
 /** Marks the ocean body entity so OceanSystem can find it via query. */
 export const OceanTag = createComponent('OceanTag', {});
@@ -100,6 +100,21 @@ export const PropellerSpin = createComponent('PropellerSpin', {
 });
 
 /**
+ * Flapping wings of a flying unit (the ornithopter's canvas pair). Presence
+ * of this component *is* the tag "this unit has driven wings":
+ * WingFlapSystem resolves the model's `wing_left` / `wing_right` nodes and
+ * swings them about their root axle with mirrored rotation.z — pure scalar
+ * sine, no physics. A hovering flyer keeps flapping; motion state does not
+ * gate the animation.
+ */
+export const WingFlap = createComponent('WingFlap', {
+  /** Flap frequency, radians per second. */
+  speed: { type: 'Float32', default: ORNITHOPTER.flapSpeed },
+  /** Swing amplitude, radians — each wing's full excursion is ±amplitude. */
+  amplitude: { type: 'Float32', default: ORNITHOPTER.flapAmplitude },
+});
+
+/**
  * Materialisation countdown for a freshly dispatched unit. Carrying this
  * component *is* the tag "hull still fading in": SpawnFadeSystem drives the
  * materials and removes it once the unit is solid, so nothing downstream has
@@ -153,6 +168,9 @@ export const ShellTag = createComponent('ShellTag', {});
 
 /** Marks pooled copies of the ballista-bolt glb inside the ShellTag pool. */
 export const BoltTag = createComponent('BoltTag', {});
+
+/** Marks pooled stone projectiles inside the ShellTag pool (ornithopter). */
+export const StoneTag = createComponent('StoneTag', {});
 
 /**
  * Auto-fire ability of a cannon's muzzle: launch one pooled shell every
@@ -310,6 +328,11 @@ export const PirateCannon = createComponent('PirateCannon', {
   targetX: { type: 'Float32', default: 0 },
   targetY: { type: 'Float32', default: 0 },
   targetZ: { type: 'Float32', default: 0 },
+  /**
+   * True when this unit hurls pooled stones (ornithopter) instead of
+   * cannonballs: PirateFireSystem picks the free-stone pool for the shot.
+   */
+  stone: { type: 'Boolean', default: false },
 });
 
 /**
@@ -423,8 +446,9 @@ export const Repairing = createComponent('Repairing', {});
 
 /**
  * Explicit tag: the shared build panel is open, targeting the defense slot
- * in `slot`. Added by DefenseButtonSystem (build button click), removed by
- * BuildPanelSystem (row purchased) — its presence grays every build button.
+ * in `slot`. Added/removed by DefenseButtonSystem (build button click:
+ * open, switch slot, toggle close), removed by BuildPanelSystem (row
+ * purchased) — its presence shrinks the open slot's build icon.
  */
 export const BuildOpen = createComponent('BuildOpen', {
   /** Index into DEFENSE_SLOTS the open panel builds into. */
@@ -433,10 +457,10 @@ export const BuildOpen = createComponent('BuildOpen', {
 
 /**
  * One world-space build/repair button on the wall's land face: a flat
- * low-poly icon extrusion with an invisible enlarged hit proxy, its own
- * material (repair breathes via emissive, build grays via color). Defense-
- * ButtonSystem owns the visuals; the press itself is InputSystem's `Pressed`
- * tag (mouse / touch / XR ray share the path).
+ * low-poly icon extrusion with an invisible enlarged hit proxy. Defense-
+ * ButtonSystem owns the visuals (repair breathes via icon scale, the open
+ * slot's build icon shrinks via icon scale); the press itself is
+ * InputSystem's `Pressed` tag (mouse / touch / XR ray share the path).
  */
 export const DefenseButton = createComponent('DefenseButton', {
   /** Index into DEFENSE_SLOTS this button serves. */
@@ -453,11 +477,13 @@ export default defineComponents([
   UnitTag,
   ShipMovement,
   PropellerSpin,
+  WingFlap,
   SpawnFade,
   Billboard,
   PanelScaleAnim,
   ShellTag,
   BoltTag,
+  StoneTag,
   CannonFire,
   BallisticFlight,
   CannonAim,

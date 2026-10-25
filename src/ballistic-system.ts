@@ -16,7 +16,7 @@ import {
   SplashFade,
   WakeSource,
 } from './components.js';
-import { COMBAT, OCEAN } from './level-config.js';
+import { COMBAT, OCEAN, OCEAN_FAR_Z } from './level-config.js';
 
 /**
  * Flies airborne shells along a gravity parabola and splashes them into the
@@ -54,6 +54,12 @@ export class BallisticSystem extends createSystem({
       // ripple, it never met the water. The ballistic arcs never get this
       // high, so the check is safe for every pooled projectile.
       if (object.position.y >= COMBAT.boltReclaimY) {
+        this.retire(entity);
+        continue;
+      }
+      // Far-edge backstop: a shot still airborne past the ocean's far edge
+      // can never come down on anything — recycle it the same silent way.
+      if (object.position.z <= OCEAN_FAR_Z) {
         this.retire(entity);
         continue;
       }

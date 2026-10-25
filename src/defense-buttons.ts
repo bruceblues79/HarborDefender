@@ -18,10 +18,11 @@ import { DEFENSE_BUTTONS } from './level-config.js';
  * 0.5, metalness 0) with the colour zones baked into vertex colors, so the
  * icons sit in the same material family as the wall, cannons and ballistas.
  *
- * State visuals stay runtime-side and cheap: DefenseButtonSystem dims the
- * build icon by writing material.color (it multiplies the baked vertex
- * colors), and breathes the repair icon by scale. The glyph needs no shadow
- * participation — both shadow flags are forced off below.
+ * State visuals stay runtime-side and cheap: DefenseButtonSystem shrinks
+ * the open slot's build icon and breathes the repair icon — both pure
+ * scale writes on the icon mesh; materials and the hit proxies never
+ * change. The glyph needs no shadow participation — both shadow flags are
+ * forced off below.
  *
  * The invisible hit proxy is a box that renders nothing (colorWrite off) yet
  * stays raycastable — object.visible is what raycasters key on, not material
