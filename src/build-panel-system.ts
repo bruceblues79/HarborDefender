@@ -31,7 +31,7 @@ import {
   WALL_CENTER_Z,
 } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
-import { getDefenseSlotInfo, replaceDefenseUnit } from './battle-setup.js';
+import { getDefenseSlotInfo, removeDefenseUnit, replaceDefenseUnit } from './battle-setup.js';
 
 /** Minimal shape of a uikit element's runtime class list (class layer). */
 type UiElement = Object3D & {
@@ -73,6 +73,15 @@ const PANEL_FACTORS = { xr: 1, flat: 1.8 };
  * dismisses without spending. While the tag sits on the director the build
  * buttons render grayed and refuse presses (DefenseButtonSystem's half of
  * the contract).
+ *
+ * The recycle button below the bar sells the opening slot's live occupant
+ * for its depreciated book value (book value × ECONOMY.replaceDiscount —
+ * the same 30% the trade-in credit uses, so replace ≡ recycle + rebuild):
+ * the gold is credited instantly and the unit is stripped via
+ * removeDefenseUnit, which drops its combat components so enemy targeting
+ * naturally re-selects another defender. The panel stays open after a sale
+ * so the player can immediately rebuild at full price; the button renders
+ * dimmed while the slot has no live occupant and refuses presses.
  */
 export class BuildPanelSystem extends createSystem({
   directors: { required: [LevelDirector] },
@@ -95,6 +104,12 @@ export class BuildPanelSystem extends createSystem({
   private readonly rows = new Map<DefenseUnitId, UiElement | null>();
   /** Class currently applied per unit button; guards redundant class swaps. */
   private readonly unitClasses = new Map<DefenseUnitId, string>();
+  /** The recycle button below the bar: sells the slot's live occupant. */
+  private recycleRow: UiElement | null = null;
+  /** Gold "+N" readout inside the recycle button. */
+  private recyclePrice: Text | null = null;
+  /** Class currently applied to the recycle button; guards redundant swaps. */
+  private recycleClass: string | null = null;
 
   init(): void {
     this.loadPanel();
@@ -155,6 +170,19 @@ export class BuildPanelSystem extends createSystem({
             dismiss.removeEventListener('click', () => this.closePanel()),
           );
         }
+        const recycle = panel.getElementById(
+          'dock-recycle',
+        ) as UiElement | null;
+        if (recycle) {
+          recycle.addEventListener('click', () => this.onRecycle());
+          this.cleanupFuncs.push(() =>
+            recycle.removeEventListener('click', () => this.onRecycle()),
+          );
+          this.recycleRow = recycle;
+        }
+        this.recyclePrice = this.resolveText(
+          panel.getElementById('price-recycle'),
+        );
 
         // The tag may have been raised while the asset was still loading:
         // catch up immediately.
@@ -230,7 +258,9 @@ export class BuildPanelSystem extends createSystem({
    * class: the unit occupying the open slot hides its own button, a price
    * above the current wallet dims the button, the rest stay in the default
    * style. The top-row badge mirrors the wallet, so gold spent or earned
-   * elsewhere shows live while the dock is open.
+   * elsewhere shows live while the dock is open. The recycle button below
+   * mirrors the slot's occupancy: live occupant → active with a gold
+   * +refund, empty or destroyed slot → dimmed.
    */
   private refreshRows(director: Entity): void {
     const slot = Number(director.getValue(BuildOpen, 'slot'));
@@ -260,6 +290,22 @@ export class BuildPanelSystem extends createSystem({
       }
       this.setUnitClass(unitId, row, next);
     }
+    if (this.recycleRow) {
+      // The refund only exists while something live stands in the slot; an
+      // empty slot keeps the last written value — the dimmed state already
+      // says the button is unavailable.
+      if (occupant) {
+        this.recyclePrice?.setProperties({
+          text: `+${Math.floor(
+            (ECONOMY.unitValues[occupant] ?? 0) * ECONOMY.replaceDiscount,
+          )}`,
+        });
+      }
+      this.setRecycleClass(
+        this.recycleRow,
+        occupant ? 'dock-recycle' : 'dock-recycle-off',
+      );
+    }
   }
 
   /**
@@ -278,6 +324,18 @@ export class BuildPanelSystem extends createSystem({
     }
     row.classList.add(next);
     this.unitClasses.set(unitId, next);
+  }
+
+  /**
+   * Show/dim the recycle button through its class list — same base-vs-class
+   * layer rule as setUnitClass, with only the two occupancy states.
+   */
+  private setRecycleClass(row: UiElement, next: string): void {
+    if (this.recycleClass === next) return;
+    row.classList.remove('dock-recycle');
+    row.classList.remove('dock-recycle-off');
+    row.classList.add(next);
+    this.recycleClass = next;
   }
 
   /**
@@ -317,6 +375,29 @@ export class BuildPanelSystem extends createSystem({
     const next = replaceDefenseUnit(this.world, slot, unitId);
     if (next.object3D) next.object3D.visible = true;
     this.closePanel();
+  }
+
+  /**
+   * Sell the opening slot's live occupant: credit the depreciated book
+   * value instantly, strip the unit structurally and refresh in place —
+   * the dock stays open so the player can immediately rebuild at full
+   * price. Empty or destroyed slots refuse, matching the dimmed state.
+   * Pausing or an outcome closes the dock in update(), so neither can
+   * interleave a sale.
+   */
+  private onRecycle(): void {
+    const director = this.findOpenDirector();
+    if (!director || !director.hasComponent(Wallet)) return;
+    const slot = Number(director.getValue(BuildOpen, 'slot'));
+    const info = getDefenseSlotInfo(slot);
+    if (!info || info.entity.hasComponent(Destroyed)) return;
+    const refund = Math.floor(
+      (ECONOMY.unitValues[info.unit] ?? 0) * ECONOMY.replaceDiscount,
+    );
+    const money = director.getValue(Wallet, 'money') as number;
+    director.setValue(Wallet, 'money', money + refund);
+    removeDefenseUnit(this.world, slot);
+    this.refreshRows(director);
   }
 
   update(): void {

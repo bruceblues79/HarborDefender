@@ -173,36 +173,45 @@ export function getDefenseSlotInfo(
 }
 
 /**
- * Swap a slot's occupant for a freshly mounted unit. The old unit loses its
- * combat components (every combat query drops it this frame), is hidden and
- * is forgotten by the battery registry — hidden forever like a knockout, so
- * its entity index is never freed and reused. Money handling stays with the
- * caller (BuildPanelSystem); this is the structural swap only.
+ * Strip a slot's occupant without mounting a replacement: the unit loses
+ * its combat components (every combat query drops it this frame), is hidden
+ * and is forgotten by the battery registry — hidden forever like a knockout,
+ * so its entity index is never freed and reused. No-op when the slot is
+ * already empty. Money handling stays with the caller (BuildPanelSystem);
+ * this is the structural removal only.
+ */
+export function removeDefenseUnit(world: World, slotIndex: number): void {
+  const old = defenseEntities.find((entry) => entry.slot === slotIndex);
+  if (!old) return;
+  const { entity } = old;
+  entity.removeComponent(CannonAim);
+  entity.removeComponent(CannonFire);
+  entity.removeComponent(HitCore);
+  entity.removeComponent(Health);
+  entity.removeComponent(Destroyed);
+  entity.removeComponent(Repairing);
+  const object3D = entity.object3D;
+  if (object3D) {
+    object3D.visible = false;
+    // Leave the battlefield-reveal set too, or the next battle entry
+    // would resurrect the stripped ghost on top of its replacement.
+    const battlefieldIndex = battlefieldObjects.indexOf(object3D);
+    if (battlefieldIndex !== -1) battlefieldObjects.splice(battlefieldIndex, 1);
+  }
+  defenseEntities.splice(defenseEntities.indexOf(old), 1);
+}
+
+/**
+ * Swap a slot's occupant for a freshly mounted unit. The old unit is
+ * stripped via removeDefenseUnit; money handling stays with the caller
+ * (BuildPanelSystem); this is the structural swap only.
  */
 export function replaceDefenseUnit(
   world: World,
   slotIndex: number,
   unitId: DefenseUnitId,
 ): Entity {
-  const old = defenseEntities.find((entry) => entry.slot === slotIndex);
-  if (old) {
-    const { entity } = old;
-    entity.removeComponent(CannonAim);
-    entity.removeComponent(CannonFire);
-    entity.removeComponent(HitCore);
-    entity.removeComponent(Health);
-    entity.removeComponent(Destroyed);
-    entity.removeComponent(Repairing);
-    const object3D = entity.object3D;
-    if (object3D) {
-      object3D.visible = false;
-      // Leave the battlefield-reveal set too, or the next battle entry
-      // would resurrect the stripped ghost on top of its replacement.
-      const battlefieldIndex = battlefieldObjects.indexOf(object3D);
-      if (battlefieldIndex !== -1) battlefieldObjects.splice(battlefieldIndex, 1);
-    }
-    defenseEntities.splice(defenseEntities.indexOf(old), 1);
-  }
+  removeDefenseUnit(world, slotIndex);
   return mountDefenseUnit(world, slotIndex, unitId);
 }
 

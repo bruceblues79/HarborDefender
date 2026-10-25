@@ -213,7 +213,9 @@ export const ECONOMY = {
   /**
    * Replace discount: while a slot's unit is alive (not Destroyed), its
    * book value (unitValues) × this factor is credited off the new unit's
-   * price — 200 × 0.3 = a flat 60 trade-in credit.
+   * price — 200 × 0.3 = a flat 60 trade-in credit. Recycling a live unit
+   * pays out the same factor as an instant refund, so replace ≡ recycle +
+   * rebuild.
    */
   replaceDiscount: 0.3,
   /**

@@ -25,6 +25,16 @@
   GlassMaterial) and washes mid-gray class backgrounds out to white —
   Container (button) renders the class color exactly; the bar itself keeps
   panel-material-class: glass over #ffffffaa to match the pause-menu surface.
+  A recycle button hangs centered below the bar: it sells the opening
+  slot's live occupant for its depreciated book value (book value ×
+  ECONOMY.replaceDiscount, shown as a gold "+60") and shares the unit
+  buttons' visual language, but carries a red icon (#e5484d) so the income
+  reads as a sale rather than a purchase. It dims (.dock-recycle-off) when
+  the slot has no live occupant — nothing to sell — instead of hiding, so
+  the column's outline stays constant across open/close cycles and the
+  sell capability stays discoverable. The row deliberately grows the dock
+  downward into the health-bar band (anchor and bar stay put); the dock's
+  render-order 18 already outranks the bars (8/9), so it stays in front.
   BuildPanelSystem rewrites each price at open time (trade-in discount while
   the slot's occupant is alive), binds the clicks, and drives a three-state
   class per unit button: .dock-unit (default), .dock-unit-off (price above
@@ -52,7 +62,7 @@
     align-items: center;
     gap: 1.5;
     width: 33;
-    height: 20.5;
+    height: 32;
     render-order: 18;
     background-color: #00000000;
   }
@@ -160,6 +170,39 @@
     display: none;
   }
 
+  .dock-recycle {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0.8;
+    width: 10;
+    height: 10;
+    background-color: #5d646d;
+    border-radius: 5;
+    cursor: pointer;
+  }
+
+  .dock-recycle:hover {
+    background-color: #6a717a;
+  }
+
+  .dock-recycle:active {
+    background-color: #515861;
+  }
+
+  .dock-recycle-off {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0.8;
+    width: 10;
+    height: 10;
+    background-color: #41464d;
+    border-radius: 5;
+  }
+
   .unit-icon {
     display: flex;
     width: 4.5;
@@ -194,4 +237,8 @@
       <Panel id="price-sky-ballista" class="unit-price">200</Panel>
     </button>
   </Panel>
+  <button id="dock-recycle" class="dock-recycle">
+    <svg class="unit-icon" src="ui/icons/recycle.svg" />
+    <Panel id="price-recycle" class="unit-price">+60</Panel>
+  </button>
 </Panel>
