@@ -392,7 +392,8 @@ export function startBattle(world: World): void {
             slotIndex < DEFENSE_SLOTS.length;
             slotIndex++
           ) {
-            mountDefenseUnit(world, slotIndex, DEFENSE_SLOTS[slotIndex].unit);
+            const initial = DEFENSE_SLOTS[slotIndex].unit;
+            if (initial) mountDefenseUnit(world, slotIndex, initial);
           }
 
           // Empty-slot pedestal pads: one permanent disc per slot, standing

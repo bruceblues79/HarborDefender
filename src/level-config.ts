@@ -129,19 +129,21 @@ export type DefenseUnitId = 'cannon' | 'sky-ballista';
 export interface DefenseSlotDef {
   /** Slot centre x across the wall (m). */
   x: number;
-  /** Unit standing in the slot. */
-  unit: DefenseUnitId;
+  /** Unit standing in the slot at battle entry; null = starts empty. */
+  unit: DefenseUnitId | null;
 }
 
 /**
  * Five slots evenly spaced across the central 3 m of the 3.4 m wall
- * (0.2 m margin each side), matching the historical cannon row.
+ * (0.2 m margin each side), matching the historical cannon row. The run
+ * starts with three cannons; the two remaining slots open empty — the
+ * player builds them up from the starting gold.
  */
 export const DEFENSE_SLOTS: DefenseSlotDef[] = [
   { x: -1.2, unit: 'cannon' },
-  { x: -0.6, unit: 'cannon' },
-  { x: 0, unit: 'sky-ballista' },
-  { x: 0.6, unit: 'cannon' },
+  { x: -0.6, unit: null },
+  { x: 0, unit: 'cannon' },
+  { x: 0.6, unit: null },
   { x: 1.2, unit: 'cannon' },
 ];
 

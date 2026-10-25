@@ -343,7 +343,9 @@ export class BuildPanelSystem extends createSystem({
     const director = this.findOpenDirector();
     if (!director || !director.hasComponent(Wallet)) return;
     const slot = Number(director.getValue(BuildOpen, 'slot'));
-    if (!getDefenseSlotInfo(slot)) return;
+    // Valid slot index only — an empty slot (never mounted, recycled or
+    // knocked clean) builds at full book price via priceFor below.
+    if (!DEFENSE_SLOTS[slot]) return;
     const price = this.priceFor(director, unitId);
     const money = director.getValue(Wallet, 'money') as number;
     if (money < price) return;
