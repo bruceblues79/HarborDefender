@@ -411,6 +411,9 @@ export class LevelWaveSystem extends createSystem({
       -(target.x - spawnX),
       -(target.z - SPAWN_Z),
     );
+    // Unit-sheet model scale: the clone shrinks uniformly, so every child
+    // (embedded muzzle, hit_core) rides along in the right place.
+    object.scale.setScalar(def.scale);
 
     // Instancing setup for the fade: hull materials are shared across clones,
     // so each ship gets its own clones starting fully transparent. Driving that

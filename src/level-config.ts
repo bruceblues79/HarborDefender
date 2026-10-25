@@ -27,6 +27,8 @@ export type Faction = 'attacker' | 'defender';
 export interface UnitTypeDef {
   /** Asset manifest id instantiated for this unit (see src/assets.ts). */
   assetId: string;
+  /** Uniform model scale applied to every spawned clone (1 keeps GLB size). */
+  scale: number;
   /** Movement behaviour applied when the unit spawns. */
   movement: MovementPattern;
   /** Side this unit fights for. */
@@ -626,8 +628,10 @@ export const ORNITHOPTER = {
   /** Berth band: far out at -4.4, nearest at -3.0. */
   stopZMin: -4.4,
   stopZMax: -3.0,
+  /** Uniform model scale — 0.9 reads 10% smaller next to the bombardier. */
+  scale: 0.9,
   /** Wing flap frequency (rad/s) and swing amplitude (rad). */
-  flapSpeed: 4,
+  flapSpeed: 40,
   flapAmplitude: 0.35,
 };
 
@@ -638,6 +642,7 @@ export const ORNITHOPTER = {
 export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   'pirate-ship': {
     assetId: 'pirate-ship',
+    scale: 1,
     movement: 'default-ship',
     faction: 'attacker',
     cruiseY: SHIP_Y,
@@ -652,6 +657,7 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   },
   bombardier: {
     assetId: 'bombardier',
+    scale: 1,
     movement: 'default-flyer',
     faction: 'attacker',
     cruiseY: FLYER_Y,
@@ -666,6 +672,7 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   },
   ornithopter: {
     assetId: 'ornithopter',
+    scale: ORNITHOPTER.scale,
     movement: 'default-ship',
     faction: 'attacker',
     cruiseY: ORNITHOPTER.y,
