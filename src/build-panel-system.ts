@@ -100,6 +100,8 @@ export class BuildPanelSystem extends createSystem({
   private factorsEnvironment: boolean | null = null;
   /** Live gold readout in the top-row badge, next to the close button. */
   private walletText: Text | null = null;
+  /** Last badge string written; skips redundant Text writes while gold sits still. */
+  private lastWalletText: string | null = null;
   /** Unit buttons keyed by unit — driven through the three-state class below. */
   private readonly rows = new Map<DefenseUnitId, UiElement | null>();
   /** Class currently applied per unit button; guards redundant class swaps. */
@@ -261,7 +263,14 @@ export class BuildPanelSystem extends createSystem({
       ? (director.getValue(Wallet, 'money') as number)
       : Number.POSITIVE_INFINITY;
     if (this.walletText && director.hasComponent(Wallet)) {
-      this.walletText.setProperties({ text: `${Math.floor(money)}g` });
+      // The gold only moves on repair drain, a purchase, a sale or a level
+      // reset; between those moments rewriting the same string every frame
+      // would needlessly dirty the Text component, so guard on the value.
+      const text = `${Math.floor(money)}g`;
+      if (text !== this.lastWalletText) {
+        this.lastWalletText = text;
+        this.walletText.setProperties({ text });
+      }
     }
     for (const unitId of PLACEABLE_UNITS) {
       const row = this.rows.get(unitId);
