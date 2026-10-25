@@ -446,8 +446,9 @@ export const Repairing = createComponent('Repairing', {});
 
 /**
  * Explicit tag: the shared build panel is open, targeting the defense slot
- * in `slot`. Added by DefenseButtonSystem (build button click), removed by
- * BuildPanelSystem (row purchased) — its presence grays every build button.
+ * in `slot`. Added/removed by DefenseButtonSystem (build button click:
+ * open, switch slot, toggle close), removed by BuildPanelSystem (row
+ * purchased) — its presence shrinks the open slot's build icon.
  */
 export const BuildOpen = createComponent('BuildOpen', {
   /** Index into DEFENSE_SLOTS the open panel builds into. */
@@ -456,10 +457,10 @@ export const BuildOpen = createComponent('BuildOpen', {
 
 /**
  * One world-space build/repair button on the wall's land face: a flat
- * low-poly icon extrusion with an invisible enlarged hit proxy, its own
- * material (repair breathes via emissive, build grays via color). Defense-
- * ButtonSystem owns the visuals; the press itself is InputSystem's `Pressed`
- * tag (mouse / touch / XR ray share the path).
+ * low-poly icon extrusion with an invisible enlarged hit proxy. Defense-
+ * ButtonSystem owns the visuals (repair breathes via icon scale, the open
+ * slot's build icon shrinks via icon scale); the press itself is
+ * InputSystem's `Pressed` tag (mouse / touch / XR ray share the path).
  */
 export const DefenseButton = createComponent('DefenseButton', {
   /** Index into DEFENSE_SLOTS this button serves. */

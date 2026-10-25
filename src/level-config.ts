@@ -171,10 +171,12 @@ export const DEFENSE_BUTTONS = {
    */
   proxyBuild: { x: 0.18, y: 0.2, z: 0.04 },
   proxyRepair: { x: 0.11, y: 0.2, z: 0.04 },
-  /** Build-icon material colour while enabled (multiplies baked colors). */
-  enabledColor: 0xffffff,
-  /** Build-icon dimmer while the build panel owns the screen (置灰). */
-  disabledColor: 0x5a5a60,
+  /**
+   * Build-icon scale while its slot's dock is open — the shrunk "open" pose
+   * (pure transform, materials and hit proxies never change). Pressing the
+   * shrunk icon again toggles the dock closed.
+   */
+  openScale: 0.75,
   /**
    * Repair breathing: DefenseButtonSystem scales the icon up sinusoidally —
    * peak extra scale breatheScale (0.22 = +22%) at breatheSpeed rad/s. The

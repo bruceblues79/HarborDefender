@@ -70,9 +70,10 @@ const PANEL_FACTORS = { xr: 1, flat: 1.8 };
  * renders dimmed; the top-row badge beside the close button shows the live
  * gold. Picking a button swaps the slot's occupant via replaceDefenseUnit,
  * deducts from the wallet and closes; the round close button above the bar
- * dismisses without spending. While the tag sits on the director the build
- * buttons render grayed and refuse presses (DefenseButtonSystem's half of
- * the contract).
+ * dismisses without spending. While the tag sits on the director the open
+ * slot's build icon renders shrunk (DefenseButtonSystem's half of the
+ * contract); pressing another slot's button moves the dock there, pressing
+ * the open slot's own button closes it.
  *
  * The recycle button below the bar sells the opening slot's live occupant
  * for its depreciated book value (book value × ECONOMY.replaceDiscount —
