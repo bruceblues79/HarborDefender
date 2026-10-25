@@ -1,21 +1,23 @@
 <!--
   START gate panel: a mode picker over the persistent START button.
 
-  Heights lock the split at exactly 3:1: with the root's 100-unit border-box
-  height minus 4 units of padding, the content band is 92, so mode-section
-  takes 69 and start-section takes 23. Explicit heights replace flex-grow
-  because a flex-grow pair distributes only the space left after each item's
-  content basis, which let the button section eat into the quarter. The mode
+  Heights lock the split at exactly 3:1. flex-grow alone distributes only the
+  space left after each item's content basis, which let the button section eat
+  into the quarter; pairing flex-grow with flex-basis: 0 makes the mode section
+  take 3/4 and the START section 1/4 regardless of their contents. The mode
   section is a plain <div> with a transparent background: a Horizon <Panel>
   carries the kit's glass default and paints a second white plate around the
   rows. Each mode row is a lowercase <button> so its class fill renders
   exactly (Container, no kit material).
 
-  The leading glyph is sized 30 to fill the row height (69 - 2 gap = 67, split
-  between two rows = 33.5) with the row's left padding reduced to 2, so the
-  icon reads as the row's dominant element. ENDLESS is the selected playable
-  mode: light-grey row, dark text, solid icon. STORY is not selectable yet:
-  dark row, dim text, outline icon. border-radius 2 keeps the corners hard.
+  The leading glyph is sized 15 inside a 4-unit row padding so it stays a
+  compact checkbox rather than a panel-sized block. border-radius 12 makes the
+  row read as a near-capsule wedge (row height is about 33.5). The label grows
+  to fill the area right of the icon and centres its text inside that area.
+  Both rows share the same light-grey fill: ENDLESS is the selected playable
+  mode and earns contrast through its dark text and solid icon, while STORY is
+  unavailable and keeps grey text with the outline icon instead of a heavy dark
+  plate that could be mistaken for an active selection.
 
   Icons load through the <svg> tag (uikit Svg -> SVGLoader), which builds fill
   geometry only and drops strokes entirely. The requested streamline
@@ -47,7 +49,8 @@
   .mode-section {
     display: flex;
     flex-direction: column;
-    height: 69;
+    flex-grow: 3;
+    flex-basis: 0;
     gap: 2;
     background-color: #00000000;
   }
@@ -56,34 +59,30 @@
     display: flex;
     flex-direction: row;
     flex-grow: 1;
+    flex-basis: 0;
     align-items: center;
     gap: 3;
-    border-radius: 2;
-    padding-top: 0;
-    padding-right: 0;
-    padding-bottom: 0;
-    padding-left: 2;
-  }
-
-  .mode-row-on {
+    border-radius: 12;
     background-color: #c9ced6;
-  }
-
-  .mode-row-off {
-    background-color: #3a3f46;
+    padding-top: 4;
+    padding-right: 4;
+    padding-bottom: 4;
+    padding-left: 4;
   }
 
   .mode-icon {
     display: flex;
-    width: 30;
-    height: 30;
+    width: 15;
+    height: 15;
     background-color: #00000000;
   }
 
   .mode-label {
+    display: flex;
+    flex-grow: 1;
     font-size: 7;
     font-weight: 700;
-    text-align: left;
+    text-align: center;
     background-color: #00000000;
   }
 
@@ -98,7 +97,8 @@
   .start-section {
     display: flex;
     flex-direction: row;
-    height: 23;
+    flex-grow: 1;
+    flex-basis: 0;
     justify-content: center;
     align-items: center;
   }
@@ -134,11 +134,11 @@
 
 <Panel class="panel-root">
   <div class="mode-section">
-    <button id="mode-story" class="mode-row mode-row-off">
+    <button id="mode-story" class="mode-row">
       <svg class="mode-icon" src="ui/icons/mode-select.svg" />
       <div class="mode-label mode-label-off">STORY</div>
     </button>
-    <button id="mode-endless" class="mode-row mode-row-on">
+    <button id="mode-endless" class="mode-row">
       <svg class="mode-icon" src="ui/icons/mode-select-solid.svg" />
       <div class="mode-label mode-label-on">ENDLESS</div>
     </button>
