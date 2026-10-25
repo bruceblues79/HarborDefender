@@ -241,8 +241,8 @@ export function getDefensePadMaterial(
 
 /**
  * Every mounted defender with the pose it resets to on battle re-entry.
- * Cannons reset to the stock half-raised barrel; the ballista to its fixed
- * 75° anti-air elevation (its per-entity pitchMin/pitchMax differ).
+ * Cannons reset to the stock half-raised barrel; the ballista to its mid-
+ * range 50° anti-air elevation (its per-entity pitchMin/pitchMax differ).
  */
 interface DefenseEntity {
   entity: Entity;

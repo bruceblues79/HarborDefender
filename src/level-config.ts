@@ -237,13 +237,13 @@ export const ECONOMY = {
 };
 
 /**
- * Anti-air ballista aim envelope: fixed high elevation against flyers —
- * default 75° up, at most 50° of depression, never above 75°. The deep 25°
+ * Anti-air ballista aim envelope: against flyers — default rests at the
+ * mid-range 50° between the 25° floor and the 75° ceiling. The deep 25°
  * floor lets the bolts reach the ornithopter's middle-air band (y ≈ 2.3 at
- * z -3.0..-4.4) instead of only the higher bombardier plane.
+ * z -4.4..-2.8) instead of only the higher bombardier plane.
  */
 export const SKY_BALLISTA = {
-  pitchDefault: 75,
+  pitchDefault: 50,
   pitchMin: 25,
   pitchMax: 75,
 };
@@ -619,17 +619,18 @@ export const FLYER_STOP_Z_MAX = -1.23;
  * Ornithopter flight envelope. The middle-air band sits below the
  * bombardier's cruise plane but inside the city cannons' reach: a 45° shell
  * launched from y 0.941 crosses y 2.3 on its descent between z ≈ -3.0 and
- * -5.0, so a flyer berthed inside [-4.4, -3.0] stays in the 45° envelope's
- * kill corridor. The 25° ballista bolt line from its muzzle (y 1.134,
- * z -0.916) crosses the band's core height range [1.8, 2.8] throughout, so
- * the anti-air mount covers it too.
+ * -5.0, so a flyer berthed in the band's core [-4.4, -3.0] stays in the
+ * 45° envelope's kill corridor, while the forward extension [-3.0, -2.8]
+ * sits this side of it — still well inside cannon range. The 25° ballista
+ * bolt line from its muzzle (y 1.134, z -0.916) crosses the band's core
+ * height range [1.8, 2.8] throughout, so the anti-air mount covers it too.
  */
 export const ORNITHOPTER = {
   /** Cruise altitude (m) — the unit's object-origin height. */
   y: 2.3,
-  /** Berth band: far out at -4.4, nearest at -3.0. */
+  /** Berth band: far out at -4.4, nearest at -2.8. */
   stopZMin: -4.4,
-  stopZMax: -3.0,
+  stopZMax: -2.8,
   /** Uniform model scale — 0.9 reads 10% smaller next to the bombardier. */
   scale: 0.9,
   /** Wing flap frequency (rad/s) and swing amplitude (rad). */
