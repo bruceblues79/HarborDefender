@@ -41,6 +41,55 @@ import { HitFlashSystem } from './hit-flash-system.js';
 import { SplashSystem } from './splash-system.js';
 
 /**
+ * Re-bake the harbor wall's vertex colors into per-face stone mottle. The
+ * GLB's baked colors are sparse (1694 verts across a 3.4 m wall), so their
+ * large-scale variation interpolates over huge faces into a near-flat wash —
+ * extra faces would buy mottling far too dearly. Instead the geometry goes
+ * non-indexed (original normals kept — no recompute, shading is unchanged)
+ * so each face can carry ONE solid tint: its averaged baked color jittered
+ * by a seeded ±7% brightness and a whisper of warmth. Zero extra triangles,
+ * zero textures, and the sequence is deterministic across sessions.
+ * Idempotent: already non-indexed geometry is left untouched.
+ */
+function bakeWallFaceMottle(root: Object3D): void {
+  let seed = 0x9e3779b9;
+  const rand = () => {
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    return ((seed >>> 0) / 0xffffffff) * 2 - 1; // -1..1
+  };
+  root.traverse((child: Object3D) => {
+    const mesh = child as Mesh;
+    if (!mesh.isMesh || !mesh.geometry.index) return;
+    const geometry = mesh.geometry.toNonIndexed();
+    const color = geometry.attributes.color;
+    if (!color) return;
+    for (let face = 0; face < color.count; face += 3) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let v = 0; v < 3; v++) {
+        r += color.getX(face + v);
+        g += color.getY(face + v);
+        b += color.getZ(face + v);
+      }
+      r /= 3;
+      g /= 3;
+      b /= 3;
+      const jitter = 1 + rand() * 0.07;
+      const warm = rand() * 0.02;
+      const tint = (c: number): number => Math.min(1, Math.max(0, c));
+      r = tint(r * jitter + warm);
+      g = tint(g * jitter);
+      b = tint(b * jitter - warm * 0.5);
+      for (let v = 0; v < 3; v++) color.setXYZ(face + v, r, g, b);
+    }
+    mesh.geometry = geometry;
+  });
+}
+
+/**
  * Hang the two invisible combat helpers on a mounted-defender prototype once,
  * so every clone inherits them: the `muzzle` on the gun_rotate pivot (shots
  * launch down its world -Z; the offset is per unit — the cannon's barrel tip
@@ -361,6 +410,7 @@ export function startBattle(world: World): void {
 
           // Place harbor wall at the ocean body's maxZ edge
           const wallObject = wallGltf.scene;
+          bakeWallFaceMottle(wallObject);
           wallObject.position.set(0, 0.55, -0.8);
           // Runtime-instantiated GLB meshes keep three.js defaults
           // (both false); scene-JSON assets get these via content flags.
