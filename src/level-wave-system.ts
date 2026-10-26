@@ -39,6 +39,7 @@ import {
   ECONOMY,
   OCEAN,
   OCEAN_FAR_Z,
+  BOSS,
   PACING,
   SPAWN_FADE_DURATION,
   SPAWN_ROLL_TRIES,
@@ -570,24 +571,28 @@ export class LevelWaveSystem extends createSystem({
   private attachBossTurretHealth(boss: Entity): void {
     const root = boss.object3D;
     if (!root) return;
-    // HealthBarSystem anchors each bar on the turret subtree's bounding box,
-    // read the instant Health lands below — one frame BEFORE the renderer
-    // would refresh world matrices. This clone was just positioned, so its
-    // root still carries a stale matrixWorld while getWorldPosition() reads
-    // fresh: the box would place the turrets as if the hull sat at the
-    // origin and every bar would float |cruiseY| too high. Refresh once —
-    // spawn-time only, never per frame.
-    root.updateMatrixWorld(true);
-    for (const name of ['gun_t1', 'gun_t2', 'gun_t3', 'gun_t4']) {
+    // The armour-part wrappers are deterministic baked geometry, so each
+    // bar pins to an explicit carrier-local height (BOSS.*BarY). No bbox
+    // derivation here: a deep child spawned mid-frame carries a stale
+    // ancestor matrixWorld, which is exactly what floated the bars before.
+    const parts: Array<[string, number]> = [
+      ['gun_t1', BOSS.turretBarY],
+      ['gun_t2', BOSS.turretBarY],
+      ['gun_t3', BOSS.turretBarY],
+      ['gun_t4', BOSS.turretBarY],
+      ['laser_turret', BOSS.laserBarY],
+    ];
+    for (const [name, barY] of parts) {
       const wrapper = root.getObjectByName(name);
       if (!wrapper) continue;
-      const turret = this.world.createTransformEntity(wrapper, boss);
-      // Lifecycle only: no UnitTag (turrets must not count as wave units),
+      const part = this.world.createTransformEntity(wrapper, boss);
+      // Lifecycle only: no UnitTag (parts must not count as wave units),
       // teardown finds them through BossTurret (see disposeAttackers).
-      turret.addComponent(BossTurret);
-      turret.addComponent(Health, {
+      part.addComponent(BossTurret);
+      part.addComponent(Health, {
         current: COMBAT.unitHealth,
         max: COMBAT.unitHealth,
+        barY,
       });
     }
   }

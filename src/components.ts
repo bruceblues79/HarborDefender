@@ -283,6 +283,14 @@ export const Health = createComponent('Health', {
   current: { type: 'Float32', default: 1 },
   /** Hits the unit starts with; the RESTART restore target. */
   max: { type: 'Float32', default: 1 },
+  /**
+   * Explicit bar height in the carrier's LOCAL space. HealthBarSystem pins
+   * the bar here verbatim when set (>= 0) and skips its bounding-box
+   * derivation entirely — for deep child carriers (boss armour parts) the
+   * derivation reads a mid-frame stale ancestor matrix and floats the bar.
+   * -1 = derive from the subtree bbox (every hull-carried unit).
+   */
+  barY: { type: 'Float32', default: -1 },
 });
 
 /**

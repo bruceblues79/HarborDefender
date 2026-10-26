@@ -687,6 +687,16 @@ export const BOSS = {
    * what it can't show.
    */
   wakeRadius: 3.75,
+  /**
+   * Explicit bar heights (carrier-local y) for the armour-part wrappers'
+   * health bars. The turret subtrees are deterministic baked geometry, so
+   * the bars pin to known tops (gun barrel top 0.176, laser barrel top
+   * 0.465) plus the shared bar margin (0.12) instead of deriving from
+   * runtime bounding boxes — a deep child spawned mid-frame carries a stale
+   * ancestor matrix, and the bbox path would float the bar.
+   */
+  turretBarY: 0.176 + COMBAT.healthBarMarginY,
+  laserBarY: 0.465 + COMBAT.healthBarMarginY,
 };
 
 /**
