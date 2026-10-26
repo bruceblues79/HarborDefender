@@ -480,6 +480,16 @@ export const DefenseButton = createComponent('DefenseButton', {
  */
 export const HideHealthBar = createComponent('HideHealthBar', {});
 
+/**
+ * Explicit tag (no fields): `BossTurret` — lifecycle marker on the boss's
+ * four baked turret child entities. Each turret carries its own Health pool
+ * (so its own bar via HealthBarSystem) but has no UnitTag/ShipMovement, so
+ * the attackers query never sees them; reset and restart tear them down
+ * through this tag, because Entity.dispose() does not cascade into child
+ * entities and they must die with their hull.
+ */
+export const BossTurret = createComponent('BossTurret', {});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -515,4 +525,5 @@ export default defineComponents([
   BuildOpen,
   DefenseButton,
   HideHealthBar,
+  BossTurret,
 ]);

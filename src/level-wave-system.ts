@@ -15,6 +15,7 @@ import {
 } from '@iwsdk/core';
 import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
 import {
+  BossTurret,
   BuildOpen,
   Destroyed,
   GameOver,
@@ -141,6 +142,7 @@ type DirectorPhase =
 export class LevelWaveSystem extends createSystem({
   directors: { required: [LevelDirector] },
   attackers: { required: [UnitTag, ShipMovement] },
+  bossTurrets: { required: [BossTurret] },
   cores: { required: [HitCore] },
 }) {
   /** Unit prototypes keyed by unitType; clones share geometry and materials. */
@@ -230,6 +232,14 @@ export class LevelWaveSystem extends createSystem({
    * destroys exactly those shared GPU resources and poisons future spawns. */
   private disposeAttackers(): void {
     this.retiring.length = 0;
+    // Boss turret child entities die first, then their hull: Entity.dispose()
+    // never cascades into child entities, and the turrets' ECS Transform
+    // parent link must not outlive its target. They carry no UnitTag/
+    // ShipMovement, so the attackers query above cannot see them — the
+    // BossTurret tag is their only teardown handle.
+    for (const entity of this.queries.bossTurrets.entities) {
+      this.retiring.push(entity);
+    }
     for (const entity of this.queries.attackers.entities) {
       this.retiring.push(entity);
     }
@@ -517,9 +527,11 @@ export class LevelWaveSystem extends createSystem({
       entity.addComponent(WingFlap);
     }
     // Boss hulls are navigation-only right now: they spawn, run their
-    // straight centre-line berth and hold — no Health, no HitCore, nothing
-    // for the defenders to hit. The combat kit returns with the boss systems.
+    // straight centre-line berth and hold. The hull itself stays
+    // Health-less — nothing for the defenders to hit — but the four baked
+    // turrets each carry their own Health pool, which is all a bar needs.
     if (def.boss) {
+      this.attachBossTurretHealth(entity);
       return entity;
     }
     // Hull hit points: the ship sinks once ShellHitSystem has charged
@@ -547,6 +559,37 @@ export class LevelWaveSystem extends createSystem({
       });
     }
     return entity;
+  }
+
+  /**
+   * Construction, not behaviour: turn the GLB's four baked turret wrappers
+   * (`gun_t1`..`gun_t4`) into child entities and give each one Health.
+   * HealthBarSystem then attaches and billboards a bar per turret on its
+   * own — no bar code lives here.
+   */
+  private attachBossTurretHealth(boss: Entity): void {
+    const root = boss.object3D;
+    if (!root) return;
+    // HealthBarSystem anchors each bar on the turret subtree's bounding box,
+    // read the instant Health lands below — one frame BEFORE the renderer
+    // would refresh world matrices. This clone was just positioned, so its
+    // root still carries a stale matrixWorld while getWorldPosition() reads
+    // fresh: the box would place the turrets as if the hull sat at the
+    // origin and every bar would float |cruiseY| too high. Refresh once —
+    // spawn-time only, never per frame.
+    root.updateMatrixWorld(true);
+    for (const name of ['gun_t1', 'gun_t2', 'gun_t3', 'gun_t4']) {
+      const wrapper = root.getObjectByName(name);
+      if (!wrapper) continue;
+      const turret = this.world.createTransformEntity(wrapper, boss);
+      // Lifecycle only: no UnitTag (turrets must not count as wave units),
+      // teardown finds them through BossTurret (see disposeAttackers).
+      turret.addComponent(BossTurret);
+      turret.addComponent(Health, {
+        current: COMBAT.unitHealth,
+        max: COMBAT.unitHealth,
+      });
+    }
   }
 
   /** Begin the given level, or declare the run complete past the last one. */
