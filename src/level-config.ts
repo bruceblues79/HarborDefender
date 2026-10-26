@@ -702,9 +702,14 @@ export const BOSS = {
   targetZ: OCEAN.centerZ,
   /** Seconds between two shots from one cannon turret (plus shared jitter). */
   turretFireInterval: 3.0,
-  /** Hit-core radii (m): turret/laser parts, then the exposed hull. */
-  turretCoreRadius: 0.3,
-  laserCoreRadius: 0.3,
+  /**
+   * Hit-core radii (m): turret/laser parts, then the exposed hull. The part
+   * cores track their upscaled turrets — until the hull is revealed they are
+   * the only hittable plates, and at the boss's 8.5 m berth a pin-head core
+   * reads as "shells pass through" (v0.1.176 lesson).
+   */
+  turretCoreRadius: 0.42,
+  laserCoreRadius: 0.36,
   hullCoreRadius: 0.85,
   /** Summon cycle: one wave of flappers every summonIntervalSec seconds. */
   summonIntervalSec: 120,
@@ -717,7 +722,7 @@ export const BOSS = {
   /** Laser cadence: charge, fire, then wait laserIntervalSec seconds. */
   laserIntervalSec: 22,
   laserChargeSec: 2.5,
-  laserBeamSec: 0.4,
+  laserBeamSec: 0.6,
   /** Beam damage: percentage of the victim's MAX pool, applied directly. */
   laserDamagePct: 60,
   /** Kamikaze dive: damage pct of the victim's MAX pool + dive speed (m/s). */
@@ -725,9 +730,13 @@ export const BOSS = {
   kamikazeSpeed: 1.2,
   /** Distance (m) at which a diving flapper's payload counts as delivered. */
   kamikazeHitDistance: 0.2,
-  /** Laser beam visuals: beam cylinder radius, charge-glow sphere radius. */
-  laserBeamRadius: 0.03,
-  laserGlowRadius: 0.12,
+  /**
+   * Laser beam visuals: beam cylinder radius, charge-glow sphere radius.
+   * Sized to be unmissable — the v0.1.176 beam (0.03 / 0.12) fired on cadence
+   * but read as invisible against the sky.
+   */
+  laserBeamRadius: 0.05,
+  laserGlowRadius: 0.2,
 };
 
 /**
@@ -785,7 +794,10 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     scale: 1,
     movement: 'default-ship',
     faction: 'attacker',
-    cruiseY: SHIP_Y,
+    // The boss GLB bakes y = 0 as its own waterline (keel -0.25), so it rides
+    // the ocean surface itself — SHIP_Y is the raider hulls' origin height
+    // and left the island hovering a half-metre above the waves (v0.1.176).
+    cruiseY: OCEAN.surfaceY - 0.04,
     // Unarmed at the sheet level: the boss systems drive the turrets, the
     // shared PirateCannon deck-gun path never touches this hull.
     armed: false,

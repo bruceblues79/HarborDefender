@@ -2091,7 +2091,6 @@ const BOSS_DECK_COLOR = 0x2f2a24;
 const BOSS_ROCK_COLOR = 0x3a3632;
 const BOSS_ROCK_DEEP_COLOR = 0x2e2b28;
 const BOSS_IRON_COLOR = 0x2b2f33;
-const BOSS_MOSS_COLOR = 0x4a5d3a;
 const BOSS_EMBER_COLOR = 0x8a1400;
 const BOSS_BANNER_COLOR = 0x5c0f0f;
 
@@ -2137,21 +2136,21 @@ function crag(geo: BufferGeometry, amount: number): void {
 }
 
 /**
- * The static island mass: basalt mesa (three craggy frustums), the central
+ * The static island mass: basalt mesa (two craggy frustums), the central
  * citadel tower with its ember crown, the four gun-bastion seats (the
  * turrets are separate yaw pivots — when one is destroyed its empty stone
- * seat stays behind, the wreck IS the design), a low bulwark, the iron prow
- * ram and the stern mast with its tattered banner. One merged mesh.
+ * seat stays behind, the wreck IS the design; the rear pair steps one
+ * terrace higher), ember-red war banners on the bow flank and the stern
+ * mast with its tattered banner. One merged mesh.
  */
 function buildBossIsland(rand: () => number): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  // Basalt mesa: three stacked frustums, alternating tones, crag-jittered.
+  // Basalt mesa: two stacked frustums, alternating tones, crag-jittered.
   const mesa: Array<[number, number, number, number, number]> = [
     // rTop, rBottom, height, yBase, color
     [0.6, 0.72, 0.34, 0.28, BOSS_ROCK_COLOR],
     [0.44, 0.56, 0.3, 0.62, BOSS_ROCK_DEEP_COLOR],
-    [0.26, 0.34, 0.26, 0.92, BOSS_ROCK_COLOR],
   ];
   for (const [rTop, rBottom, h, yBase, color] of mesa) {
     const tier = new CylinderGeometry(rTop, rBottom, h, 9);
@@ -2161,44 +2160,63 @@ function buildBossIsland(rand: () => number): BufferGeometry {
     parts.push(tier);
   }
 
-  // Citadel tower above the mesa top (y 1.18) + ember crown band. The laser
-  // pivot rides the crown top at y 1.42.
-  const tower = new CylinderGeometry(0.2, 0.26, 0.2, 9);
+  // Citadel tower above the mesa top (y 0.92) + ember crown band. The laser
+  // pivot rides the crown top at y 1.25 — one terrace shorter than the
+  // v0.1.176 stack, so the prism gun crowns the silhouette instead of a
+  // second rock tier.
+  const tower = new CylinderGeometry(0.2, 0.26, 0.26, 9);
   crag(tower, 0.07);
-  tower.translate(0, 1.28, 0);
+  tower.translate(0, 1.05, 0);
   paint(tower, BOSS_ROCK_DEEP_COLOR, 0.05, rand);
   parts.push(tower);
   const crown = new CylinderGeometry(0.23, 0.2, 0.06, 9);
-  crown.translate(0, 1.39, 0);
+  crown.translate(0, 1.21, 0);
   paint(crown, BOSS_EMBER_COLOR, 0.03, rand);
   parts.push(crown);
 
-  // Four gun-bastion seats (static): stone drums half-embedded in the mesa
-  // flanks, tops flush at y 0.64 — the turret pivots sit exactly there.
+  // Gun-bastion seats (static): stone drums half-embedded in the mesa
+  // flanks. Front pair tops flush at y 0.64, rear pair stepped up to y 0.84
+  // — the staggered battery height the boss reads by. The turret pivots sit
+  // exactly on the seat tops.
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
-      const seat = new CylinderGeometry(0.15, 0.17, 0.4, 10);
+      const rear = sz > 0;
+      const seat = new CylinderGeometry(
+        rear ? 0.19 : 0.17,
+        rear ? 0.21 : 0.19,
+        rear ? 0.6 : 0.4,
+        10,
+      );
       crag(seat, 0.06);
-      seat.translate(sx * 0.6, 0.44, sz * 0.45);
+      seat.translate(sx * 0.6, rear ? 0.54 : 0.44, sz * 0.45);
       paint(seat, BOSS_ROCK_DEEP_COLOR, 0.05, rand);
       parts.push(seat);
     }
   }
 
-  // Moss patches on the mesa skirts: small flattened icosahedra.
-  const mossSpots: Array<[number, number, number, number]> = [
-    [0.4, 0.36, -0.5, 0.09],
-    [-0.55, 0.42, 0.25, 0.08],
-    [-0.3, 0.64, -0.42, 0.07],
-    [0.5, 0.68, 0.3, 0.06],
-    [0.15, 0.95, 0.32, 0.05],
-  ];
-  for (const [x, y, z, r] of mossSpots) {
-    const patch = new IcosahedronGeometry(r, 0);
-    patch.scale(1, 0.45, 1);
-    patch.translate(x, y, z);
-    paint(patch, BOSS_MOSS_COLOR, 0.08, rand);
-    parts.push(patch);
+  // Ember-red structures: a trim ring at the tower base plus two shredded
+  // war banners hanging on the bow flank (the side the harbour sees).
+  const trim = new CylinderGeometry(0.27, 0.27, 0.035, 9);
+  trim.translate(0, 0.935, 0);
+  paint(trim, BOSS_EMBER_COLOR, 0.02, rand);
+  parts.push(trim);
+  for (const bx of [-0.26, 0.26]) {
+    const banner = new PlaneGeometry(0.13, 0.2, 2, 2);
+    const bannerPos = banner.attributes.position as BufferAttribute;
+    for (let i = 0; i < bannerPos.count; i++) {
+      // Tear the fly edge into points so the cloth reads battle-worn.
+      if (bannerPos.getX(i) > 0.04) {
+        bannerPos.setZ(
+          i,
+          bannerPos.getZ(i) + (bannerPos.getY(i) > 0 ? 0.015 : -0.02),
+        );
+      }
+    }
+    banner.computeVertexNormals();
+    banner.rotateY(Math.PI); // face the bow (-Z) — toward the wall
+    banner.translate(bx, 0.5, -0.58);
+    paint(banner, BOSS_BANNER_COLOR, 0.02, rand);
+    parts.push(banner);
   }
 
   // Low dark bulwark strips along the deck rim (aggressive low silhouette).
@@ -2214,13 +2232,6 @@ function buildBossIsland(rand: () => number): BufferGeometry {
     paint(rail, BOSS_TIMBER_COLOR, 0.04, rand);
     parts.push(rail);
   }
-
-  // Iron prow ram under the bow tip.
-  const ram = new ConeGeometry(0.075, 0.3, 6);
-  ram.rotateX(-Math.PI / 2);
-  ram.translate(0, 0.05, -1.0);
-  paint(ram, BOSS_IRON_COLOR, 0.03, rand);
-  parts.push(ram);
 
   // Stern mast + tattered banner (thin plane, double-sided hull material).
   const mast = new CylinderGeometry(0.018, 0.026, 0.55, 8);
@@ -2248,35 +2259,38 @@ function buildBossIsland(rand: () => number): BufferGeometry {
  * the bastion seat top). Heavy iron naval gun: turntable, carriage, tapered
  * barrel with an ember chase ring and a knobby breech. Built ONCE — all four
  * pivots share the geometry; the GLB exports it once and references it.
+ * Upscaled from the v0.1.176 block (~1.3x): at the boss's 8.5 m berth the
+ * old block read as a stud — the turrets are the boss's hittable plates and
+ * must carry their own silhouette.
  */
 function buildBossGunTurret(rand: () => number): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  const turntable = new CylinderGeometry(0.115, 0.13, 0.03, 12);
-  turntable.translate(0, 0.005, 0);
+  const turntable = new CylinderGeometry(0.15, 0.17, 0.04, 12);
+  turntable.translate(0, 0.01, 0);
   paint(turntable, BOSS_IRON_COLOR, 0.03, rand);
   parts.push(turntable);
 
-  const carriage = new BoxGeometry(0.15, 0.06, 0.17);
-  carriage.translate(0, 0.045, 0.01);
+  const carriage = new BoxGeometry(0.19, 0.08, 0.22);
+  carriage.translate(0, 0.06, 0.01);
   paint(carriage, BOSS_TIMBER_COLOR, 0.04, rand);
   parts.push(carriage);
 
-  const barrel = new CylinderGeometry(0.034, 0.052, 0.36, 10);
+  const barrel = new CylinderGeometry(0.044, 0.066, 0.46, 10);
   barrel.rotateX(-Math.PI / 2);
-  barrel.translate(0, 0.085, -0.16);
+  barrel.translate(0, 0.11, -0.2);
   paint(barrel, BOSS_IRON_COLOR, 0.03, rand);
   parts.push(barrel);
 
   // Ember chase ring near the muzzle — the guns read hot even before firing.
-  const ring = new CylinderGeometry(0.045, 0.045, 0.02, 10);
+  const ring = new CylinderGeometry(0.058, 0.058, 0.025, 10);
   ring.rotateX(-Math.PI / 2);
-  ring.translate(0, 0.085, -0.28);
+  ring.translate(0, 0.11, -0.36);
   paint(ring, BOSS_EMBER_COLOR, 0.02, rand);
   parts.push(ring);
 
-  const breech = new SphereGeometry(0.05, 6, 4);
-  breech.translate(0, 0.085, 0.05);
+  const breech = new SphereGeometry(0.064, 6, 4);
+  breech.translate(0, 0.11, 0.06);
   paint(breech, BOSS_IRON_COLOR, 0.03, rand);
   parts.push(breech);
 
@@ -2287,46 +2301,48 @@ function buildBossGunTurret(rand: () => number): BufferGeometry {
  * The laser citadel gun, built in laser_turret-local space (origin = yaw
  * pivot on the crown top). An obsidian prism blade between iron yoke cheeks,
  * ember bands up the spine — the boss's signature weapon reads ceremonial
- * and lethal, not like the iron guns below.
+ * and lethal, not like the iron guns below. Longer and heavier than the
+ * v0.1.176 block: the prism blade now juts well clear of the crown so the
+ * charge glow blooms in plain view.
  */
 function buildBossLaserTurret(rand: () => number): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  const collar = new CylinderGeometry(0.1, 0.12, 0.07, 10);
-  collar.translate(0, 0.025, 0);
+  const collar = new CylinderGeometry(0.13, 0.15, 0.08, 10);
+  collar.translate(0, 0.03, 0);
   paint(collar, BOSS_IRON_COLOR, 0.03, rand);
   parts.push(collar);
 
-  const cheek = new BoxGeometry(0.016, 0.075, 0.11);
+  const cheek = new BoxGeometry(0.02, 0.09, 0.14);
   const cheekPlus = cheek.clone();
-  cheekPlus.translate(0.062, 0.075, -0.03);
+  cheekPlus.translate(0.08, 0.1, -0.04);
   const cheekMinus = cheek.clone();
-  cheekMinus.translate(-0.062, 0.075, -0.03);
+  cheekMinus.translate(-0.08, 0.1, -0.04);
   paint(cheekPlus, BOSS_IRON_COLOR, 0.03, rand);
   paint(cheekMinus, BOSS_IRON_COLOR, 0.03, rand);
   parts.push(cheekPlus, cheekMinus);
 
   // Prism barrel: two four-sided cones base-to-base — a diamond blade that
   // tapers to a needle at the muzzle.
-  const prismFront = new ConeGeometry(0.052, 0.2, 4);
+  const prismFront = new ConeGeometry(0.065, 0.3, 4);
   prismFront.rotateX(-Math.PI / 2);
   prismFront.rotateY(Math.PI / 4);
-  prismFront.translate(0, 0.09, -0.13);
+  prismFront.translate(0, 0.115, -0.19);
   paint(prismFront, BOSS_ROCK_DEEP_COLOR, 0.04, rand);
   parts.push(prismFront);
-  const prismRear = new ConeGeometry(0.052, 0.12, 4);
+  const prismRear = new ConeGeometry(0.065, 0.14, 4);
   prismRear.rotateX(Math.PI / 2);
   prismRear.rotateY(Math.PI / 4);
-  prismRear.translate(0, 0.09, 0.03);
+  prismRear.translate(0, 0.115, 0.05);
   paint(prismRear, BOSS_ROCK_DEEP_COLOR, 0.04, rand);
   parts.push(prismRear);
 
   // Ember spine bands up the prism.
-  for (const z of [-0.08, -0.02]) {
-    const band = new CylinderGeometry(0.056, 0.056, 0.014, 4);
+  for (const z of [-0.12, -0.02]) {
+    const band = new CylinderGeometry(0.07, 0.07, 0.018, 4);
     band.rotateX(-Math.PI / 2);
     band.rotateY(Math.PI / 4);
-    band.translate(0, 0.09, z);
+    band.translate(0, 0.115, z);
     paint(band, BOSS_EMBER_COLOR, 0.02, rand);
     parts.push(band);
   }
@@ -2374,47 +2390,49 @@ function createBossIslewrathExport(): Object3D {
   islandMesh.name = 'boss-island-mesh';
 
   const gunGeometry = buildBossGunTurret(rand);
-  const gunPivots: Array<[string, number, number]> = [
-    ['gun_t1', -0.6, -0.45],
-    ['gun_t2', 0.6, -0.45],
-    ['gun_t3', -0.6, 0.45],
-    ['gun_t4', 0.6, 0.45],
+  // Front pair (bow side, -Z) low on its seats, rear pair stepped one
+  // terrace higher — the staggered battery silhouette.
+  const gunPivots: Array<[string, number, number, number]> = [
+    ['gun_t1', -0.6, -0.45, 0.64],
+    ['gun_t2', 0.6, -0.45, 0.64],
+    ['gun_t3', -0.6, 0.45, 0.84],
+    ['gun_t4', 0.6, 0.45, 0.84],
   ];
 
   const root = new Object3D();
   root.name = 'boss_islewrath';
   root.add(islandMesh);
-  for (const [name, x, z] of gunPivots) {
+  for (const [name, x, z, y] of gunPivots) {
     const pivot = new Object3D();
     pivot.name = name;
-    pivot.position.set(x, 0.64, z);
+    pivot.position.set(x, y, z);
     const gunMesh = new Mesh(gunGeometry, gunMaterial);
     gunMesh.name = `boss-gun-mesh-${name}`;
     pivot.add(gunMesh);
     const muzzle = new Object3D();
     muzzle.name = 'muzzle';
-    muzzle.position.set(0, 0.085, -0.37);
+    muzzle.position.set(0, 0.11, -0.46);
     pivot.add(muzzle);
     const hitCore = new Object3D();
     hitCore.name = 'hit_core';
-    hitCore.position.set(0, 0.05, -0.02);
+    hitCore.position.set(0, 0.07, -0.02);
     pivot.add(hitCore);
     root.add(pivot);
   }
 
   const laserPivot = new Object3D();
   laserPivot.name = 'laser_turret';
-  laserPivot.position.set(0, 1.42, -0.08);
+  laserPivot.position.set(0, 1.25, -0.08);
   const laserMesh = new Mesh(buildBossLaserTurret(rand), gunMaterial);
   laserMesh.name = 'boss-laser-mesh';
   laserPivot.add(laserMesh);
   const laserMuzzle = new Object3D();
   laserMuzzle.name = 'muzzle';
-  laserMuzzle.position.set(0, 0.09, -0.24);
+  laserMuzzle.position.set(0, 0.115, -0.36);
   laserPivot.add(laserMuzzle);
   const laserCore = new Object3D();
   laserCore.name = 'hit_core';
-  laserCore.position.set(0, 0.06, -0.02);
+  laserCore.position.set(0, 0.08, -0.02);
   laserPivot.add(laserCore);
   root.add(laserPivot);
 
