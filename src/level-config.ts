@@ -51,6 +51,11 @@ export interface UnitTypeDef {
   stone: boolean;
   /** Disturbs the ocean surface (WakeSource); flyers never touch water. */
   wake: boolean;
+  /**
+   * Ripple radius (m) this unit drags across the surface. Optional: falls
+   * back to the shared WAKE_RADIUS — only oversized hulls (the boss) set it.
+   */
+  wakeRadius?: number;
   /** Berth z bounds rolled for this unit's stop point (MIN far, MAX near). */
   stopZMin: number;
   stopZMax: number;
@@ -593,10 +598,11 @@ export const COMBAT = {
  * the four cannon turrets (`islewrath-turret`, 6% per shell), the laser
  * citadel (`islewrath-laser`, 2% — the hardest plate) and, once every turret
  * is destroyed, the hull itself (`islewrath`, 10%). The boss turret's own
- * shells read 20% off the `islewrath-turret->defender` rows. The laser beam
- * and the summoned flappers' kamikaze dive bypass this table: they deal a
- * percentage of the victim's MAX pool directly (BOSS.laserDamagePct /
- * BOSS.kamikazeDamagePct) — a special case documented in combat.md.
+ * shells read 20% off the `islewrath-turret->defender` rows. The summoned
+ * flappers' kamikaze dive bypasses this table: it deals a percentage of the
+ * victim's MAX pool directly (BOSS.kamikazeDamagePct) — a special case
+ * documented in combat.md. The laser's charged beam attack is removed for
+ * now (v0.1.180 shape-first iteration); its damage row returns with it.
  */
 export const DAMAGE_MATRIX: Record<string, number> = {
   'cannon->pirate-ship': COMBAT.shellDamage,
@@ -697,9 +703,17 @@ export const BOSS = {
   turretUnitType: 'islewrath-turret',
   laserUnitType: 'islewrath-laser',
   hullUnitType: 'islewrath',
-  /** Straight-run berth point: dead centre of the ocean, no lateral drift. */
+  /** Straight-run berth point: centre line, one unit nearer the wall than
+   * the ocean midpoint — the wake rings and broadside read better there. */
   targetX: 0,
-  targetZ: OCEAN.centerZ,
+  targetZ: OCEAN.centerZ + 1,
+  /**
+   * Ripple radius (m) of the boss's wake. The hull is 3-4x a raider's beam,
+   * so its wake dwarfs the shared WAKE_RADIUS (1.25 × 3 = 3.75); a radius
+   * wider than the ocean body is fine — the surface shader simply clips
+   * what it can't show.
+   */
+  wakeRadius: 3.75,
   /** Seconds between two shots from one cannon turret (plus shared jitter). */
   turretFireInterval: 3.0,
   /**
@@ -719,24 +733,11 @@ export const BOSS = {
   sacrificeLeadSec: 15,
   /** Summon-interval multiplier once the hull is exposed (25% shorter). */
   exposedIntervalScale: 0.75,
-  /** Laser cadence: charge, fire, then wait laserIntervalSec seconds. */
-  laserIntervalSec: 22,
-  laserChargeSec: 2.5,
-  laserBeamSec: 0.6,
-  /** Beam damage: percentage of the victim's MAX pool, applied directly. */
-  laserDamagePct: 60,
   /** Kamikaze dive: damage pct of the victim's MAX pool + dive speed (m/s). */
   kamikazeDamagePct: 40,
   kamikazeSpeed: 1.2,
   /** Distance (m) at which a diving flapper's payload counts as delivered. */
   kamikazeHitDistance: 0.2,
-  /**
-   * Laser beam visuals: beam cylinder radius, charge-glow sphere radius.
-   * Sized to be unmissable — the v0.1.176 beam (0.03 / 0.12) fired on cadence
-   * but read as invisible against the sky.
-   */
-  laserBeamRadius: 0.05,
-  laserGlowRadius: 0.2,
 };
 
 /**
@@ -794,10 +795,12 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     scale: 1,
     movement: 'default-ship',
     faction: 'attacker',
-    // The boss GLB bakes y = 0 as its own waterline (keel -0.25), so it rides
-    // the ocean surface itself — SHIP_Y is the raider hulls' origin height
-    // and left the island hovering a half-metre above the waves (v0.1.176).
-    cruiseY: OCEAN.surfaceY - 0.04,
+    // Waterline seat (v0.1.180): two draft orders consolidated — the surface
+    // cuts the mesa at model +0.35, so the hull skirt is fully buried and
+    // the basalt mesa itself rises straight out of the sea, the floating-
+    // island read. Going deeper would drown the mesa base and the front
+    // gun seats, and sink the bow ram's visible tip below the waves.
+    cruiseY: OCEAN.surfaceY - 0.35,
     // Unarmed at the sheet level: the boss systems drive the turrets, the
     // shared PirateCannon deck-gun path never touches this hull.
     armed: false,
@@ -806,6 +809,7 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     flap: false,
     stone: false,
     wake: true,
+    wakeRadius: BOSS.wakeRadius,
     // Collapsed berth band + fixed target: the straight centre-line run.
     stopZMin: BOSS.targetZ,
     stopZMax: BOSS.targetZ,

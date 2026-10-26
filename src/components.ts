@@ -6,7 +6,7 @@
  */
 
 import { createComponent, defineComponents } from '@iwsdk/core';
-import { BOSS, COMBAT, ECONOMY, ORNITHOPTER, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y } from './level-config.js';
+import { BOSS, COMBAT, ECONOMY, ORNITHOPTER, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y, WAKE_RADIUS } from './level-config.js';
 
 /** Marks the ocean body entity so OceanSystem can find it via query. */
 export const OceanTag = createComponent('OceanTag', {});
@@ -85,6 +85,12 @@ export const ShipMovement = createComponent('ShipMovement', {
   laneHalfWidth: { type: 'Float32', default: 0.35 },
   /** Set while a ship ahead keeps this one waiting. */
   blocked: { type: 'Boolean', default: false },
+  /**
+   * This hull's own wake radius (m) — the unit sheet's wakeRadius at spawn.
+   * ShipMovementSystem retargets the WakeSource between this and half of it;
+   * per-entity so oversized hulls (the boss) churn ship-scaled ripples.
+   */
+  wakeRadius: { type: 'Float32', default: WAKE_RADIUS },
 });
 
 /**
@@ -496,25 +502,12 @@ export const BossTurret = createComponent('BossTurret', {
 });
 
 /**
- * The boss laser citadel (the laser_turret child entity). A charged attack:
- * lock one defender core, glow up over `laserChargeSec`, fire a beam that
- * burns a percentage of the victim's MAX pool in one hit. BossLaserSystem is
- * the only writer.
+ * Marks the boss laser citadel (the laser_turret child entity) as a live
+ * armour part — BossRigSystem arms it with Health/HitCore and counts it for
+ * the hull-reveal check. Its charged beam attack is removed for now
+ * (v0.1.180 shape-first iteration); the attack writer returns later.
  */
-export const BossLaser = createComponent('BossLaser', {
-  /** 'idle' | 'charging' | 'firing'. */
-  phase: { type: 'String', default: 'idle' },
-  /** Countdown to the next charge (runs while idle). */
-  cooldown: { type: 'Float32', default: BOSS.laserIntervalSec },
-  /** Seconds elapsed in the current charging/firing phase. */
-  elapsed: { type: 'Float32', default: 0 },
-  /** Entity index of the locked defender core (-1 = none). */
-  targetCoreIndex: { type: 'Int32', default: -1 },
-  /** Locked target core world position snapshot (defenders never move). */
-  targetX: { type: 'Float32', default: 0 },
-  targetY: { type: 'Float32', default: 0 },
-  targetZ: { type: 'Float32', default: 0 },
-});
+export const BossLaser = createComponent('BossLaser', {});
 
 /**
  * Sacrifice order for a summoned ornithopter: dive onto the locked defender

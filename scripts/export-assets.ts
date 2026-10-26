@@ -2093,6 +2093,8 @@ const BOSS_ROCK_DEEP_COLOR = 0x2e2b28;
 const BOSS_IRON_COLOR = 0x2b2f33;
 const BOSS_EMBER_COLOR = 0x8a1400;
 const BOSS_BANNER_COLOR = 0x5c0f0f;
+/** Signature red of the boss's identity parts — the bow ram and the laser. */
+const BOSS_RED_COLOR = 0xb01616;
 
 /**
  * Island-ship hull stations: ~1.7 m long, 1.5 m beam (3-4x the raider), deep
@@ -2160,17 +2162,17 @@ function buildBossIsland(rand: () => number): BufferGeometry {
     parts.push(tier);
   }
 
-  // Citadel tower above the mesa top (y 0.92) + ember crown band. The laser
-  // pivot rides the crown top at y 1.25 — one terrace shorter than the
-  // v0.1.176 stack, so the prism gun crowns the silhouette instead of a
-  // second rock tier.
-  const tower = new CylinderGeometry(0.2, 0.26, 0.26, 9);
+  // Citadel tower above the mesa top (y 0.92) + ember crown band. The tower
+  // drum is half its v0.1.179 height (0.26 -> 0.13) — a low stub under the
+  // crown so the laser cannon hugs the berm instead of perching on a stalk.
+  // The laser pivot rides the crown top at y 1.12.
+  const tower = new CylinderGeometry(0.2, 0.26, 0.13, 9);
   crag(tower, 0.07);
-  tower.translate(0, 1.05, 0);
+  tower.translate(0, 0.985, 0);
   paint(tower, BOSS_ROCK_DEEP_COLOR, 0.05, rand);
   parts.push(tower);
   const crown = new CylinderGeometry(0.23, 0.2, 0.06, 9);
-  crown.translate(0, 1.21, 0);
+  crown.translate(0, 1.08, 0);
   paint(crown, BOSS_EMBER_COLOR, 0.03, rand);
   parts.push(crown);
 
@@ -2194,30 +2196,20 @@ function buildBossIsland(rand: () => number): BufferGeometry {
     }
   }
 
-  // Ember-red structures: a trim ring at the tower base plus two shredded
-  // war banners hanging on the bow flank (the side the harbour sees).
+  // Ember-red trim ring at the tower base, then the bow itself: one large
+  // red ram cone seated mid-hull at the stem (station keel -0.02 / sheer
+  // 0.46), tip jutting past it — a solid aggressive prow instead of banner
+  // cloth, readable from the harbour at full berth distance.
   const trim = new CylinderGeometry(0.27, 0.27, 0.035, 9);
   trim.translate(0, 0.935, 0);
   paint(trim, BOSS_EMBER_COLOR, 0.02, rand);
   parts.push(trim);
-  for (const bx of [-0.26, 0.26]) {
-    const banner = new PlaneGeometry(0.13, 0.2, 2, 2);
-    const bannerPos = banner.attributes.position as BufferAttribute;
-    for (let i = 0; i < bannerPos.count; i++) {
-      // Tear the fly edge into points so the cloth reads battle-worn.
-      if (bannerPos.getX(i) > 0.04) {
-        bannerPos.setZ(
-          i,
-          bannerPos.getZ(i) + (bannerPos.getY(i) > 0 ? 0.015 : -0.02),
-        );
-      }
-    }
-    banner.computeVertexNormals();
-    banner.rotateY(Math.PI); // face the bow (-Z) — toward the wall
-    banner.translate(bx, 0.5, -0.58);
-    paint(banner, BOSS_BANNER_COLOR, 0.02, rand);
-    parts.push(banner);
-  }
+  const ram = new ConeGeometry(0.45, 1.245, 9);
+  crag(ram, 0.05);
+  ram.rotateX(-Math.PI / 2); // point local -Z — the bow direction
+  ram.translate(0, 0.28, -1.2);
+  paint(ram, BOSS_RED_COLOR, 0.03, rand);
+  parts.push(ram);
 
   // Low dark bulwark strips along the deck rim (aggressive low silhouette).
   for (const [x, z, w, rotY] of [
@@ -2299,53 +2291,67 @@ function buildBossGunTurret(rand: () => number): BufferGeometry {
 
 /**
  * The laser citadel gun, built in laser_turret-local space (origin = yaw
- * pivot on the crown top). An obsidian prism blade between iron yoke cheeks,
- * ember bands up the spine — the boss's signature weapon reads ceremonial
- * and lethal, not like the iron guns below. Longer and heavier than the
- * v0.1.176 block: the prism blade now juts well clear of the crown so the
- * charge glow blooms in plain view.
+ * pivot on the crown top). Shape-first iteration (v0.1.180): the charged
+ * attack is removed for now and the cannon is a giant faceted emitter —
+ * an 8-sided breech drum, a 6-flute barrel with iron rib bands, and a
+ * chamfered diamond tip. Every surface is a flat facet meeting its
+ * neighbour at a hard ridge (楞), ends step down through short tapered
+ * collars (导角). It faces local -Z, which is world +Z toward the harbour
+ * wall at the boss's berthed yaw.
  */
 function buildBossLaserTurret(rand: () => number): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  const collar = new CylinderGeometry(0.13, 0.15, 0.08, 10);
+  // Low 8-sided seat collar — the chamfered break from the crown into the
+  // breech.
+  const collar = new CylinderGeometry(0.2, 0.24, 0.06, 8);
   collar.translate(0, 0.03, 0);
   paint(collar, BOSS_IRON_COLOR, 0.03, rand);
   parts.push(collar);
 
-  const cheek = new BoxGeometry(0.02, 0.09, 0.14);
-  const cheekPlus = cheek.clone();
-  cheekPlus.translate(0.08, 0.1, -0.04);
-  const cheekMinus = cheek.clone();
-  cheekMinus.translate(-0.08, 0.1, -0.04);
-  paint(cheekPlus, BOSS_IRON_COLOR, 0.03, rand);
-  paint(cheekMinus, BOSS_IRON_COLOR, 0.03, rand);
-  parts.push(cheekPlus, cheekMinus);
+  // Breech: a giant 8-facet drum — the visual mass of the weapon.
+  const breech = new CylinderGeometry(0.21, 0.21, 0.2, 8);
+  breech.translate(0, 0.16, 0.02);
+  paint(breech, BOSS_RED_COLOR, 0.03, rand);
+  parts.push(breech);
 
-  // Prism barrel: two four-sided cones base-to-base — a diamond blade that
-  // tapers to a needle at the muzzle.
-  const prismFront = new ConeGeometry(0.065, 0.3, 4);
-  prismFront.rotateX(-Math.PI / 2);
-  prismFront.rotateY(Math.PI / 4);
-  prismFront.translate(0, 0.115, -0.19);
-  paint(prismFront, BOSS_ROCK_DEEP_COLOR, 0.04, rand);
-  parts.push(prismFront);
-  const prismRear = new ConeGeometry(0.065, 0.14, 4);
-  prismRear.rotateX(Math.PI / 2);
-  prismRear.rotateY(Math.PI / 4);
-  prismRear.translate(0, 0.115, 0.05);
-  paint(prismRear, BOSS_ROCK_DEEP_COLOR, 0.04, rand);
-  parts.push(prismRear);
+  // Barrel: a 6-flute tapered prism — six flat facets with hard ridge
+  // lines (the 楞 read), tapering toward the muzzle (spans z -0.1..-0.6).
+  const barrel = new CylinderGeometry(0.13, 0.17, 0.5, 6);
+  barrel.rotateX(-Math.PI / 2);
+  barrel.translate(0, 0.16, -0.35);
+  paint(barrel, BOSS_RED_COLOR, 0.03, rand);
+  parts.push(barrel);
 
-  // Ember spine bands up the prism.
-  for (const z of [-0.12, -0.02]) {
-    const band = new CylinderGeometry(0.07, 0.07, 0.018, 4);
+  // Iron rib bands cinch the flutes — segmented, loaded, angular.
+  for (const z of [-0.24, -0.46]) {
+    const band = new CylinderGeometry(0.15, 0.15, 0.04, 6);
     band.rotateX(-Math.PI / 2);
-    band.rotateY(Math.PI / 4);
-    band.translate(0, 0.115, z);
-    paint(band, BOSS_EMBER_COLOR, 0.02, rand);
+    band.translate(0, 0.16, z);
+    paint(band, BOSS_IRON_COLOR, 0.02, rand);
     parts.push(band);
   }
+
+  // Muzzle collar, then the chamfered diamond emitter tip (apex -0.74).
+  const muzzleRing = new CylinderGeometry(0.16, 0.16, 0.05, 8);
+  muzzleRing.rotateX(-Math.PI / 2);
+  muzzleRing.translate(0, 0.16, -0.58);
+  paint(muzzleRing, BOSS_IRON_COLOR, 0.02, rand);
+  parts.push(muzzleRing);
+  const tip = new ConeGeometry(0.1, 0.16, 4);
+  tip.rotateX(-Math.PI / 2);
+  tip.rotateY(Math.PI / 4);
+  tip.translate(0, 0.16, -0.66);
+  paint(tip, BOSS_EMBER_COLOR, 0.03, rand);
+  parts.push(tip);
+
+  // Rear counterweight: a short 4-facet taper off the breech.
+  const rear = new ConeGeometry(0.13, 0.14, 4);
+  rear.rotateX(Math.PI / 2);
+  rear.rotateY(Math.PI / 4);
+  rear.translate(0, 0.16, 0.19);
+  paint(rear, BOSS_IRON_COLOR, 0.03, rand);
+  parts.push(rear);
 
   return mergeParts(parts);
 }
@@ -2422,13 +2428,13 @@ function createBossIslewrathExport(): Object3D {
 
   const laserPivot = new Object3D();
   laserPivot.name = 'laser_turret';
-  laserPivot.position.set(0, 1.25, -0.08);
+  laserPivot.position.set(0, 1.12, -0.08);
   const laserMesh = new Mesh(buildBossLaserTurret(rand), gunMaterial);
   laserMesh.name = 'boss-laser-mesh';
   laserPivot.add(laserMesh);
   const laserMuzzle = new Object3D();
   laserMuzzle.name = 'muzzle';
-  laserMuzzle.position.set(0, 0.115, -0.36);
+  laserMuzzle.position.set(0, 0.16, -0.76);
   laserPivot.add(laserMuzzle);
   const laserCore = new Object3D();
   laserCore.name = 'hit_core';

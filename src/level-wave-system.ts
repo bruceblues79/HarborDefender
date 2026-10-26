@@ -486,19 +486,23 @@ export class LevelWaveSystem extends createSystem({
       targetX: target.x,
       targetZ: target.z,
       cruiseY: def.cruiseY,
+      // Per-hull wake radius: oversized hulls (the boss) churn ship-scaled
+      // ripples; everyone else rides the shared WAKE_RADIUS default.
+      wakeRadius: def.wakeRadius ?? WAKE_RADIUS,
     });
     entity.addComponent(SpawnFade, { duration: SPAWN_FADE_DURATION });
     // Water contact is a unit-sheet fact: ships churn a wake, the airborne
     // bombardier never touches the surface and gets none.
     if (def.wake) {
+      const wakeRadius = def.wakeRadius ?? WAKE_RADIUS;
       entity.addComponent(WakeSource, {
         strength: 0,
         // Under way (or held up) from frame one, so the wake aims at the
         // sailing values; ShipMovementSystem retargets it the moment the ship
         // stops or starts waiting.
         targetStrength: WAKE_STRENGTH_MOVING,
-        radius: WAKE_RADIUS,
-        targetRadius: WAKE_RADIUS,
+        radius: wakeRadius,
+        targetRadius: wakeRadius,
       });
     }
     // The rotor is also a unit-sheet fact: PropellerSpinSystem turns the

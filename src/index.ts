@@ -11,7 +11,6 @@ import { BallisticSystem } from './ballistic-system.js';
 import { BillboardSystem } from './billboard-system.js';
 import { startBattle } from './battle-setup.js';
 import { BossKamikazeSystem } from './boss-kamikaze-system.js';
-import { BossLaserSystem } from './boss-laser-system.js';
 import { BossRigSystem } from './boss-rig-system.js';
 import { BossSummonSystem } from './boss-summon-system.js';
 import { BossTurretSystem } from './boss-turret-system.js';
@@ -88,7 +87,6 @@ World.create(
   world.registerSystem(BossSummonSystem, { priority: 10 });
   world.registerSystem(BossKamikazeSystem, { priority: 10 });
   world.registerSystem(BossTurretSystem, { priority: 11 });
-  world.registerSystem(BossLaserSystem, { priority: 12 });
   world.registerSystem(SpawnFadeSystem, { priority: 12 });
   // Move first, then consume solid-target hits, then handle water splashes.
   world.registerSystem(BallisticSystem, { priority: 13 });

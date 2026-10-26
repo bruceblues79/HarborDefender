@@ -16,7 +16,6 @@ import {
   WakeSource,
 } from './components.js';
 import {
-  WAKE_RADIUS,
   WAKE_STRENGTH_HALTED,
   WAKE_STRENGTH_MOVING,
 } from './level-config.js';
@@ -86,10 +85,10 @@ export class ShipMovementSystem extends createSystem({
     entity.setValue(ShipMovement, 'blocked', blocked);
     if (blocked) {
       // Waiting for the way to clear reads as halted: ripples halved.
-      this.setWake(entity, WAKE_STRENGTH_HALTED, WAKE_RADIUS * 0.5);
+      this.setWake(entity, WAKE_STRENGTH_HALTED, false);
       return;
     }
-    this.setWake(entity, WAKE_STRENGTH_MOVING, WAKE_RADIUS);
+    this.setWake(entity, WAKE_STRENGTH_MOVING, true);
 
     // Altitude is per-unit: ships cruise at the waterline, the bombardier
     // holds FLYER_Y. Read once per advance, applied to both arrival and
@@ -99,7 +98,7 @@ export class ShipMovementSystem extends createSystem({
     if (step >= remaining) {
       object.position.set(targetX, cruiseY, targetZ);
       entity.setValue(ShipMovement, 'state', 'stopped');
-      this.setWake(entity, WAKE_STRENGTH_HALTED, WAKE_RADIUS * 0.5);
+      this.setWake(entity, WAKE_STRENGTH_HALTED, false);
       return;
     }
     object.position.set(
@@ -144,11 +143,18 @@ export class ShipMovementSystem extends createSystem({
     return false;
   }
 
-  /** Retarget the wake; OceanSystem eases the running values over ~0.3 s. */
-  private setWake(entity: Entity, strength: number, radius: number): void {
+  /**
+   * Retarget the wake; OceanSystem eases the running values over ~0.3 s.
+   * The radius swings between the hull's own base (ShipMovement.wakeRadius —
+   * ship-scaled for the boss) and half of it, matching the raider rule.
+   */
+  private setWake(entity: Entity, strength: number, moving: boolean): void {
     // Flyers (and any future non-water unit) carry no WakeSource; the march
     // stays shared and the water stays still.
     if (!entity.hasComponent(WakeSource)) return;
+    const radius = moving
+      ? Number(entity.getValue(ShipMovement, 'wakeRadius'))
+      : Number(entity.getValue(ShipMovement, 'wakeRadius')) * 0.5;
     if (Number(entity.getValue(WakeSource, 'targetStrength')) !== strength) {
       entity.setValue(WakeSource, 'targetStrength', strength);
     }
