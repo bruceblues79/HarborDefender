@@ -593,16 +593,6 @@ export const COMBAT = {
  * pairs read 0 — immunity is explicit data, never a guessed default. Mirrors
  * docs/design/combat.md; change both together. The two stock pairs stay on
  * their named COMBAT constants (shellDamage / pirateShellDamage).
- *
- * Boss rows (task 028): the Islewrath's parts are three hittable unit types —
- * the four cannon turrets (`islewrath-turret`, 6% per shell), the laser
- * citadel (`islewrath-laser`, 2% — the hardest plate) and, once every turret
- * is destroyed, the hull itself (`islewrath`, 10%). The boss turret's own
- * shells read 20% off the `islewrath-turret->defender` rows. The summoned
- * flappers' kamikaze dive bypasses this table: it deals a percentage of the
- * victim's MAX pool directly (BOSS.kamikazeDamagePct) — a special case
- * documented in combat.md. The laser's charged beam attack is removed for
- * now (v0.1.180 shape-first iteration); its damage row returns with it.
  */
 export const DAMAGE_MATRIX: Record<string, number> = {
   'cannon->pirate-ship': COMBAT.shellDamage,
@@ -617,16 +607,6 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   'bombardier->sky-ballista': 12.5,
   'ornithopter->cannon': 7.5,
   'ornithopter->sky-ballista': 10,
-  // Defender shells vs the Islewrath's three plates.
-  'cannon->islewrath-turret': 6,
-  'cannon->islewrath-laser': 2,
-  'cannon->islewrath': 10,
-  'sky-ballista->islewrath-turret': 3,
-  'sky-ballista->islewrath-laser': 1,
-  'sky-ballista->islewrath': 5,
-  // The boss turret guns return fire at raider-shell strength.
-  'islewrath-turret->cannon': 20,
-  'islewrath-turret->sky-ballista': 20,
 };
 
 /**
@@ -691,18 +671,11 @@ export const ORNITHOPTER = {
 };
 
 /**
- * Boss Islewrath (怒岛号) — the island-ship warlord. Every knob of the boss
- * fight lives here; the boss systems hold no numbers. Damage taken per shell
- * is data too: the DAMAGE_MATRIX rows `cannon->islewrath-*` carry the
- * 6% / 2% / 10% plates.
+ * Boss Islewrath (怒岛号) — the island-ship warlord. Currently navigation
+ * only: the GLB spawns and runs its straight centre-line berth. Combat knobs
+ * (armour plates, summon cycle, kamikaze) return with their systems.
  */
 export const BOSS = {
-  /** Unit-sheet id the design level dispatches (UNIT_TYPES key). */
-  unitType: 'boss_islewrath',
-  /** Hit-core unit types of the two plate families and the hull itself. */
-  turretUnitType: 'islewrath-turret',
-  laserUnitType: 'islewrath-laser',
-  hullUnitType: 'islewrath',
   /** Straight-run berth point: centre line, one unit nearer the wall than
    * the ocean midpoint — the wake rings and broadside read better there. */
   targetX: 0,
@@ -714,30 +687,6 @@ export const BOSS = {
    * what it can't show.
    */
   wakeRadius: 3.75,
-  /** Seconds between two shots from one cannon turret (plus shared jitter). */
-  turretFireInterval: 3.0,
-  /**
-   * Hit-core radii (m): turret/laser parts, then the exposed hull. The part
-   * cores track their upscaled turrets — until the hull is revealed they are
-   * the only hittable plates, and at the boss's 8.5 m berth a pin-head core
-   * reads as "shells pass through" (v0.1.176 lesson).
-   */
-  turretCoreRadius: 0.42,
-  laserCoreRadius: 0.36,
-  hullCoreRadius: 0.85,
-  /** Summon cycle: one wave of flappers every summonIntervalSec seconds. */
-  summonIntervalSec: 120,
-  summonCountMin: 2,
-  summonCountMax: 3,
-  /** A dive order goes out this many seconds before the next summon. */
-  sacrificeLeadSec: 15,
-  /** Summon-interval multiplier once the hull is exposed (25% shorter). */
-  exposedIntervalScale: 0.75,
-  /** Kamikaze dive: damage pct of the victim's MAX pool + dive speed (m/s). */
-  kamikazeDamagePct: 40,
-  kamikazeSpeed: 1.2,
-  /** Distance (m) at which a diving flapper's payload counts as delivered. */
-  kamikazeHitDistance: 0.2,
 };
 
 /**
@@ -802,9 +751,10 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     // gun seats, and sink the bow ram's visible tip below the waves.
     cruiseY: OCEAN.surfaceY - 0.35,
     // Unarmed at the sheet level: the boss systems drive the turrets, the
-    // shared PirateCannon deck-gun path never touches this hull.
+    // shared PirateCannon deck-gun path never touches this hull. The turret
+    // cadence lives in BOSS's rhythm knobs, not the unit sheet.
     armed: false,
-    fireInterval: BOSS.turretFireInterval,
+    fireInterval: 0,
     rotor: false,
     flap: false,
     stone: false,

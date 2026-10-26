@@ -16,7 +16,6 @@ import {
 import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
 import {
   BuildOpen,
-  BossSummon,
   Destroyed,
   GameOver,
   GamePaused,
@@ -69,10 +68,10 @@ const MUZZLE_LOCAL_Z = -0.2;
  *   turntable + barrel around the pedestal's own axis — the hull stays put
  *   and the gun never sweeps around the ship centre — gunned units only;
  * - a `hit_core` at the model's bounding-box centre — every non-boss unit.
- *   Boss hulls bake their own complete functional rig (root hit_core plus
- *   per-part gun_rotate/muzzle/hit_core), so they skip this decorator
- *   entirely: wrapping a boss `gun_rotate` in `cannon_mount` would destroy
- *   the per-plate entity hierarchy BossRigSystem relies on.
+ *   Boss hulls bake their own rig (root hit_core plus per-part
+ *   gun_rotate/muzzle/hit_core nodes), so they skip this decorator entirely:
+ *   wrapping a boss `gun_rotate` in `cannon_mount` would entangle the hull's
+ *   own articulation with a deck-gun wrapper.
  */
 function decorateShipPrototype(prototype: Object3D): void {
   const gunPivot = prototype.getObjectByName('gun_rotate');
@@ -163,7 +162,7 @@ export class LevelWaveSystem extends createSystem({
         .then((gltf) => {
           // Boss hulls already ship every functional node; generic decoration
           // would add a cannon_mount around the first gun_rotate and break
-          // the per-plate part hierarchy.
+          // the hull's own articulation.
           if (!def.boss) decorateShipPrototype(gltf.scene);
           this.prototypes.set(type, gltf.scene);
         })
@@ -403,15 +402,11 @@ export class LevelWaveSystem extends createSystem({
   }
 
   /**
-   * Spawn one unit of the given type — the single spawn truth, shared by the
-   * wave dispatch (above) and the boss summon (BossSummonSystem hands out
-   * ornithopters outside the wave flow). Returns the new entity, or null
-   * while the prototype is still loading (the caller retries next frame).
-   * `spawnX` pins the emergence lane: the summon calls pass a small spread so
-   * a same-frame brood fans out instead of materialising stacked on the
-   * centre line.
+   * Spawn one unit of the given type — the single spawn truth of the wave
+   * dispatch. Returns the new entity, or null while the prototype is still
+   * loading (the caller retries next frame).
    */
-  spawnUnitByType(unitType: string, spawnX?: number): Entity | null {
+  spawnUnitByType(unitType: string): Entity | null {
     const def = UNIT_TYPES[unitType];
     if (!def) {
       console.error(`LevelWaveSystem: unknown unit type "${unitType}"`);
@@ -429,8 +424,7 @@ export class LevelWaveSystem extends createSystem({
     // centre-line run), else the berth cascade — resolved before anything is
     // committed.
     const laneX =
-      spawnX ??
-      (this.currentWaveUnits().length === 1 ? 0 : this.pickSpawnX());
+      this.currentWaveUnits().length === 1 ? 0 : this.pickSpawnX();
     const target = def.fixedTarget ?? this.pickTarget(def);
     // Altitude is the unit sheet's cruiseY — ships float at the waterline,
     // the bombardier holds FLYER_Y. Everything downstream reads the same
@@ -522,13 +516,10 @@ export class LevelWaveSystem extends createSystem({
     if (def.flap) {
       entity.addComponent(WingFlap);
     }
-    // Boss hulls skip the generic hull core: their armour lives in per-turret
-    // child entities (assembled by BossRigSystem), and the main Health +
-    // HitCore only land once every turret is destroyed — which is also what
-    // reveals the hull's health bar. BossSummon goes on LAST so its
-    // synchronous qualify sees the fully materialised clone.
+    // Boss hulls are navigation-only right now: they spawn, run their
+    // straight centre-line berth and hold — no Health, no HitCore, nothing
+    // for the defenders to hit. The combat kit returns with the boss systems.
     if (def.boss) {
-      entity.addComponent(BossSummon);
       return entity;
     }
     // Hull hit points: the ship sinks once ShellHitSystem has charged

@@ -9,7 +9,6 @@ import { createSystem } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
 import {
   GamePaused,
-  KamikazeDive,
   LevelDirector,
   ShipMovement,
   UnitTag,
@@ -39,10 +38,8 @@ import {
  */
 export class ShipMovementSystem extends createSystem({
   // WakeSource is deliberately absent: flyers march the same line but churn
-  // no water, and setWake no-ops for them. Kamikaze-ordered flappers are
-  // excluded too — the dive (BossKamikazeSystem) owns their motion from the
-  // order frame on.
-  movers: { required: [ShipMovement, UnitTag], excluded: [KamikazeDive] },
+  // no water, and setWake no-ops for them.
+  movers: { required: [ShipMovement, UnitTag] },
   directors: { required: [LevelDirector] },
 }) {
   update(delta: number): void {

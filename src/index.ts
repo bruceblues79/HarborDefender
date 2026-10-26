@@ -10,10 +10,6 @@ import projectOptions from 'virtual:iwsdk-project';
 import { BallisticSystem } from './ballistic-system.js';
 import { BillboardSystem } from './billboard-system.js';
 import { startBattle } from './battle-setup.js';
-import { BossKamikazeSystem } from './boss-kamikaze-system.js';
-import { BossRigSystem } from './boss-rig-system.js';
-import { BossSummonSystem } from './boss-summon-system.js';
-import { BossTurretSystem } from './boss-turret-system.js';
 import { BuildPanelSystem } from './build-panel-system.js';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
 import { CannonAimSystem } from './cannon-aim-system.js';
@@ -79,14 +75,8 @@ World.create(
   // ever handing out the same shell in a frame.
   world.registerSystem(CannonFireSystem, { priority: 11 });
   world.registerSystem(PirateFireSystem, { priority: 11 });
-  // Boss tier: parts assemble right after the director dispatches, summon
-  // and kamikaze run on the movement tier, the turret guns fire with the
-  // other fire systems (same shared shell pool, same claimed-guard), and the
-  // laser burns before SpawnFade; ShellHitSystem (14) sweeps every death.
-  world.registerSystem(BossRigSystem, { priority: 9 });
-  world.registerSystem(BossSummonSystem, { priority: 10 });
-  world.registerSystem(BossKamikazeSystem, { priority: 10 });
-  world.registerSystem(BossTurretSystem, { priority: 11 });
+  // SpawnFade materialises hulls after the movement tier; ShellHitSystem
+  // (14) sweeps every death.
   world.registerSystem(SpawnFadeSystem, { priority: 12 });
   // Move first, then consume solid-target hits, then handle water splashes.
   world.registerSystem(BallisticSystem, { priority: 13 });

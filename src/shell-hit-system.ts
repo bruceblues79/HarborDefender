@@ -213,7 +213,7 @@ export class ShellHitSystem extends createSystem({
       // director's wallet — the same pool repairs and builds drain.
       this.creditKillReward();
       if (at) {
-        this.spawnDieBurst(at, true);
+        this.spawnDieBurst(at, true, COMBAT.dieBurstShipRatio);
         this.spawnSinkRipple(at.x, at.z);
       }
       // Keep the shared prototype resources alive: ships are prototype
@@ -221,7 +221,7 @@ export class ShellHitSystem extends createSystem({
       // textures every later spawn clones from.
       core.dispose({ disposeResources: false });
     } else {
-      if (at) this.spawnDieBurst(at, false);
+      if (at) this.spawnDieBurst(at, false, COMBAT.dieBurstCannonRatio);
       core.addComponent(Destroyed);
       if (core.object3D) core.object3D.visible = false;
     }
@@ -244,10 +244,15 @@ export class ShellHitSystem extends createSystem({
    * position, visible, then the `DieBurst` component that both hands
    * animation to DieBurstSystem and (via its synchronous qualify callback)
    * scatters the chunks. Defenders burst on their wall top and rebound;
-   * attackers burst just above the waves and sink through. Pool empty:
-   * skip silently — a busy battle loses the odd burst, never a hit.
+   * attackers burst just above the waves and sink through, with boss armour
+   * plates scaled down by the caller. Pool empty: skip silently — a busy
+   * battle loses the odd burst, never a hit.
    */
-  private spawnDieBurst(position: Vector3, attacker: boolean): void {
+  private spawnDieBurst(
+    position: Vector3,
+    attacker: boolean,
+    sizeRatio: number,
+  ): void {
     for (const burst of this.queries.freeBursts.entities) {
       if (this.claimedBursts.has(burst.index)) continue;
       // Live guard: another spawn this frame may have claimed it already,
@@ -265,9 +270,7 @@ export class ShellHitSystem extends createSystem({
       // sinking ship's core.
       burst.addComponent(DieBurst, {
         duration: COMBAT.dieBurstDuration,
-        sizeRatio: attacker
-          ? COMBAT.dieBurstShipRatio
-          : COMBAT.dieBurstCannonRatio,
+        sizeRatio,
         floorY: attacker
           ? OCEAN.surfaceY - 0.05 - position.y
           : -0.085,
