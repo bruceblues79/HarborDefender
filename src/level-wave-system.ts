@@ -537,10 +537,12 @@ export class LevelWaveSystem extends createSystem({
     }
     // Hull hit points: the ship sinks once ShellHitSystem has charged
     // COMBAT.shellDamage per defender-shell hit into this pool. Normalised:
-    // every unit shares COMBAT.unitHealth (100) as its pool size.
+    // every unit shares COMBAT.unitHealth (100) as its pool size. barY comes
+    // off the unit sheet — every Health-carrying def pins its measured top.
     entity.addComponent(Health, {
       current: COMBAT.unitHealth,
       max: COMBAT.unitHealth,
+      barY: def.barY,
     });
     // Combat: attacker hit core (defender shells are consumed inside it) and
     // — for armed units — the deck-gun ability with the unit sheet's own

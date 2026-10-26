@@ -6,7 +6,6 @@
  */
 
 import {
-  Box3,
   createSystem,
   DoubleSide,
   Mesh,
@@ -113,7 +112,6 @@ export class HealthBarSystem extends createSystem({
   // Pre-allocated math scratch — update() never allocates.
   private readonly viewer = new Vector3();
   private readonly rigWorld = new Vector3();
-  private readonly unitWorld = new Vector3();
   private readonly parentWorldQuat = new Quaternion();
   private readonly yawQuat = new Quaternion();
   private readonly up = new Vector3(0, 1, 0);
@@ -123,27 +121,16 @@ export class HealthBarSystem extends createSystem({
       const unit = entity.object3D;
       if (!unit) return;
       // Per-faction sizing: cannons draw smaller and float higher than the
-      // shared default — their bounding box tops out at the raised barrel.
+      // shared default — the defender margin is baked into their barY.
       const defender =
         String(entity.getValue(HitCore, 'faction')) === 'defender';
-      // Head height: explicit local barY when the carrier pins one (deep
-      // child carriers on deterministic baked geometry — the bbox path
-      // reads a mid-frame stale ancestor matrix and floats the bar);
-      // otherwise the unit's bounding-box top converted to local space
-      // (units stay upright, so a world-Y difference is exact).
-      const barY = Number(entity.getValue(Health, 'barY'));
-      const margin = defender
-        ? COMBAT.healthBarDefenderMarginY
-        : COMBAT.healthBarMarginY;
+      // Head height: the carrier's explicit local barY — unit-sheet data for
+      // hulls (measured GLB top + margin), baked-geometry constants for boss
+      // armour parts. No bounding-box derivation: a deep child spawned
+      // mid-frame reads a stale ancestor matrixWorld and floats the bar.
       const rig = new Object3D();
       rig.name = 'health-bar';
-      if (barY >= 0) {
-        rig.position.y = barY;
-      } else {
-        const box = new Box3().setFromObject(unit);
-        unit.getWorldPosition(this.unitWorld);
-        rig.position.y = box.max.y - this.unitWorld.y + margin;
-      }
+      rig.position.y = Number(entity.getValue(Health, 'barY'));
       rig.scale.setScalar(
         defender ? COMBAT.healthBarDefenderScale : 1,
       );

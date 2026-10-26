@@ -285,12 +285,12 @@ export const Health = createComponent('Health', {
   max: { type: 'Float32', default: 1 },
   /**
    * Explicit bar height in the carrier's LOCAL space. HealthBarSystem pins
-   * the bar here verbatim when set (>= 0) and skips its bounding-box
-   * derivation entirely — for deep child carriers (boss armour parts) the
-   * derivation reads a mid-frame stale ancestor matrix and floats the bar.
-   * -1 = derive from the subtree bbox (every hull-carried unit).
+   * the bar here verbatim — there is no bounding-box fallback: a derivation
+   * on a deep child spawned mid-frame reads a stale ancestor matrixWorld and
+   * floats the bar. Every Health carrier sets it (hulls: the unit sheet's
+   * measured top + margin; boss armour parts: the baked-geometry constants).
    */
-  barY: { type: 'Float32', default: -1 },
+  barY: { type: 'Float32', default: 0 },
 });
 
 /**

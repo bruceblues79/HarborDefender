@@ -72,6 +72,13 @@ export interface UnitTypeDef {
    * picks the stop like every other attacker.
    */
   fixedTarget?: { x: number; z: number };
+  /**
+   * Explicit health-bar height in the carrier's LOCAL space (GLB units, so
+   * `scale` carries it naturally). Every Health-carrying unit must set it:
+   * measured GLB subtree top plus the shared bar margin — the bar system
+   * has no bounding-box fallback. Boss hulls carry no Health and skip it.
+   */
+  barY?: number;
 }
 
 /**
@@ -588,6 +595,17 @@ export const COMBAT = {
 };
 
 /**
+ * Explicit defender health-bar heights (carrier-local y, baked margin
+ * included): measured GLB subtree tops at the baked pose — cannon 0.186
+ * (barrel level at rest), sky ballista 0.2874 — plus the shared defender
+ * margin. The bar system no longer derives heights from bounding boxes.
+ */
+export const DEFENDER_BAR_Y: Record<DefenseUnitId, number> = {
+  cannon: 0.186 + COMBAT.healthBarDefenderMarginY,
+  'sky-ballista': 0.2874 + COMBAT.healthBarDefenderMarginY,
+};
+
+/**
  * Attacker->target damage table, keyed `${attackerUnitType}->${targetUnitType}`:
  * one shot's damage as a percentage of the target's 100-point pool. Unknown
  * pairs read 0 — immunity is explicit data, never a guessed default. Mirrors
@@ -707,6 +725,8 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   'pirate-ship': {
     assetId: 'pirate-ship',
     scale: 1,
+    // Measured GLB subtree top 0.8775 (mast cap) + the shared bar margin.
+    barY: 0.8775 + COMBAT.healthBarMarginY,
     movement: 'default-ship',
     faction: 'attacker',
     cruiseY: SHIP_Y,
@@ -722,6 +742,8 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   bombardier: {
     assetId: 'bombardier',
     scale: 1,
+    // Measured GLB subtree top 0.359 (propeller disc) + the shared bar margin.
+    barY: 0.359 + COMBAT.healthBarMarginY,
     movement: 'default-flyer',
     faction: 'attacker',
     cruiseY: FLYER_Y,
@@ -737,6 +759,9 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   ornithopter: {
     assetId: 'ornithopter',
     scale: ORNITHOPTER.scale,
+    // Measured GLB subtree top 0.165 (wing shoulders at rest) + the shared
+    // bar margin. Local GLB units — `scale` 0.9 carries it at spawn.
+    barY: 0.165 + COMBAT.healthBarMarginY,
     movement: 'default-ship',
     faction: 'attacker',
     cruiseY: ORNITHOPTER.y,

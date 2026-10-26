@@ -504,7 +504,7 @@ function buildBarrel(rand: () => number): BufferGeometry {
  * - Two draw calls: one merged wood carriage, one merged iron barrel.
  *   All colour comes from vertex colors; material base colour is white.
  */
-function createCannonExport(): Object3D {
+export function createCannonExport(): Object3D {
   const rand = makeRandom(20261013);
 
   const woodMaterial = new MeshStandardMaterial({
@@ -824,7 +824,7 @@ function buildShipSuperstructure(rand: () => number): BufferGeometry {
  * - Two draw calls: merged hull/superstructure/pedestal, merged turntable/
  *   yoke/iron barrel. All colour is vertex-baked; base colour is white.
  */
-function createPirateShipExport(): Object3D {
+export function createPirateShipExport(): Object3D {
   const rand = makeRandom(20261014);
 
   const hullMaterial = new MeshStandardMaterial({
@@ -1063,7 +1063,7 @@ function buildBallistaAssembly(rand: () => number): BufferGeometry {
  * - Two draw calls: merged fixed pedestal, merged swivel assembly. All
  *   colour is vertex-baked onto one white roughness-0.75 dielectric material.
  */
-function createSkyBallistaExport(): Object3D {
+export function createSkyBallistaExport(): Object3D {
   const rand = makeRandom(20261020);
 
   const material = new MeshStandardMaterial({
@@ -1374,7 +1374,7 @@ function buildBombardierRotor(rand: () => number): BufferGeometry {
  * - Three draw calls: merged machine, merged pilot, merged rotor. All
  *   colour is vertex-baked onto one white roughness-0.75 dielectric material.
  */
-function createBombardierExport(): Object3D {
+export function createBombardierExport(): Object3D {
   const rand = makeRandom(20261021);
 
   const material = new MeshStandardMaterial({
@@ -2023,7 +2023,7 @@ function buildOrnithopterBody(rand: () => number): BufferGeometry {
  *   colour is vertex-baked onto one white roughness-0.75 dielectric material
  *   (canvas membranes read from both sides).
  */
-function createOrnithopterExport(): Object3D {
+export function createOrnithopterExport(): Object3D {
   const rand = makeRandom(20261025);
 
   const material = new MeshStandardMaterial({

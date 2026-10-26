@@ -30,7 +30,7 @@ import {
   OceanTag,
   Repairing,
 } from './components.js';
-import { COMBAT, BALLISTA_MUZZLE_LOCAL_Y, BALLISTA_MUZZLE_LOCAL_Z, activeLevelList, DEFENSE_BUTTONS, DEFENSE_PAD, DEFENSE_SLOTS, SKY_BALLISTA } from './level-config.js';
+import { COMBAT, BALLISTA_MUZZLE_LOCAL_Y, BALLISTA_MUZZLE_LOCAL_Z, activeLevelList, DEFENSE_BUTTONS, DEFENSE_PAD, DEFENSE_SLOTS, DEFENDER_BAR_Y, SKY_BALLISTA } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
 import { createDefenseButtonRig } from './defense-buttons.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
@@ -162,6 +162,7 @@ function mountDefenseUnit(
     unitEntity.addComponent(Health, {
       current: COMBAT.unitHealth,
       max: COMBAT.unitHealth,
+      barY: DEFENDER_BAR_Y.cannon,
     });
     defenseEntities.push({
       entity: unitEntity,
@@ -198,6 +199,7 @@ function mountDefenseUnit(
     unitEntity.addComponent(Health, {
       current: COMBAT.unitHealth,
       max: COMBAT.unitHealth,
+      barY: DEFENDER_BAR_Y['sky-ballista'],
     });
     defenseEntities.push({
       entity: unitEntity,
