@@ -16,6 +16,7 @@ import {
 import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
 import {
   BuildOpen,
+  BossSummon,
   Destroyed,
   GameOver,
   GamePaused,
@@ -171,7 +172,7 @@ export class LevelWaveSystem extends createSystem({
     // qualify and hides everything on its dismiss.
     this.director.addComponent(GameStarted);
     this.director.removeComponent(GameOver);
-    this.director.setValue(Wallet, 'money', ECONOMY.startMoney);
+    this.director.setValue(Wallet, 'money', this.startMoney());
     this.enterLevel(0);
   }
 
@@ -201,12 +202,18 @@ export class LevelWaveSystem extends createSystem({
     this.disposeAttackers();
     this.director.removeComponent(GameOver);
     this.director.removeComponent(BuildOpen);
-    this.director.setValue(Wallet, 'money', ECONOMY.startMoney);
+    this.director.setValue(Wallet, 'money', this.startMoney());
     const index = Math.min(
       Math.max(0, this.levelIndex()),
       activeLevelList.length - 1,
     );
     this.enterLevel(index);
+  }
+
+  /** The current level's starting purse (per-level override, else the stock). */
+  private startMoney(): number {
+    const level = activeLevelList[this.levelIndex()];
+    return level?.startMoney ?? ECONOMY.startMoney;
   }
 
   /** Dispose every unit on the water. Resources stay shared with the
@@ -385,30 +392,46 @@ export class LevelWaveSystem extends createSystem({
   private spawnUnit(pending: number): boolean {
     const units = this.currentWaveUnits();
     const unitType = units[units.length - pending];
+    return this.spawnUnitByType(unitType) !== null;
+  }
+
+  /**
+   * Spawn one unit of the given type — the single spawn truth, shared by the
+   * wave dispatch (above) and the boss summon (BossSummonSystem hands out
+   * ornithopters outside the wave flow). Returns the new entity, or null
+   * while the prototype is still loading (the caller retries next frame).
+   * `spawnX` pins the emergence lane: the summon calls pass a small spread so
+   * a same-frame brood fans out instead of materialising stacked on the
+   * centre line.
+   */
+  spawnUnitByType(unitType: string, spawnX?: number): Entity | null {
     const def = UNIT_TYPES[unitType];
     if (!def) {
       console.error(`LevelWaveSystem: unknown unit type "${unitType}"`);
-      return false;
+      return null;
     }
     const prototype = this.prototypes.get(unitType);
-    if (!prototype) return false;
+    if (!prototype) return null;
 
     const object = prototype.clone(true);
 
     // Spawn point: best-candidate x on the far edge (spread away from active
     // attackers). A single-unit wave just comes down the centre line — no
-    // need to randomise when there is nothing to avoid. The stop target comes
-    // from the berth cascade, which is why it is resolved before anything is
+    // need to randomise when there is nothing to avoid. The stop target is
+    // the unit sheet's fixed point when it carries one (the boss's straight
+    // centre-line run), else the berth cascade — resolved before anything is
     // committed.
-    const spawnX = units.length === 1 ? 0 : this.pickSpawnX();
-    const target = this.pickTarget(def);
+    const laneX =
+      spawnX ??
+      (this.currentWaveUnits().length === 1 ? 0 : this.pickSpawnX());
+    const target = def.fixedTarget ?? this.pickTarget(def);
     // Altitude is the unit sheet's cruiseY — ships float at the waterline,
     // the bombardier holds FLYER_Y. Everything downstream reads the same
     // value off ShipMovement, so no system ever hard-codes an altitude.
-    object.position.set(spawnX, def.cruiseY, SPAWN_Z);
+    object.position.set(laneX, def.cruiseY, SPAWN_Z);
     // Bow is the hull's local -Z; yaw it onto the spawn -> target direction.
     object.rotation.y = Math.atan2(
-      -(target.x - spawnX),
+      -(target.x - laneX),
       -(target.z - SPAWN_Z),
     );
     // Unit-sheet model scale: the clone shrinks uniformly, so every child
@@ -459,19 +482,12 @@ export class LevelWaveSystem extends createSystem({
     // altitude instead of a shared waterline constant.
     entity.addComponent(ShipMovement, {
       pattern: def.movement,
-      spawnX,
+      spawnX: laneX,
       targetX: target.x,
       targetZ: target.z,
       cruiseY: def.cruiseY,
     });
     entity.addComponent(SpawnFade, { duration: SPAWN_FADE_DURATION });
-    // Hull hit points: the ship sinks once ShellHitSystem has charged
-    // COMBAT.shellDamage per defender-shell hit into this pool. Normalised:
-    // every unit shares COMBAT.unitHealth (100) as its pool size.
-    entity.addComponent(Health, {
-      current: COMBAT.unitHealth,
-      max: COMBAT.unitHealth,
-    });
     // Water contact is a unit-sheet fact: ships churn a wake, the airborne
     // bombardier never touches the surface and gets none.
     if (def.wake) {
@@ -495,6 +511,22 @@ export class LevelWaveSystem extends createSystem({
     if (def.flap) {
       entity.addComponent(WingFlap);
     }
+    // Boss hulls skip the generic hull core: their armour lives in per-turret
+    // child entities (assembled by BossRigSystem), and the main Health +
+    // HitCore only land once every turret is destroyed — which is also what
+    // reveals the hull's health bar. BossSummon goes on LAST so its
+    // synchronous qualify sees the fully materialised clone.
+    if (def.boss) {
+      entity.addComponent(BossSummon);
+      return entity;
+    }
+    // Hull hit points: the ship sinks once ShellHitSystem has charged
+    // COMBAT.shellDamage per defender-shell hit into this pool. Normalised:
+    // every unit shares COMBAT.unitHealth (100) as its pool size.
+    entity.addComponent(Health, {
+      current: COMBAT.unitHealth,
+      max: COMBAT.unitHealth,
+    });
     // Combat: attacker hit core (defender shells are consumed inside it) and
     // — for armed units — the deck-gun ability with the unit sheet's own
     // fire interval (pirate ships 3 s, the bombardier 2 s, the ornithopter
@@ -512,7 +544,7 @@ export class LevelWaveSystem extends createSystem({
         stone: def.stone,
       });
     }
-    return true;
+    return entity;
   }
 
   /** Begin the given level, or declare the run complete past the last one. */

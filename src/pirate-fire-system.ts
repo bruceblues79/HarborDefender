@@ -23,6 +23,7 @@ import {
   UnitTag,
 } from './components.js';
 import { COMBAT } from './level-config.js';
+import { solveIntercept } from './shell-launch.js';
 
 /**
  * Attacker fire (pirate ships, the bombardier and the ornithopter share the
@@ -77,6 +78,8 @@ export class PirateFireSystem extends createSystem({
   private readonly muzzlePos = new Vector3();
   private readonly corePos = new Vector3();
   private readonly pivotPos = new Vector3();
+  /** Velocity scratch for the shared intercept solver. */
+  private readonly intercept = { vx: 0, vy: 0, vz: 0 };
 
   init(): void {
     this.queries.ships.subscribe('qualify', (entity) => {
@@ -206,10 +209,8 @@ export class PirateFireSystem extends createSystem({
   }
 
   /**
-   * Launch one free shell on the closed-form intercept. With constant
-   * horizontal speed v, flight time tau = d / v and
-   *   vy = (ty - my) / tau + 0.5 * g * tau
-   * makes the shell arrive exactly at (tx, ty, tz) under BallisticSystem.
+   * Launch one free shell on the closed-form intercept solved by the shared
+   * solver (shell-launch.ts) — the same math every attacker gun uses.
    */
   private fire(ship: Entity): boolean {
     const muzzle = this.muzzles.get(ship.index);
@@ -219,21 +220,23 @@ export class PirateFireSystem extends createSystem({
     if (!muzzle || !shell || !shellObject) return false;
 
     muzzle.getWorldPosition(this.muzzlePos);
-    const tx = Number(ship.getValue(PirateCannon, 'targetX'));
-    const ty = Number(ship.getValue(PirateCannon, 'targetY'));
-    const tz = Number(ship.getValue(PirateCannon, 'targetZ'));
-    const dx = tx - this.muzzlePos.x;
-    const dz = tz - this.muzzlePos.z;
-    const horizontal = Math.hypot(dx, dz);
-    if (horizontal < 1e-6) return false;
-    const tau = horizontal / COMBAT.pirateShellSpeed;
+    const tau = solveIntercept(
+      this.muzzlePos,
+      Number(ship.getValue(PirateCannon, 'targetX')),
+      Number(ship.getValue(PirateCannon, 'targetY')),
+      Number(ship.getValue(PirateCannon, 'targetZ')),
+      COMBAT.pirateShellSpeed,
+      COMBAT.gravity,
+      this.intercept,
+    );
+    if (tau < 0) return false;
 
     shellObject.position.copy(this.muzzlePos);
     shellObject.visible = true;
     shell.addComponent(BallisticFlight, {
-      vx: dx / tau,
-      vy: (ty - this.muzzlePos.y) / tau + 0.5 * COMBAT.gravity * tau,
-      vz: dz / tau,
+      vx: this.intercept.vx,
+      vy: this.intercept.vy,
+      vz: this.intercept.vz,
     });
     shell.addComponent(ShellFaction, {
       faction: String(ship.getValue(UnitTag, 'faction')),

@@ -54,6 +54,19 @@ export interface UnitTypeDef {
   /** Berth z bounds rolled for this unit's stop point (MIN far, MAX near). */
   stopZMin: number;
   stopZMax: number;
+  /**
+   * Boss-carrier flag: the spawn pipeline skips the generic root HitCore and
+   * Health (the boss systems assemble per-turret cores and reveal the main
+   * hull pool only once every turret is destroyed). Carries no behaviour of
+   * its own.
+   */
+  boss?: boolean;
+  /**
+   * Fixed sail target (designer data): the unit runs a straight line to this
+   * point instead of a rolled berth-band stop. Absent: the berth cascade
+   * picks the stop like every other attacker.
+   */
+  fixedTarget?: { x: number; z: number };
 }
 
 /**
@@ -73,6 +86,17 @@ export interface WaveSpec {
 export interface LevelSpec {
   name: string;
   waves: WaveSpec[];
+  /**
+   * Money the run starts (and every RESTART) with for this level. Absent:
+   * ECONOMY.startMoney applies.
+   */
+  startMoney?: number;
+  /**
+   * Units mounted per DEFENSE_SLOTS index at first battlefield build,
+   * overriding the slots' own static `unit` fields for this level. Absent:
+   * the slots' own units stand.
+   */
+  initialUnits?: (DefenseUnitId | null)[];
 }
 
 /** Director pacing in seconds. Retune the rhythm of the defence here. */
@@ -336,17 +360,18 @@ export const SPAWN_ROLL_TRIES = 6;
  * The wave is as long as `PACING.maxConcurrentUnits`, so the level runs to
  * completion. A longer wave would simply queue: the director holds units until
  * slots free up, which is what keeps the water from flooding.
+ *
+ * Boss sandbox (task 028): the Islewrath comes down the centre line and the
+ * battery starts fully crewed with deep pockets — a pure boss-fight stage.
  */
 export const designList: LevelSpec[] = [
   {
     name: 'design',
+    startMoney: 9999,
+    initialUnits: ['cannon', 'cannon', 'cannon', 'cannon', 'cannon'],
     waves: [
       {
-        units: [
-          'ornithopter',
-          'ornithopter',
-          'ornithopter',
-        ],
+        units: ['boss_islewrath'],
       },
     ],
   },
@@ -563,6 +588,15 @@ export const COMBAT = {
  * pairs read 0 — immunity is explicit data, never a guessed default. Mirrors
  * docs/design/combat.md; change both together. The two stock pairs stay on
  * their named COMBAT constants (shellDamage / pirateShellDamage).
+ *
+ * Boss rows (task 028): the Islewrath's parts are three hittable unit types —
+ * the four cannon turrets (`islewrath-turret`, 6% per shell), the laser
+ * citadel (`islewrath-laser`, 2% — the hardest plate) and, once every turret
+ * is destroyed, the hull itself (`islewrath`, 10%). The boss turret's own
+ * shells read 20% off the `islewrath-turret->defender` rows. The laser beam
+ * and the summoned flappers' kamikaze dive bypass this table: they deal a
+ * percentage of the victim's MAX pool directly (BOSS.laserDamagePct /
+ * BOSS.kamikazeDamagePct) — a special case documented in combat.md.
  */
 export const DAMAGE_MATRIX: Record<string, number> = {
   'cannon->pirate-ship': COMBAT.shellDamage,
@@ -577,6 +611,16 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   'bombardier->sky-ballista': 12.5,
   'ornithopter->cannon': 7.5,
   'ornithopter->sky-ballista': 10,
+  // Defender shells vs the Islewrath's three plates.
+  'cannon->islewrath-turret': 6,
+  'cannon->islewrath-laser': 2,
+  'cannon->islewrath': 10,
+  'sky-ballista->islewrath-turret': 3,
+  'sky-ballista->islewrath-laser': 1,
+  'sky-ballista->islewrath': 5,
+  // The boss turret guns return fire at raider-shell strength.
+  'islewrath-turret->cannon': 20,
+  'islewrath-turret->sky-ballista': 20,
 };
 
 /**
@@ -641,6 +685,52 @@ export const ORNITHOPTER = {
 };
 
 /**
+ * Boss Islewrath (怒岛号) — the island-ship warlord. Every knob of the boss
+ * fight lives here; the boss systems hold no numbers. Damage taken per shell
+ * is data too: the DAMAGE_MATRIX rows `cannon->islewrath-*` carry the
+ * 6% / 2% / 10% plates.
+ */
+export const BOSS = {
+  /** Unit-sheet id the design level dispatches (UNIT_TYPES key). */
+  unitType: 'boss_islewrath',
+  /** Hit-core unit types of the two plate families and the hull itself. */
+  turretUnitType: 'islewrath-turret',
+  laserUnitType: 'islewrath-laser',
+  hullUnitType: 'islewrath',
+  /** Straight-run berth point: dead centre of the ocean, no lateral drift. */
+  targetX: 0,
+  targetZ: OCEAN.centerZ,
+  /** Seconds between two shots from one cannon turret (plus shared jitter). */
+  turretFireInterval: 3.0,
+  /** Hit-core radii (m): turret/laser parts, then the exposed hull. */
+  turretCoreRadius: 0.3,
+  laserCoreRadius: 0.3,
+  hullCoreRadius: 0.85,
+  /** Summon cycle: one wave of flappers every summonIntervalSec seconds. */
+  summonIntervalSec: 120,
+  summonCountMin: 2,
+  summonCountMax: 3,
+  /** A dive order goes out this many seconds before the next summon. */
+  sacrificeLeadSec: 15,
+  /** Summon-interval multiplier once the hull is exposed (25% shorter). */
+  exposedIntervalScale: 0.75,
+  /** Laser cadence: charge, fire, then wait laserIntervalSec seconds. */
+  laserIntervalSec: 22,
+  laserChargeSec: 2.5,
+  laserBeamSec: 0.4,
+  /** Beam damage: percentage of the victim's MAX pool, applied directly. */
+  laserDamagePct: 60,
+  /** Kamikaze dive: damage pct of the victim's MAX pool + dive speed (m/s). */
+  kamikazeDamagePct: 40,
+  kamikazeSpeed: 1.2,
+  /** Distance (m) at which a diving flapper's payload counts as delivered. */
+  kamikazeHitDistance: 0.2,
+  /** Laser beam visuals: beam cylinder radius, charge-glow sphere radius. */
+  laserBeamRadius: 0.03,
+  laserGlowRadius: 0.12,
+};
+
+/**
  * Unit registry keyed by the unitType string used in level data. Adding a new
  * enemy (goblin flyer, boss) is one entry here plus its asset manifest entry.
  */
@@ -689,5 +779,25 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     wake: false,
     stopZMin: ORNITHOPTER.stopZMin,
     stopZMax: ORNITHOPTER.stopZMax,
+  },
+  'boss_islewrath': {
+    assetId: 'boss-islewrath',
+    scale: 1,
+    movement: 'default-ship',
+    faction: 'attacker',
+    cruiseY: SHIP_Y,
+    // Unarmed at the sheet level: the boss systems drive the turrets, the
+    // shared PirateCannon deck-gun path never touches this hull.
+    armed: false,
+    fireInterval: BOSS.turretFireInterval,
+    rotor: false,
+    flap: false,
+    stone: false,
+    wake: true,
+    // Collapsed berth band + fixed target: the straight centre-line run.
+    stopZMin: BOSS.targetZ,
+    stopZMax: BOSS.targetZ,
+    boss: true,
+    fixedTarget: { x: BOSS.targetX, z: BOSS.targetZ },
   },
 };

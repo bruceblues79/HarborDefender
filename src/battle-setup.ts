@@ -30,7 +30,7 @@ import {
   OceanTag,
   Repairing,
 } from './components.js';
-import { COMBAT, BALLISTA_MUZZLE_LOCAL_Y, BALLISTA_MUZZLE_LOCAL_Z, DEFENSE_BUTTONS, DEFENSE_PAD, DEFENSE_SLOTS, SKY_BALLISTA } from './level-config.js';
+import { COMBAT, BALLISTA_MUZZLE_LOCAL_Y, BALLISTA_MUZZLE_LOCAL_Z, activeLevelList, DEFENSE_BUTTONS, DEFENSE_PAD, DEFENSE_SLOTS, SKY_BALLISTA } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
 import { createDefenseButtonRig } from './defense-buttons.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
@@ -428,7 +428,9 @@ export function startBattle(world: World): void {
           // Cloning keeps geometry/materials shared while each gun_rotate
           // pivot stays independent; both prototypes carry the muzzle and
           // hit_core helpers, so cannons and ballistas alike are armed,
-          // targetable combatants.
+          // targetable combatants. The active level may re-crew the slots
+          // (LevelSpec.initialUnits — the design boss stage opens with a
+          // full five-gun battery); the slots' own units are the default.
           cannonPrototype = cannonGltf.scene;
           decorateCombatPrototype(cannonPrototype, 0, -0.2);
           ballistaPrototype = ballistaGltf.scene;
@@ -437,12 +439,15 @@ export function startBattle(world: World): void {
             BALLISTA_MUZZLE_LOCAL_Y,
             BALLISTA_MUZZLE_LOCAL_Z,
           );
+          const initialUnits =
+            activeLevelList[0]?.initialUnits ??
+            DEFENSE_SLOTS.map((slot) => slot.unit);
           for (
             let slotIndex = 0;
             slotIndex < DEFENSE_SLOTS.length;
             slotIndex++
           ) {
-            const initial = DEFENSE_SLOTS[slotIndex].unit;
+            const initial = initialUnits[slotIndex] ?? DEFENSE_SLOTS[slotIndex].unit;
             if (initial) mountDefenseUnit(world, slotIndex, initial);
           }
 

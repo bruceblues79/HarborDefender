@@ -70,6 +70,8 @@ export class ShellHitSystem extends createSystem({
   private readonly claimedFlashes = new Set<number>();
   /** Bursts handed out this frame; the free-burst query refreshes next frame. */
   private readonly claimedBursts = new Set<number>();
+  /** Zero-health snapshot buffer for the death sweep; reused per frame. */
+  private readonly dying: Entity[] = [];
 
   init(): void {
     this.queries.cores.subscribe('qualify', (entity) => {
@@ -167,25 +169,49 @@ export class ShellHitSystem extends createSystem({
       this.spawnHitFlash(corePosition, this.hitPeakScales[i]);
       this.applyDamage(core, this.hitDamages[i]);
     }
+
+    // Death sweep: any live core whose pool has run dry dies here — whatever
+    // wrote the last points (a shell above, the boss laser, a kamikaze
+    // payload), the death path stays single-truthed in this system. Runs
+    // after the shell resolution so a same-frame shell kill is not doubled.
+    // The victims are snapshotted first: kill() disposes entities, which
+    // mutates the live query array mid-iteration. The position-cache guard
+    // then skips anything already killed this frame (its disqualify ran and
+    // cleared the cache).
+    this.dying.length = 0;
+    for (const core of this.queries.cores.entities) {
+      if (Number(core.getValue(Health, 'current')) <= 0) this.dying.push(core);
+    }
+    for (const core of this.dying) {
+      if (this.corePositions.has(core.index)) this.kill(core);
+    }
   }
 
   /**
-   * Charge one hit of damage. At zero health the unit dies: it bursts into
-   * pooled wood-and-iron chunks at the core's centre, then an attacker's
-   * hull is disposed (its materials are per-ship clones) and a splash
-   * ripple marks the sinking spot, while a defender cannon is tagged
-   * Destroyed and hidden — the tag, not a component strip, takes it out of
-   * every combat query.
+   * Charge one hit of damage. The pool is the single truth: reaching zero
+   * funnels into `kill`, exactly like any other lethal write (boss laser,
+   * kamikaze payload) picked up by the death sweep.
    */
   private applyDamage(core: Entity, damage: number): void {
     const hp = Number(core.getValue(Health, 'current')) - damage;
     core.setValue(Health, 'current', Math.max(0, hp));
     if (hp > 0) return;
+    this.kill(core);
+  }
+
+  /**
+   * Kill a core whose pool is empty. An attacker bursts into pooled
+   * wood-and-iron chunks at the core's centre, then its hull is disposed (its
+   * materials are per-ship clones) and a splash ripple marks the sinking
+   * spot; a defender cannon is tagged Destroyed and hidden — the tag, not a
+   * component strip, takes it out of every combat query.
+   */
+  private kill(core: Entity): void {
+    const at = this.corePositions.get(core.index);
     if (String(core.getValue(HitCore, 'faction')) === 'attacker') {
       // Kill bounty: one unified price per attacker sunk, paid into the
       // director's wallet — the same pool repairs and builds drain.
       this.creditKillReward();
-      const at = this.corePositions.get(core.index);
       if (at) {
         this.spawnDieBurst(at, true);
         this.spawnSinkRipple(at.x, at.z);
@@ -195,7 +221,6 @@ export class ShellHitSystem extends createSystem({
       // textures every later spawn clones from.
       core.dispose({ disposeResources: false });
     } else {
-      const at = this.corePositions.get(core.index);
       if (at) this.spawnDieBurst(at, false);
       core.addComponent(Destroyed);
       if (core.object3D) core.object3D.visible = false;

@@ -631,8 +631,15 @@ interface LoftPoint {
  * Low-poly hull as one closed surface: U-shaped sections lofted between
  * stations (stern +Z -> bow -Z), the top closed by a flat deck strip, tiny
  * transom/stem fans closing the ends. Colours separate planking from deck.
+ * Parameterized so the boss island-ship reuses the exact loft technique.
  */
-function buildHull(rand: () => number): BufferGeometry {
+function loftHull(
+  stations: HullStation[],
+  plankingColor: number,
+  deckColor: number,
+  rand: () => number,
+): BufferGeometry {
+  const HULL_STATIONS = stations;
   const RING_U = [-1, -0.5, 0, 0.5, 1];
   const DECK_MID = 0.45; // deck strip intermediate points, × halfW
   const ringCount = RING_U.length + 2;
@@ -659,7 +666,7 @@ function buildHull(rand: () => number): BufferGeometry {
     for (const pt of [p, q, r]) {
       positions.push(pt.x, pt.y, pt.z);
       const f = 1 + (rand() * 2 - 1) * 0.04;
-      base.set(pt.deck ? DECK_COLOR : HULL_COLOR);
+      base.set(pt.deck ? deckColor : plankingColor);
       colors.push(
         Math.min(1, base.r * f),
         Math.min(1, base.g * f),
@@ -710,6 +717,11 @@ function buildHull(rand: () => number): BufferGeometry {
   ensureOutward(geo);
   geo.computeVertexNormals();
   return geo;
+}
+
+/** The stock pirate raider hull: the shared loft at its authored stations. */
+function buildHull(rand: () => number): BufferGeometry {
+  return loftHull(HULL_STATIONS, HULL_COLOR, DECK_COLOR, rand);
 }
 
 /**
@@ -2066,6 +2078,350 @@ function createOrnithopterExport(): Object3D {
 }
 
 // ---------------------------------------------------------------------------
+// Boss Islewrath — the island-ship (task 028)
+// ---------------------------------------------------------------------------
+
+/**
+ * Oppressive palette: basalt rock over blackened timber, dark iron guns,
+ * moss staining and ember-red trim on the laser citadel. Everything reads
+ * heavier and colder than the warm raider palette above.
+ */
+const BOSS_TIMBER_COLOR = 0x241f1c;
+const BOSS_DECK_COLOR = 0x2f2a24;
+const BOSS_ROCK_COLOR = 0x3a3632;
+const BOSS_ROCK_DEEP_COLOR = 0x2e2b28;
+const BOSS_IRON_COLOR = 0x2b2f33;
+const BOSS_MOSS_COLOR = 0x4a5d3a;
+const BOSS_EMBER_COLOR = 0x8a1400;
+const BOSS_BANNER_COLOR = 0x5c0f0f;
+
+/**
+ * Island-ship hull stations: ~1.7 m long, 1.5 m beam (3-4x the raider), deep
+ * draught and a high, wall-like sheer — the waterline hull of a floating
+ * fortress. Same station semantics as the raider loft.
+ */
+const BOSS_HULL_STATIONS: HullStation[] = [
+  { z: 0.85, halfW: 0.42, keel: -0.14, sheer: 0.42 },
+  { z: 0.6, halfW: 0.62, keel: -0.2, sheer: 0.34 },
+  { z: 0.3, halfW: 0.72, keel: -0.24, sheer: 0.3 },
+  { z: 0, halfW: 0.75, keel: -0.25, sheer: 0.29 },
+  { z: -0.3, halfW: 0.7, keel: -0.23, sheer: 0.3 },
+  { z: -0.55, halfW: 0.55, keel: -0.18, sheer: 0.33 },
+  { z: -0.75, halfW: 0.3, keel: -0.1, sheer: 0.38 },
+  { z: -0.85, halfW: 0.05, keel: -0.02, sheer: 0.46 },
+];
+
+/**
+ * Craggy rock displacement. The jitter comes from a position hash, not the
+ * sequential rand, so side and cap rim vertices at identical positions move
+ * identically — the cylinder seams never tear. Deterministic across runs.
+ */
+function crag(geo: BufferGeometry, amount: number): void {
+  const pos = geo.attributes.position as BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const r = Math.hypot(x, z);
+    if (r < 1e-5) continue;
+    const k =
+      1 +
+      (hash3(Math.round(x * 64), Math.round(y * 64), Math.round(z * 64)) * 2 -
+        1) *
+        amount;
+    pos.setX(i, x * k);
+    pos.setZ(i, z * k);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+}
+
+/**
+ * The static island mass: basalt mesa (three craggy frustums), the central
+ * citadel tower with its ember crown, the four gun-bastion seats (the
+ * turrets are separate yaw pivots — when one is destroyed its empty stone
+ * seat stays behind, the wreck IS the design), a low bulwark, the iron prow
+ * ram and the stern mast with its tattered banner. One merged mesh.
+ */
+function buildBossIsland(rand: () => number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  // Basalt mesa: three stacked frustums, alternating tones, crag-jittered.
+  const mesa: Array<[number, number, number, number, number]> = [
+    // rTop, rBottom, height, yBase, color
+    [0.6, 0.72, 0.34, 0.28, BOSS_ROCK_COLOR],
+    [0.44, 0.56, 0.3, 0.62, BOSS_ROCK_DEEP_COLOR],
+    [0.26, 0.34, 0.26, 0.92, BOSS_ROCK_COLOR],
+  ];
+  for (const [rTop, rBottom, h, yBase, color] of mesa) {
+    const tier = new CylinderGeometry(rTop, rBottom, h, 9);
+    crag(tier, 0.09);
+    tier.translate(0, yBase + h / 2, 0);
+    paint(tier, color, 0.05, rand);
+    parts.push(tier);
+  }
+
+  // Citadel tower above the mesa top (y 1.18) + ember crown band. The laser
+  // pivot rides the crown top at y 1.42.
+  const tower = new CylinderGeometry(0.2, 0.26, 0.2, 9);
+  crag(tower, 0.07);
+  tower.translate(0, 1.28, 0);
+  paint(tower, BOSS_ROCK_DEEP_COLOR, 0.05, rand);
+  parts.push(tower);
+  const crown = new CylinderGeometry(0.23, 0.2, 0.06, 9);
+  crown.translate(0, 1.39, 0);
+  paint(crown, BOSS_EMBER_COLOR, 0.03, rand);
+  parts.push(crown);
+
+  // Four gun-bastion seats (static): stone drums half-embedded in the mesa
+  // flanks, tops flush at y 0.64 — the turret pivots sit exactly there.
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const seat = new CylinderGeometry(0.15, 0.17, 0.4, 10);
+      crag(seat, 0.06);
+      seat.translate(sx * 0.6, 0.44, sz * 0.45);
+      paint(seat, BOSS_ROCK_DEEP_COLOR, 0.05, rand);
+      parts.push(seat);
+    }
+  }
+
+  // Moss patches on the mesa skirts: small flattened icosahedra.
+  const mossSpots: Array<[number, number, number, number]> = [
+    [0.4, 0.36, -0.5, 0.09],
+    [-0.55, 0.42, 0.25, 0.08],
+    [-0.3, 0.64, -0.42, 0.07],
+    [0.5, 0.68, 0.3, 0.06],
+    [0.15, 0.95, 0.32, 0.05],
+  ];
+  for (const [x, y, z, r] of mossSpots) {
+    const patch = new IcosahedronGeometry(r, 0);
+    patch.scale(1, 0.45, 1);
+    patch.translate(x, y, z);
+    paint(patch, BOSS_MOSS_COLOR, 0.08, rand);
+    parts.push(patch);
+  }
+
+  // Low dark bulwark strips along the deck rim (aggressive low silhouette).
+  for (const [x, z, w, rotY] of [
+    [0, -0.62, 1.1, 0],
+    [0, 0.62, 1.1, 0],
+    [-0.66, 0, 0.9, Math.PI / 2],
+    [0.66, 0, 0.9, Math.PI / 2],
+  ] as Array<[number, number, number, number]>) {
+    const rail = new BoxGeometry(w, 0.07, 0.05);
+    rail.rotateY(rotY);
+    rail.translate(x, 0.33, z);
+    paint(rail, BOSS_TIMBER_COLOR, 0.04, rand);
+    parts.push(rail);
+  }
+
+  // Iron prow ram under the bow tip.
+  const ram = new ConeGeometry(0.075, 0.3, 6);
+  ram.rotateX(-Math.PI / 2);
+  ram.translate(0, 0.05, -1.0);
+  paint(ram, BOSS_IRON_COLOR, 0.03, rand);
+  parts.push(ram);
+
+  // Stern mast + tattered banner (thin plane, double-sided hull material).
+  const mast = new CylinderGeometry(0.018, 0.026, 0.55, 8);
+  mast.translate(0, 0.98, 0.55);
+  paint(mast, BOSS_TIMBER_COLOR, 0.04, rand);
+  parts.push(mast);
+  const banner = new PlaneGeometry(0.2, 0.13, 2, 1);
+  const bannerPos = banner.attributes.position as BufferAttribute;
+  for (let i = 0; i < bannerPos.count; i++) {
+    // Tear the fly end into two points so the cloth reads battle-worn.
+    if (bannerPos.getX(i) > 0.05) {
+      bannerPos.setZ(i, bannerPos.getZ(i) + (bannerPos.getY(i) > 0 ? 0.02 : -0.03));
+    }
+  }
+  banner.computeVertexNormals();
+  banner.translate(0.11, 1.2, 0.55);
+  paint(banner, BOSS_BANNER_COLOR, 0.03, rand);
+  parts.push(banner);
+
+  return mergeParts(parts);
+}
+
+/**
+ * One gun bastion turret, built in gun_tN-local space (origin = yaw pivot on
+ * the bastion seat top). Heavy iron naval gun: turntable, carriage, tapered
+ * barrel with an ember chase ring and a knobby breech. Built ONCE — all four
+ * pivots share the geometry; the GLB exports it once and references it.
+ */
+function buildBossGunTurret(rand: () => number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  const turntable = new CylinderGeometry(0.115, 0.13, 0.03, 12);
+  turntable.translate(0, 0.005, 0);
+  paint(turntable, BOSS_IRON_COLOR, 0.03, rand);
+  parts.push(turntable);
+
+  const carriage = new BoxGeometry(0.15, 0.06, 0.17);
+  carriage.translate(0, 0.045, 0.01);
+  paint(carriage, BOSS_TIMBER_COLOR, 0.04, rand);
+  parts.push(carriage);
+
+  const barrel = new CylinderGeometry(0.034, 0.052, 0.36, 10);
+  barrel.rotateX(-Math.PI / 2);
+  barrel.translate(0, 0.085, -0.16);
+  paint(barrel, BOSS_IRON_COLOR, 0.03, rand);
+  parts.push(barrel);
+
+  // Ember chase ring near the muzzle — the guns read hot even before firing.
+  const ring = new CylinderGeometry(0.045, 0.045, 0.02, 10);
+  ring.rotateX(-Math.PI / 2);
+  ring.translate(0, 0.085, -0.28);
+  paint(ring, BOSS_EMBER_COLOR, 0.02, rand);
+  parts.push(ring);
+
+  const breech = new SphereGeometry(0.05, 6, 4);
+  breech.translate(0, 0.085, 0.05);
+  paint(breech, BOSS_IRON_COLOR, 0.03, rand);
+  parts.push(breech);
+
+  return mergeParts(parts);
+}
+
+/**
+ * The laser citadel gun, built in laser_turret-local space (origin = yaw
+ * pivot on the crown top). An obsidian prism blade between iron yoke cheeks,
+ * ember bands up the spine — the boss's signature weapon reads ceremonial
+ * and lethal, not like the iron guns below.
+ */
+function buildBossLaserTurret(rand: () => number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  const collar = new CylinderGeometry(0.1, 0.12, 0.07, 10);
+  collar.translate(0, 0.025, 0);
+  paint(collar, BOSS_IRON_COLOR, 0.03, rand);
+  parts.push(collar);
+
+  const cheek = new BoxGeometry(0.016, 0.075, 0.11);
+  const cheekPlus = cheek.clone();
+  cheekPlus.translate(0.062, 0.075, -0.03);
+  const cheekMinus = cheek.clone();
+  cheekMinus.translate(-0.062, 0.075, -0.03);
+  paint(cheekPlus, BOSS_IRON_COLOR, 0.03, rand);
+  paint(cheekMinus, BOSS_IRON_COLOR, 0.03, rand);
+  parts.push(cheekPlus, cheekMinus);
+
+  // Prism barrel: two four-sided cones base-to-base — a diamond blade that
+  // tapers to a needle at the muzzle.
+  const prismFront = new ConeGeometry(0.052, 0.2, 4);
+  prismFront.rotateX(-Math.PI / 2);
+  prismFront.rotateY(Math.PI / 4);
+  prismFront.translate(0, 0.09, -0.13);
+  paint(prismFront, BOSS_ROCK_DEEP_COLOR, 0.04, rand);
+  parts.push(prismFront);
+  const prismRear = new ConeGeometry(0.052, 0.12, 4);
+  prismRear.rotateX(Math.PI / 2);
+  prismRear.rotateY(Math.PI / 4);
+  prismRear.translate(0, 0.09, 0.03);
+  paint(prismRear, BOSS_ROCK_DEEP_COLOR, 0.04, rand);
+  parts.push(prismRear);
+
+  // Ember spine bands up the prism.
+  for (const z of [-0.08, -0.02]) {
+    const band = new CylinderGeometry(0.056, 0.056, 0.014, 4);
+    band.rotateX(-Math.PI / 2);
+    band.rotateY(Math.PI / 4);
+    band.translate(0, 0.09, z);
+    paint(band, BOSS_EMBER_COLOR, 0.02, rand);
+    parts.push(band);
+  }
+
+  return mergeParts(parts);
+}
+
+/**
+ * Boss Islewrath (怒岛号) — the island-ship warlord.
+ *
+ * - Origin: centre of the waterline plane; y = 0 is the local waterline,
+ *   the keel reaches -0.25 and the hull rises to the sheer line. Bow -Z.
+ * - Node contract (consumed by the boss systems, never by the generic ship
+ *   decorate path): `gun_t1..gun_t4` yaw pivots on the four bastion seats,
+ *   `laser_turret` yaw pivot on the citadel crown. Each pivot subtree
+ *   carries its merged gun mesh, a `muzzle` (barrel tip) and a `hit_core`
+ *   (part centre) — the per-pivot `hit_core`/`muzzle` names make
+ *   decorateShipPrototype's root-level additions inert (its lookups find
+ *   the subtree nodes first), and no node is named `gun_rotate`, so no
+ *   cannon_mount wrapper is ever built for the boss.
+ * - Two materials: the island body at roughness 0.6 (weathered basalt), the
+ *   guns at roughness 0.35 / metalness 0.9 (polished dark iron).
+ */
+function createBossIslewrathExport(): Object3D {
+  const rand = makeRandom(20261026);
+
+  const islandMaterial = new MeshStandardMaterial({
+    name: 'boss-island',
+    color: 0xffffff,
+    roughness: 0.6,
+    metalness: 0,
+    vertexColors: true,
+    // The tattered banner is a thin plane and must read from both sides.
+    side: DoubleSide,
+  });
+  const gunMaterial = new MeshStandardMaterial({
+    name: 'boss-gun',
+    color: 0xffffff,
+    roughness: 0.35,
+    metalness: 0.9,
+    vertexColors: true,
+  });
+
+  const islandMesh = new Mesh(buildBossIsland(rand), islandMaterial);
+  islandMesh.name = 'boss-island-mesh';
+
+  const gunGeometry = buildBossGunTurret(rand);
+  const gunPivots: Array<[string, number, number]> = [
+    ['gun_t1', -0.6, -0.45],
+    ['gun_t2', 0.6, -0.45],
+    ['gun_t3', -0.6, 0.45],
+    ['gun_t4', 0.6, 0.45],
+  ];
+
+  const root = new Object3D();
+  root.name = 'boss_islewrath';
+  root.add(islandMesh);
+  for (const [name, x, z] of gunPivots) {
+    const pivot = new Object3D();
+    pivot.name = name;
+    pivot.position.set(x, 0.64, z);
+    const gunMesh = new Mesh(gunGeometry, gunMaterial);
+    gunMesh.name = `boss-gun-mesh-${name}`;
+    pivot.add(gunMesh);
+    const muzzle = new Object3D();
+    muzzle.name = 'muzzle';
+    muzzle.position.set(0, 0.085, -0.37);
+    pivot.add(muzzle);
+    const hitCore = new Object3D();
+    hitCore.name = 'hit_core';
+    hitCore.position.set(0, 0.05, -0.02);
+    pivot.add(hitCore);
+    root.add(pivot);
+  }
+
+  const laserPivot = new Object3D();
+  laserPivot.name = 'laser_turret';
+  laserPivot.position.set(0, 1.42, -0.08);
+  const laserMesh = new Mesh(buildBossLaserTurret(rand), gunMaterial);
+  laserMesh.name = 'boss-laser-mesh';
+  laserPivot.add(laserMesh);
+  const laserMuzzle = new Object3D();
+  laserMuzzle.name = 'muzzle';
+  laserMuzzle.position.set(0, 0.09, -0.24);
+  laserPivot.add(laserMuzzle);
+  const laserCore = new Object3D();
+  laserCore.name = 'hit_core';
+  laserCore.position.set(0, 0.06, -0.02);
+  laserPivot.add(laserCore);
+  root.add(laserPivot);
+
+  return root;
+}
+
+// ---------------------------------------------------------------------------
 // Export driver
 // ---------------------------------------------------------------------------
 
@@ -2135,4 +2491,9 @@ await exportGLB(createDefensePadExport(), 'defense-pad.glb');
 // ornithopter: the middle-air flapper joins the raid (task 025); wings and
 // muzzle are baked as named nodes for the runtime flap and stone systems.
 await exportGLB(createOrnithopterExport(), 'ornithopter.glb');
+// boss_islewrath: the island-ship warlord joins the raid (task 028); five
+// yaw-pivot turrets (gun_t1..t4 + laser_turret) each carry muzzle/hit_core
+// for the boss combat systems. A fresh file name isolates it from any stale
+// GLB caching.
+await exportGLB(createBossIslewrathExport(), 'boss-islewrath.glb');
 console.log('\nDone. GLBs written to public/gltf/');

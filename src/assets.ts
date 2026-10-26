@@ -136,4 +136,10 @@ export default defineAssets({
     name: 'Ornithopter',
     priority: 'background',
   },
+  'boss-islewrath': {
+    url: publicAssetUrl('gltf/boss-islewrath.glb'),
+    type: AssetType.GLTF,
+    name: 'Boss Islewrath',
+    priority: 'background',
+  },
 });

@@ -6,7 +6,7 @@
  */
 
 import { createComponent, defineComponents } from '@iwsdk/core';
-import { COMBAT, ECONOMY, ORNITHOPTER, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y } from './level-config.js';
+import { BOSS, COMBAT, ECONOMY, ORNITHOPTER, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y } from './level-config.js';
 
 /** Marks the ocean body entity so OceanSystem can find it via query. */
 export const OceanTag = createComponent('OceanTag', {});
@@ -469,6 +469,81 @@ export const DefenseButton = createComponent('DefenseButton', {
   kind: { type: 'String', default: 'build' },
 });
 
+/**
+ * Summon state of the boss hull (boss_islewrath). Its presence on a unit
+ * entity *is* the boss marker: BossRigSystem assembles the turret child
+ * entities on its qualify. BossSummonSystem is the only per-frame writer.
+ */
+export const BossSummon = createComponent('BossSummon', {
+  /** Seconds between two summon cycles (shortened once the hull is exposed). */
+  interval: { type: 'Float32', default: BOSS.summonIntervalSec },
+  /** Countdown to the next summon cycle (or to the next dive order). */
+  timer: { type: 'Float32', default: BOSS.summonIntervalSec },
+  /** True after the sacrifice order went out, before the next summon lands. */
+  sacrificeArmed: { type: 'Boolean', default: false },
+});
+
+/**
+ * One boss cannon turret (a gun_t1..t4 child entity of the boss root).
+ * BossTurretSystem is the only writer: every shot re-rolls a random defender
+ * core — no persistent lock, by design ("颇具随机性").
+ */
+export const BossTurret = createComponent('BossTurret', {
+  /** Seconds between two shots (plus the shared fire jitter). */
+  interval: { type: 'Float32', default: BOSS.turretFireInterval },
+  /** Countdown to the next shot. */
+  cooldown: { type: 'Float32', default: 0 },
+});
+
+/**
+ * The boss laser citadel (the laser_turret child entity). A charged attack:
+ * lock one defender core, glow up over `laserChargeSec`, fire a beam that
+ * burns a percentage of the victim's MAX pool in one hit. BossLaserSystem is
+ * the only writer.
+ */
+export const BossLaser = createComponent('BossLaser', {
+  /** 'idle' | 'charging' | 'firing'. */
+  phase: { type: 'String', default: 'idle' },
+  /** Countdown to the next charge (runs while idle). */
+  cooldown: { type: 'Float32', default: BOSS.laserIntervalSec },
+  /** Seconds elapsed in the current charging/firing phase. */
+  elapsed: { type: 'Float32', default: 0 },
+  /** Entity index of the locked defender core (-1 = none). */
+  targetCoreIndex: { type: 'Int32', default: -1 },
+  /** Locked target core world position snapshot (defenders never move). */
+  targetX: { type: 'Float32', default: 0 },
+  targetY: { type: 'Float32', default: 0 },
+  targetZ: { type: 'Float32', default: 0 },
+});
+
+/**
+ * Sacrifice order for a summoned ornithopter: dive onto the locked defender
+ * core and detonate. Presence of this component *is* the tag "in kamikaze
+ * flight" — ShipMovementSystem excludes these carriers (the dive owns their
+ * motion) and PirateCannon was stripped when the order went out. Written by
+ * BossSummonSystem, driven by BossKamikazeSystem.
+ */
+export const KamikazeDive = createComponent('KamikazeDive', {
+  /** Entity index of the victim defender core (-1 = pick on next frame). */
+  victimCoreIndex: { type: 'Int32', default: -1 },
+  /** Dive speed (m/s). */
+  speed: { type: 'Float32', default: BOSS.kamikazeSpeed },
+});
+
+/**
+ * Explicit tags (no fields):
+ * - `HideHealthBar` — a boss turret/laser child entity; HealthBarSystem
+ *   skips it so the boss shows exactly one bar (the hull's, once revealed).
+ * - `BossMinion` — an ornithopter summoned by the boss (a BossSummonSystem
+ *   child, not a dispatched wave unit); the kamikaze order targets these.
+ * - `BossVulnerable` — every boss turret is destroyed: the hull's main
+ *   Health/HitCore are live, the summon interval is shortened. Written once
+ *   by BossRigSystem.
+ */
+export const HideHealthBar = createComponent('HideHealthBar', {});
+export const BossMinion = createComponent('BossMinion', {});
+export const BossVulnerable = createComponent('BossVulnerable', {});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -503,4 +578,11 @@ export default defineComponents([
   Repairing,
   BuildOpen,
   DefenseButton,
+  BossSummon,
+  BossTurret,
+  BossLaser,
+  KamikazeDive,
+  HideHealthBar,
+  BossMinion,
+  BossVulnerable,
 ]);

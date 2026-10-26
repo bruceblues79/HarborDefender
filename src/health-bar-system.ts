@@ -21,6 +21,7 @@ import {
   GameOver,
   GamePaused,
   Health,
+  HideHealthBar,
   HitCore,
   LevelDirector,
 } from './components.js';
@@ -99,7 +100,10 @@ const FILL_RENDER_ORDER = 9;
 const FILL_Z_OFFSET = 0.002;
 
 export class HealthBarSystem extends createSystem({
-  units: { required: [Health] },
+  // Boss turret/laser child entities carry Health too, but their bars are
+  // suppressed (HideHealthBar) — the boss reads as ONE unit with one bar,
+  // which is the hull's, appearing exactly when its pool is revealed.
+  units: { required: [Health], excluded: [HideHealthBar] },
   directors: { required: [LevelDirector] },
 }) {
   /** health-bar rig per unit entity index; the unit object is its parent. */
