@@ -2092,7 +2092,6 @@ const BOSS_ROCK_COLOR = 0x3a3632;
 const BOSS_ROCK_DEEP_COLOR = 0x2e2b28;
 const BOSS_IRON_COLOR = 0x2b2f33;
 const BOSS_EMBER_COLOR = 0x8a1400;
-const BOSS_BANNER_COLOR = 0x5c0f0f;
 /** Signature red of the boss's identity parts — the bow ram and the laser. */
 const BOSS_RED_COLOR = 0xb01616;
 
@@ -2142,8 +2141,8 @@ function crag(geo: BufferGeometry, amount: number): void {
  * citadel tower with its ember crown, the four gun-bastion seats (the
  * turrets are separate yaw pivots — when one is destroyed its empty stone
  * seat stays behind, the wreck IS the design; the rear pair steps one
- * terrace higher), ember-red war banners on the bow flank and the stern
- * mast with its tattered banner. One merged mesh.
+ * terrace higher) and the bow ram cone. One merged mesh. All banners and
+ * masts are gone (v0.1.182) — the silhouette belongs to the guns.
  */
 function buildBossIsland(rand: () => number): BufferGeometry {
   const parts: BufferGeometry[] = [];
@@ -2225,24 +2224,6 @@ function buildBossIsland(rand: () => number): BufferGeometry {
     parts.push(rail);
   }
 
-  // Stern mast + tattered banner (thin plane, double-sided hull material).
-  const mast = new CylinderGeometry(0.018, 0.026, 0.55, 8);
-  mast.translate(0, 0.98, 0.55);
-  paint(mast, BOSS_TIMBER_COLOR, 0.04, rand);
-  parts.push(mast);
-  const banner = new PlaneGeometry(0.2, 0.13, 2, 1);
-  const bannerPos = banner.attributes.position as BufferAttribute;
-  for (let i = 0; i < bannerPos.count; i++) {
-    // Tear the fly end into two points so the cloth reads battle-worn.
-    if (bannerPos.getX(i) > 0.05) {
-      bannerPos.setZ(i, bannerPos.getZ(i) + (bannerPos.getY(i) > 0 ? 0.02 : -0.03));
-    }
-  }
-  banner.computeVertexNormals();
-  banner.translate(0.11, 1.2, 0.55);
-  paint(banner, BOSS_BANNER_COLOR, 0.03, rand);
-  parts.push(banner);
-
   return mergeParts(parts);
 }
 
@@ -2291,67 +2272,45 @@ function buildBossGunTurret(rand: () => number): BufferGeometry {
 
 /**
  * The laser citadel gun, built in laser_turret-local space (origin = yaw
- * pivot on the crown top). Shape-first iteration (v0.1.180): the charged
- * attack is removed for now and the cannon is a giant faceted emitter —
- * an 8-sided breech drum, a 6-flute barrel with iron rib bands, and a
- * chamfered diamond tip. Every surface is a flat facet meeting its
- * neighbour at a hard ridge (楞), ends step down through short tapered
- * collars (导角). It faces local -Z, which is world +Z toward the harbour
- * wall at the boss's berthed yaw.
+ * pivot on the crown top). Three-tier stack (v0.1.182): an 8-sided base
+ * drum ON the crown, a tapering neck joint, and the fluted cannon itself —
+ * a single 6-facet barrel whose rear end seats over the neck top and whose
+ * muzzle ends in an iron collar. The v0.1.181 rear breech cap read as a
+ * little red flag in silhouette and the diamond emitter tip sat like junk
+ * in the bore; both removed. It faces local -Z, which is world +Z toward
+ * the harbour wall at the boss's berthed yaw.
  */
 function buildBossLaserTurret(rand: () => number): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  // Low 8-sided seat collar — the chamfered break from the crown into the
-  // breech.
-  const collar = new CylinderGeometry(0.2, 0.24, 0.06, 8);
-  collar.translate(0, 0.03, 0);
-  paint(collar, BOSS_IRON_COLOR, 0.03, rand);
-  parts.push(collar);
+  // Tier 1 — base drum on the crown.
+  const base = new CylinderGeometry(0.24, 0.28, 0.08, 8);
+  base.translate(0, 0.04, 0);
+  paint(base, BOSS_IRON_COLOR, 0.03, rand);
+  parts.push(base);
 
-  // Breech: a giant 8-facet drum — the visual mass of the weapon.
-  const breech = new CylinderGeometry(0.21, 0.21, 0.2, 8);
-  breech.translate(0, 0.16, 0.02);
-  paint(breech, BOSS_RED_COLOR, 0.03, rand);
-  parts.push(breech);
+  // Tier 2 — the neck joint: tapers up from the base; the barrel's belly
+  // seats over its top.
+  const neck = new CylinderGeometry(0.14, 0.18, 0.12, 8);
+  neck.translate(0, 0.14, 0);
+  paint(neck, BOSS_IRON_COLOR, 0.03, rand);
+  parts.push(neck);
 
-  // Barrel: a 6-flute tapered prism — six flat facets with hard ridge
-  // lines (the 楞 read), tapering toward the muzzle (spans z -0.1..-0.6).
-  const barrel = new CylinderGeometry(0.13, 0.17, 0.5, 6);
+  // Tier 3 — the fluted cannon on axis y 0.32: a single 6-facet tapered
+  // prism (the 楞 read), rear end just past the neck centre (z spans
+  // -0.53..0.03) so it reads cradled in the mount.
+  const barrel = new CylinderGeometry(0.11, 0.145, 0.56, 6);
   barrel.rotateX(-Math.PI / 2);
-  barrel.translate(0, 0.16, -0.35);
+  barrel.translate(0, 0.32, -0.25);
   paint(barrel, BOSS_RED_COLOR, 0.03, rand);
   parts.push(barrel);
 
-  // Iron rib bands cinch the flutes — segmented, loaded, angular.
-  for (const z of [-0.24, -0.46]) {
-    const band = new CylinderGeometry(0.15, 0.15, 0.04, 6);
-    band.rotateX(-Math.PI / 2);
-    band.translate(0, 0.16, z);
-    paint(band, BOSS_IRON_COLOR, 0.02, rand);
-    parts.push(band);
-  }
-
-  // Muzzle collar, then the chamfered diamond emitter tip (apex -0.74).
-  const muzzleRing = new CylinderGeometry(0.16, 0.16, 0.05, 8);
+  // Iron muzzle collar wrapping the barrel's front face.
+  const muzzleRing = new CylinderGeometry(0.125, 0.125, 0.04, 8);
   muzzleRing.rotateX(-Math.PI / 2);
-  muzzleRing.translate(0, 0.16, -0.58);
+  muzzleRing.translate(0, 0.32, -0.55);
   paint(muzzleRing, BOSS_IRON_COLOR, 0.02, rand);
   parts.push(muzzleRing);
-  const tip = new ConeGeometry(0.1, 0.16, 4);
-  tip.rotateX(-Math.PI / 2);
-  tip.rotateY(Math.PI / 4);
-  tip.translate(0, 0.16, -0.66);
-  paint(tip, BOSS_EMBER_COLOR, 0.03, rand);
-  parts.push(tip);
-
-  // Rear counterweight: a short 4-facet taper off the breech.
-  const rear = new ConeGeometry(0.13, 0.14, 4);
-  rear.rotateX(Math.PI / 2);
-  rear.rotateY(Math.PI / 4);
-  rear.translate(0, 0.16, 0.19);
-  paint(rear, BOSS_IRON_COLOR, 0.03, rand);
-  parts.push(rear);
 
   return mergeParts(parts);
 }
@@ -2381,8 +2340,6 @@ function createBossIslewrathExport(): Object3D {
     roughness: 0.6,
     metalness: 0,
     vertexColors: true,
-    // The tattered banner is a thin plane and must read from both sides.
-    side: DoubleSide,
   });
   const gunMaterial = new MeshStandardMaterial({
     name: 'boss-gun',
@@ -2434,7 +2391,7 @@ function createBossIslewrathExport(): Object3D {
   laserPivot.add(laserMesh);
   const laserMuzzle = new Object3D();
   laserMuzzle.name = 'muzzle';
-  laserMuzzle.position.set(0, 0.16, -0.76);
+  laserMuzzle.position.set(0, 0.32, -0.6);
   laserPivot.add(laserMuzzle);
   const laserCore = new Object3D();
   laserCore.name = 'hit_core';
