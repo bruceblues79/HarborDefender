@@ -35,10 +35,12 @@ import { solveIntercept } from './shell-launch.js';
  * 'stopped'), the shots are the shared guaranteed-hit intercept, and the
  * shell is stamped `islewrath-turret` so DAMAGE_MATRIX's 20% rows apply.
  *
- * Aim: each pivot yaws independently around its own seat axis — the world
- * yaw is computed pivot -> target and converted into the hull's local frame
- * by subtracting the hull's world yaw, exactly like PirateFireSystem's
- * cannon_mount math (reference = the pivot, not the hull origin).
+ * Aim: each part's baked `gun_rotate` yaws independently around its own seat
+ * axis — the world yaw is computed pivot -> target and converted into the
+ * hull's local frame by subtracting the hull's world yaw, exactly like
+ * PirateFireSystem's cannon_mount math (reference = the part pivot, not the
+ * hull origin). The gun_tN wrapper stays the entity identity; the rotor is
+ * the aiming node.
  */
 export class BossTurretSystem extends createSystem({
   turrets: { required: [BossTurret] },
@@ -52,6 +54,8 @@ export class BossTurretSystem extends createSystem({
 }) {
   /** Muzzle node per turret entity index, resolved once on qualify. */
   private readonly muzzles = new Map<number, Object3D>();
+  /** gun_rotate yaw pivot per turret entity index, resolved once on qualify. */
+  private readonly rotors = new Map<number, Object3D>();
   /** Defender hit_core nodes per core entity index, resolved once on qualify. */
   private readonly coreNodes = new Map<number, Object3D>();
   /** Shells handed out this frame; the free-shell query refreshes next frame. */
@@ -64,8 +68,11 @@ export class BossTurretSystem extends createSystem({
 
   init(): void {
     this.queries.turrets.subscribe('qualify', (turret) => {
-      const muzzle = turret.object3D?.getObjectByName('muzzle');
+      const root = turret.object3D;
+      const muzzle = root?.getObjectByName('muzzle');
       if (muzzle) this.muzzles.set(turret.index, muzzle);
+      const rotor = root?.getObjectByName('gun_rotate');
+      if (rotor) this.rotors.set(turret.index, rotor);
       // First volley fires the moment the hull parks; 0 here costs nothing.
       turret.setValue(BossTurret, 'cooldown', 0);
     });
@@ -88,11 +95,12 @@ export class BossTurretSystem extends createSystem({
     for (const turret of this.queries.turrets.entities) {
       const pivot = turret.object3D;
       const muzzle = this.muzzles.get(turret.index);
-      if (!pivot || !muzzle) continue;
+      const rotor = this.rotors.get(turret.index);
+      if (!pivot || !muzzle || !rotor) continue;
       let cooldown = Number(turret.getValue(BossTurret, 'cooldown')) - delta;
       if (cooldown <= 0) {
         // Pool empty: retry shortly instead of banking negative time.
-        cooldown = this.fire(turret, pivot, muzzle, bossObject)
+        cooldown = this.fire(turret, rotor, pivot, muzzle, bossObject)
           ? this.rollInterval(turret)
           : 0.1;
       }
@@ -106,6 +114,7 @@ export class BossTurretSystem extends createSystem({
    */
   private fire(
     turret: Entity,
+    rotor: Object3D,
     pivot: Object3D,
     muzzle: Object3D,
     bossObject: Object3D,
@@ -116,13 +125,13 @@ export class BossTurretSystem extends createSystem({
     if (!node) return false;
     node.getWorldPosition(this.corePos);
 
-    // Yaw this pivot onto the target in the hull's local frame.
+    // Yaw this part's gun_rotate onto the target in the hull's local frame.
     pivot.getWorldPosition(this.pivotPos);
     const worldYaw = Math.atan2(
       -(this.corePos.x - this.pivotPos.x),
       -(this.corePos.z - this.pivotPos.z),
     );
-    pivot.rotation.y = worldYaw - bossObject.rotation.y;
+    rotor.rotation.y = worldYaw - bossObject.rotation.y;
 
     // Launch from the (freshly swung) muzzle.
     const shell = this.firstFreeShell();

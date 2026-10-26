@@ -13,6 +13,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
+  Box3,
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
@@ -2096,22 +2097,6 @@ const BOSS_EMBER_COLOR = 0x8a1400;
 const BOSS_RED_COLOR = 0xb01616;
 
 /**
- * Island-ship hull stations: ~1.7 m long, 1.5 m beam (3-4x the raider), deep
- * draught and a high, wall-like sheer — the waterline hull of a floating
- * fortress. Same station semantics as the raider loft.
- */
-const BOSS_HULL_STATIONS: HullStation[] = [
-  { z: 0.85, halfW: 0.42, keel: -0.14, sheer: 0.42 },
-  { z: 0.6, halfW: 0.62, keel: -0.2, sheer: 0.34 },
-  { z: 0.3, halfW: 0.72, keel: -0.24, sheer: 0.3 },
-  { z: 0, halfW: 0.75, keel: -0.25, sheer: 0.29 },
-  { z: -0.3, halfW: 0.7, keel: -0.23, sheer: 0.3 },
-  { z: -0.55, halfW: 0.55, keel: -0.18, sheer: 0.33 },
-  { z: -0.75, halfW: 0.3, keel: -0.1, sheer: 0.38 },
-  { z: -0.85, halfW: 0.05, keel: -0.02, sheer: 0.46 },
-];
-
-/**
  * Craggy rock displacement. The jitter comes from a position hash, not the
  * sequential rand, so side and cap rim vertices at identical positions move
  * identically — the cylinder seams never tear. Deterministic across runs.
@@ -2320,14 +2305,21 @@ function buildBossLaserTurret(rand: () => number): BufferGeometry {
  *
  * - Origin: centre of the waterline plane; y = 0 is the local waterline,
  *   the keel reaches -0.25 and the hull rises to the sheer line. Bow -Z.
- * - Node contract (consumed by the boss systems, never by the generic ship
- *   decorate path): `gun_t1..gun_t4` yaw pivots on the four bastion seats,
- *   `laser_turret` yaw pivot on the citadel crown. Each pivot subtree
- *   carries its merged gun mesh, a `muzzle` (barrel tip) and a `hit_core`
- *   (part centre) — the per-pivot `hit_core`/`muzzle` names make
- *   decorateShipPrototype's root-level additions inert (its lookups find
- *   the subtree nodes first), and no node is named `gun_rotate`, so no
- *   cannon_mount wrapper is ever built for the boss.
+ * - Complete functional node contract, baked here so runtime systems only
+ *   look nodes up (never invent them):
+ *   - root `hit_core`: the hull core at the island's bounding-box centre.
+ *     It is the FIRST child so a root-level `getObjectByName('hit_core')`
+ *     always resolves the hull, never a part core inside a turret subtree.
+ *   - `gun_t1..gun_t4` / `laser_turret`: the armour-part wrappers that
+ *     BossRigSystem turns into child entities. One wrapper per hittable
+ *     plate; its name identifies the plate, not the rotation axis.
+ *   - inside each wrapper, `gun_rotate`: the standard articulated-gun yaw
+ *     pivot (same node family as cannon / ship / ballista). The merged gun
+ *     mesh, `muzzle` (barrel tip) and `hit_core` (plate centre) all ride it,
+ *     so rotating this node aims the whole part.
+ * - The generic decorateShipPrototype pass is skipped for boss hulls (see
+ *   LevelWaveSystem): wrapping a `gun_rotate` in `cannon_mount` would break
+ *   the per-plate entity hierarchy, and the root core is already baked.
  * - Two materials: the island body at roughness 0.6 (weathered basalt), the
  *   guns at roughness 0.35 / metalness 0.9 (polished dark iron).
  */
@@ -2355,7 +2347,7 @@ function createBossIslewrathExport(): Object3D {
   const gunGeometry = buildBossGunTurret(rand);
   // Front pair (bow side, -Z) low on its seats, rear pair stepped one
   // terrace higher — the staggered battery silhouette.
-  const gunPivots: Array<[string, number, number, number]> = [
+  const gunParts: Array<[string, number, number, number]> = [
     ['gun_t1', -0.6, -0.45, 0.64],
     ['gun_t2', 0.6, -0.45, 0.64],
     ['gun_t3', -0.6, 0.45, 0.84],
@@ -2364,40 +2356,55 @@ function createBossIslewrathExport(): Object3D {
 
   const root = new Object3D();
   root.name = 'boss_islewrath';
+
+  // Hull core first — root-level lookups must never hit a turret core.
+  const hullCore = new Object3D();
+  hullCore.name = 'hit_core';
+  hullCore.position.copy(
+    new Box3().setFromObject(islandMesh).getCenter(new Vector3()),
+  );
+  root.add(hullCore);
   root.add(islandMesh);
-  for (const [name, x, z, y] of gunPivots) {
-    const pivot = new Object3D();
-    pivot.name = name;
-    pivot.position.set(x, y, z);
+
+  for (const [name, x, z, y] of gunParts) {
+    // Armour-part wrapper: the hittable plate identity (one per seat).
+    const part = new Object3D();
+    part.name = name;
+    part.position.set(x, y, z);
+
+    // Standard yaw pivot at the part origin; mesh, muzzle and core ride it.
+    const rotor = new Object3D();
+    rotor.name = 'gun_rotate';
     const gunMesh = new Mesh(gunGeometry, gunMaterial);
     gunMesh.name = `boss-gun-mesh-${name}`;
-    pivot.add(gunMesh);
     const muzzle = new Object3D();
     muzzle.name = 'muzzle';
     muzzle.position.set(0, 0.11, -0.46);
-    pivot.add(muzzle);
     const hitCore = new Object3D();
     hitCore.name = 'hit_core';
     hitCore.position.set(0, 0.07, -0.02);
-    pivot.add(hitCore);
-    root.add(pivot);
+    rotor.add(gunMesh, muzzle, hitCore);
+    part.add(rotor);
+    root.add(part);
   }
 
-  const laserPivot = new Object3D();
-  laserPivot.name = 'laser_turret';
-  laserPivot.position.set(0, 1.12, -0.08);
+  // Laser citadel: the same part -> gun_rotate two-level contract.
+  const laserPart = new Object3D();
+  laserPart.name = 'laser_turret';
+  laserPart.position.set(0, 1.12, -0.08);
+  const laserRotor = new Object3D();
+  laserRotor.name = 'gun_rotate';
   const laserMesh = new Mesh(buildBossLaserTurret(rand), gunMaterial);
   laserMesh.name = 'boss-laser-mesh';
-  laserPivot.add(laserMesh);
   const laserMuzzle = new Object3D();
   laserMuzzle.name = 'muzzle';
   laserMuzzle.position.set(0, 0.32, -0.6);
-  laserPivot.add(laserMuzzle);
   const laserCore = new Object3D();
   laserCore.name = 'hit_core';
   laserCore.position.set(0, 0.08, -0.02);
-  laserPivot.add(laserCore);
-  root.add(laserPivot);
+  laserRotor.add(laserMesh, laserMuzzle, laserCore);
+  laserPart.add(laserRotor);
+  root.add(laserPart);
 
   return root;
 }
@@ -2472,9 +2479,9 @@ await exportGLB(createDefensePadExport(), 'defense-pad.glb');
 // ornithopter: the middle-air flapper joins the raid (task 025); wings and
 // muzzle are baked as named nodes for the runtime flap and stone systems.
 await exportGLB(createOrnithopterExport(), 'ornithopter.glb');
-// boss_islewrath: the island-ship warlord joins the raid (task 028); five
-// yaw-pivot turrets (gun_t1..t4 + laser_turret) each carry muzzle/hit_core
-// for the boss combat systems. A fresh file name isolates it from any stale
-// GLB caching.
-await exportGLB(createBossIslewrathExport(), 'boss-islewrath.glb');
+// boss-islewrath-v2: the island-ship warlord now ships a complete functional
+// rig — a baked hull hit_core plus gun_t1..t4/laser_turret part wrappers, each
+// owning a gun_rotate yaw pivot with muzzle/hit_core. The v2 file name isolates
+// the changed node hierarchy from any stale GLB caching.
+await exportGLB(createBossIslewrathExport(), 'boss-islewrath-v2.glb');
 console.log('\nDone. GLBs written to public/gltf/');

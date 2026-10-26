@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { Box3, createSystem, Object3D, Vector3 } from '@iwsdk/core';
+import { createSystem } from '@iwsdk/core';
 import type { Entity } from '@iwsdk/core';
 import {
   BossLaser,
@@ -23,20 +23,21 @@ import { BOSS, COMBAT } from './level-config.js';
 /**
  * Assembles the Islewrath's fighting parts and runs its armour phases.
  *
- * Assembly (boss qualify, once): the GLB ships five yaw pivots — gun_t1..t4
- * on their bastion seats and laser_turret on the citadel crown, each subtree
- * carrying its gun mesh, a `muzzle` and a `hit_core`. Each pivot becomes a
- * child ECS entity (`createTransformEntity(pivot, bossEntity)` — the pivot is
- * already a scene-graph child of the hull, so the hierarchy is preserved)
- * with its own Health pool, attacker HitCore and HideHealthBar tag. From
- * this frame on the turrets are hittable, targetable combat parts.
+ * Assembly (boss qualify, once): the GLB ships five armour-part wrappers —
+ * gun_t1..t4 on their bastion seats and laser_turret on the citadel crown.
+ * Each wrapper owns a `gun_rotate` yaw pivot carrying its gun mesh, a
+ * `muzzle` and a `hit_core`. Each wrapper becomes a child ECS entity
+ * (`createTransformEntity(pivot, bossEntity)` — the wrapper is already a
+ * scene-graph child of the hull, so the hierarchy is preserved) with its own
+ * Health pool, attacker HitCore and HideHealthBar tag. From this frame on the
+ * turrets are hittable, targetable combat parts.
  *
  * Armour phases: while any part lives, the hull itself is NOT hittable — no
  * HitCore, no Health, no health bar. The moment every part is gone (both
  * part queries run empty for a boss that is still in the fight), the hull
- * is revealed: a runtime `hit_core` node goes on the root (ShellsHitSystem
- * resolves core positions through that node name), and Health + HitCore +
- * BossVulnerable land together — HealthBarSystem's qualify is the "亮出主
+ * is revealed: the GLB's baked root `hit_core` (first child, island
+ * bounding-box centre) is what ShellHitSystem resolves, and Health + HitCore
+ * + BossVulnerable land together — HealthBarSystem's qualify is the "亮出主
  * 血条" moment, and BossSummonSystem reads the tag to shorten its cycle.
  *
  * Part lifecycle cleanup: on boss disqualify (sunk by the player, or the
@@ -51,8 +52,6 @@ export class BossRigSystem extends createSystem({
 }) {
   /** Part entities per boss entity index; rebuilt on every boss qualify. */
   private readonly partsByBoss = new Map<number, Entity[]>();
-  /** Scratch for the revealed hull core's position. */
-  private readonly center = new Vector3();
 
   init(): void {
     this.queries.bosses.subscribe('qualify', (boss) => {
@@ -119,19 +118,13 @@ export class BossRigSystem extends createSystem({
 
   /**
    * The last plate falls: hand the hull its own health pool and hit core.
-   * The runtime `hit_core` node sits at the object's bounding-box centre —
-   * ShellHitSystem resolves core positions through it and its death sweep
-   * can therefore sink the boss like any other attacker.
+   * The GLB bakes the hull `hit_core` as the root's first child at the
+   * island's bounding-box centre, so ShellHitSystem resolves it directly —
+   * this system never invents a node. The components land together:
+   * HealthBarSystem's qualify is the "亮出主血条" moment, and BossSummonSystem
+   * reads the tag to shorten its cycle.
    */
   private revealHull(boss: Entity): void {
-    const root = boss.object3D;
-    if (!root) return;
-    if (!root.getObjectByName('hit_core')) {
-      const node = new Object3D();
-      node.name = 'hit_core';
-      node.position.copy(new Box3().setFromObject(root).getCenter(this.center));
-      root.add(node);
-    }
     boss.addComponent(Health, {
       current: COMBAT.unitHealth,
       max: COMBAT.unitHealth,

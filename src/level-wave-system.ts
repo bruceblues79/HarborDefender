@@ -68,7 +68,11 @@ const MUZZLE_LOCAL_Z = -0.2;
  *   wrapper copies that position before attach(), so yawing the mount spins
  *   turntable + barrel around the pedestal's own axis — the hull stays put
  *   and the gun never sweeps around the ship centre — gunned units only;
- * - a `hit_core` at the model's bounding-box centre — every unit.
+ * - a `hit_core` at the model's bounding-box centre — every non-boss unit.
+ *   Boss hulls bake their own complete functional rig (root hit_core plus
+ *   per-part gun_rotate/muzzle/hit_core), so they skip this decorator
+ *   entirely: wrapping a boss `gun_rotate` in `cannon_mount` would destroy
+ *   the per-plate entity hierarchy BossRigSystem relies on.
  */
 function decorateShipPrototype(prototype: Object3D): void {
   const gunPivot = prototype.getObjectByName('gun_rotate');
@@ -157,7 +161,10 @@ export class LevelWaveSystem extends createSystem({
     for (const [type, def] of Object.entries(UNIT_TYPES)) {
       AssetManager.loadGLTFById(def.assetId)
         .then((gltf) => {
-          decorateShipPrototype(gltf.scene);
+          // Boss hulls already ship every functional node; generic decoration
+          // would add a cannon_mount around the first gun_rotate and break
+          // the per-plate part hierarchy.
+          if (!def.boss) decorateShipPrototype(gltf.scene);
           this.prototypes.set(type, gltf.scene);
         })
         .catch((err: unknown) =>
