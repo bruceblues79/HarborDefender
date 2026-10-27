@@ -738,12 +738,6 @@ export const BOSS = {
   turnSpeedDeg: 120,
   /** Aim error under this (deg) ends the swing and starts the hold beat. */
   turnThresholdDeg: 3,
-  /**
-   * Turning-phase cap (s): convergence normally ends the swing in well under
-   * a second; this cap force-finishes the aim if the swing ever stalls, so a
-   * gun can never hang in turning and stop contributing fire.
-   */
-  turnTimeout: 2.5,
   /** Hold-beat seconds between "on target" and the shot (pause 2). */
   aimHoldSec: 0.35,
   /**

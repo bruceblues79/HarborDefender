@@ -82,9 +82,6 @@ export class GunCycleSystem extends createSystem({
         if (timer <= 0) {
           if (this.hasTarget(gun)) {
             gun.setValue(GunCycle, 'state', 'turning');
-            // Arm the turn budget: the swing must finish (converge or be
-            // force-snapped) within turnTimeout seconds.
-            gun.setValue(GunCycle, 'timer', Number(gun.getValue(GunCycle, 'turnTimeout')));
           } else {
             timer = WAIT_TARGET_RETRY;
           }
@@ -92,15 +89,15 @@ export class GunCycleSystem extends createSystem({
         gun.setValue(GunCycle, 'timer', timer);
         continue;
       }
-      // turning | hold: the targeting system may swap the slot's target the
-      // moment one dies — the aim below simply follows the fresh snapshot.
-      const aimError = this.aimStep(gun, delta);
       if (state === 'turning') {
-        // The swing ends on convergence — or is force-finished once the
-        // turn budget runs out, so a stalled aim can never hang the cycle.
-        const budget = Number(gun.getValue(GunCycle, 'timer')) - delta;
+        // The swing: step the yaw toward the target snapshot at the
+        // component's turn speed and wait for convergence — the snapshot is
+        // static and a missing yaw axis reports on-target, so the swing
+        // always terminates on its own; no budget, no snap. If the
+        // targeting system swaps the slot's target mid-swing (one died),
+        // the step simply follows the fresh snapshot.
         if (
-          aimError <=
+          this.aimStep(gun, delta) <=
           Number(gun.getValue(GunCycle, 'turnThresholdDeg')) * DEG2RAD
         ) {
           gun.setValue(GunCycle, 'state', 'hold');
@@ -109,16 +106,11 @@ export class GunCycleSystem extends createSystem({
             'timer',
             Number(gun.getValue(GunCycle, 'aimHoldSec')),
           );
-        } else if (budget <= 0) {
-          if (Number.isFinite(aimError)) this.snapAim(gun);
-          gun.setValue(GunCycle, 'state', 'hold');
-          gun.setValue(GunCycle, 'timer', RETRY_DELAY);
-        } else {
-          gun.setValue(GunCycle, 'timer', budget);
         }
         continue;
       }
-      // Pause 2 (hold): count the aim beat down, then fire. Pool empty
+      // Pause 2 (hold): the barrel sits frozen on target — count the aim
+      // beat down, then fire. Pool empty
       // retries shortly while keeping target and pose; only a real shot
       // rolls the next cooldown — and clears the target slot so the
       // targeting system re-rolls a fresh random pick.
@@ -158,8 +150,8 @@ export class GunCycleSystem extends createSystem({
    * (pivot origin -> target, atan2(-dx, -dz) — the shared gun convention)
    * and converted to the pivot's local frame by subtracting the parent
    * chain's world yaw, decomposed from the wrapper's world quaternion so
-   * baked seat rotations cannot skew the frame. Runs in hold too, so the
-   * barrel keeps tracking its (static) target through the aim beat.
+   * baked seat rotations cannot skew the frame. Runs only in turning — the
+   * hold beat keeps the barrel frozen on target.
    */
   private aimStep(gun: Entity, delta: number): number {
     const object = gun.object3D;
@@ -186,24 +178,6 @@ export class GunCycleSystem extends createSystem({
         ? local
         : pivot.rotation.y + Math.sign(error) * step;
     return Math.abs(error);
-  }
-
-  /**
-   * Force-finish a stalled swing: write the target yaw straight onto the
-   * pivot. Cosmetic only — the intercept solve does not read barrel yaw —
-   * but it keeps the visual in sync with where the shell is about to go.
-   */
-  private snapAim(gun: Entity): void {
-    const object = gun.object3D;
-    const pivot = object?.getObjectByName(String(gun.getValue(GunCycle, 'pivotName'))) ?? null;
-    if (!pivot || !object) return;
-    pivot.getWorldPosition(this.pivotPos);
-    const dx = Number(gun.getValue(LockTarget, 'targetX')) - this.pivotPos.x;
-    const dz = Number(gun.getValue(LockTarget, 'targetZ')) - this.pivotPos.z;
-    const worldYaw = Math.atan2(-dx, -dz);
-    object.getWorldQuaternion(this.parentQuat);
-    this.parentEuler.setFromQuaternion(this.parentQuat, 'YXZ');
-    pivot.rotation.y = worldYaw - this.parentEuler.y;
   }
 
   /**

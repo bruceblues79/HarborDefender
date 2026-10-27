@@ -545,11 +545,6 @@ export const GunCycle = createComponent('GunCycle', {
   turnThresholdDeg: { type: 'Float32', default: 3 },
   /** Hold-beat seconds between "on target" and the shot. */
   aimHoldSec: { type: 'Float32', default: 0.35 },
-  /**
-   * Turning-phase cap (s): the swing ends early on convergence, or is
-   * force-finished here — the fire cycle must never hang in turning.
-   */
-  turnTimeout: { type: 'Float32', default: 2.5 },
   /** Muzzle horizontal shell speed (m/s) for the intercept solve. */
   shellSpeed: { type: 'Float32', default: 8 },
   /** Damage-matrix row key stamped onto every shell this gun fires. */

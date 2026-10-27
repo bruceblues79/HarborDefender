@@ -636,7 +636,6 @@ export class LevelWaveSystem extends createSystem({
         turnSpeedDeg: BOSS.turnSpeedDeg,
         turnThresholdDeg: BOSS.turnThresholdDeg,
         aimHoldSec: BOSS.aimHoldSec,
-        turnTimeout: BOSS.turnTimeout,
         shellSpeed: BOSS.shellSpeed,
         shellUnitType: 'islewrath-turret',
         carrierIndex: boss.index,
