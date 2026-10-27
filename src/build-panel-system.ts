@@ -43,14 +43,14 @@ type UiElement = Object3D & {
 
 /**
  * Fixed world anchor of the dock: x follows the opened slot
- * (DEFENSE_SLOTS[slot].x) and z sits exactly on the wall centre line — the
- * same xz the mounted units stand at (battle-setup) — so the bar hangs
- * straight over the unit it builds for. The height clears every defender
- * health bar (bbox top + margin, worst case ≈ 1.64 with units standing 0.04
- * higher on the pedestal pads) with room to spare; the Billboard(lockY)
- * component on the dock entity yaws it toward the viewer.
+ * (DEFENSE_SLOTS[slot].x) and the height sits near the cannon health bar
+ * (bar top ≈ 1.34 world) — the dock hangs just over the unit's bar instead
+ * of floating clear of every defender. z runs a hair land-side (+z) of the
+ * wall centre line so the billboarded glass layers in front of the bar
+ * plane rather than slicing it. The Billboard(lockY) component on the dock
+ * entity yaws it toward the viewer.
  */
-const BAR_ANCHOR = { y: 1.85, z: WALL_CENTER_Z };
+const BAR_ANCHOR = { y: 1.4, z: WALL_CENTER_Z + 0.1 };
 /**
  * Per-environment scale over the dock's authored 0.33 × 0.205 m: XR runs
  * the authored size exactly, flat mode grows it 1.8x for readability across
