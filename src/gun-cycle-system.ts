@@ -6,7 +6,7 @@
  */
 
 import { createSystem, Euler, Quaternion, Vector3 } from '@iwsdk/core';
-import type { Entity, Object3D } from '@iwsdk/core';
+import type { Entity } from '@iwsdk/core';
 import {
   BallisticFlight,
   BoltTag,
