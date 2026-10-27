@@ -13,6 +13,7 @@ import type {
 } from '@iwsdk/core';
 import {
   ChiefMount,
+  ChiefPending,
   ChiefRise,
   ChiefSummon,
   GameOver,
@@ -36,11 +37,15 @@ import { BOSS_CHIEF, SPAWN_FADE_DURATION } from './level-config.js';
  * attack ability of its own — it only paces the kamikaze summons.
  *
  * Responsibilities stay small (TESS):
- * - the phase-two trigger and the one-shot head mount (construction);
- * - the emerge rise animation (ChiefRise, pause-frozen scalar integration);
- * - the summon clock: ChiefSummon counts down (first batch fires
- *   immediately), each elapse raises the SummonCommand thin command that
- *   LevelWaveSystem — the single spawn truth — consumes.
+ * - the phase-two trigger, the 0.5 s beat, and the one-shot head mount
+ *   (construction);
+ * - the emerge rise animation (ChiefRise, pause-frozen scalar integration):
+ *   the head starts sunk INSIDE the citadel drum and rises just proud of the
+ *   rim — visually connected to the ship, never floating free;
+ * - the summon clock: ChiefSummon only attaches when the rise completes
+ *   (timer 0 → first batch fires at once), each elapse raises the
+ *   SummonCommand thin command that LevelWaveSystem — the single spawn
+ *   truth — consumes.
  *
  * Death is NOT here: ShellHitSystem's kill() owns it (bounty, burst,
  * dispose, ChiefDown command).
@@ -49,6 +54,7 @@ export class BossChiefSystem extends createSystem({
   bosses: { required: [UnitTag] },
   bossTurrets: { required: [BossTurret] },
   chiefs: { required: [IslewrathChief] },
+  pending: { required: [UnitTag, ChiefPending] },
   rising: { required: [IslewrathChief, ChiefRise] },
   summoners: { required: [IslewrathChief, ChiefSummon] },
   directors: { required: [LevelDirector] },
@@ -68,9 +74,31 @@ export class BossChiefSystem extends createSystem({
 
   update(delta: number): void {
     if (this.paused() || this.over() || !this.gameRunning()) return;
+    this.tickPending(delta);
     this.tickRise(delta);
     this.tickSummons(delta);
     this.tryMountChief();
+  }
+
+  /**
+   * The 0.5 s beat between the last turret dying and the rise starting —
+   * a ChiefPending timer on the boss hull. At zero the head mounts.
+   */
+  private tickPending(delta: number): void {
+    for (const boss of this.queries.pending.entities) {
+      const timer = Number(boss.getValue(ChiefPending, 'timer')) - delta;
+      if (timer > 0) {
+        boss.setValue(ChiefPending, 'timer', timer);
+        continue;
+      }
+      boss.removeComponent(ChiefPending);
+      this.mountChief(
+        boss,
+        Number(boss.getValue(ChiefMount, 'x')),
+        Number(boss.getValue(ChiefMount, 'y')),
+        Number(boss.getValue(ChiefMount, 'z')),
+      );
+    }
   }
 
   /**
@@ -93,23 +121,20 @@ export class BossChiefSystem extends createSystem({
         console.error('BossChiefSystem: boss hull carries no ChiefMount seat');
         return;
       }
-      this.mountChief(
-        boss,
-        Number(boss.getValue(ChiefMount, 'x')),
-        Number(boss.getValue(ChiefMount, 'y')),
-        Number(boss.getValue(ChiefMount, 'z')),
-      );
+      if (boss.hasComponent(ChiefPending)) return;
+      // The 0.5 s beat first; tickPending mounts the head when it elapses.
+      boss.addComponent(ChiefPending, { timer: BOSS_CHIEF.riseDelay });
       return;
     }
   }
 
   /**
    * Construction, not behaviour: clone the head prototype, fade it in, seat
-   * it at the laser citadel's assembly-time mount seat, and hand it its
-   * Health pool (bar pinned to the baked `hp_blood` crown mount), its hit
+   * it SUNK into the citadel drum (mount seat minus riseSink), and hand it
+   * its Health pool (bar pinned to the baked `hp_blood` crown mount) and hit
    * core (defender shells resolve against it through the shared
-   * ShellHitSystem) and the summon clock starting at zero — the first batch
-   * leaves at once.
+   * ShellHitSystem). No summon clock yet — ChiefSummon only attaches when
+   * the rise completes, so the first batch leaves after the emerge.
    *
    * The seat comes from the ChiefMount component, captured while the boss
    * turrets were assembled. It CANNOT be re-derived at phase-two time: the
@@ -144,11 +169,10 @@ export class BossChiefSystem extends createSystem({
       unitType: 'islewrath-chief',
       nodeName: 'hit_core',
     });
-    entity.addComponent(ChiefSummon, { timer: 0 });
-    // Emerge: the head starts seated at the citadel (mount seat) and
-    // integrates up to mount + riseY over riseSec. baseY snapshots the start
-    // so the rise tick stays a pure scalar integrate with no parent lookup.
-    head.position.set(mountX, mountY, mountZ);
+    // Emerge: start sunk into the drum, integrate up to just proud of the
+    // rim over riseSec. baseY snapshots the seat so the rise tick stays a
+    // pure scalar integrate with no parent lookup.
+    head.position.set(mountX, mountY - BOSS_CHIEF.riseSink, mountZ);
     entity.addComponent(ChiefRise, {
       elapsed: 0,
       duration: BOSS_CHIEF.riseSec,
@@ -157,7 +181,11 @@ export class BossChiefSystem extends createSystem({
     entity.addComponent(SpawnFade, { duration: SPAWN_FADE_DURATION });
   }
 
-  /** Pause-frozen scalar rise: y eases from the mount point to mount+riseY. */
+  /**
+   * Pause-frozen scalar rise: y eases from seat-riseSink (sunk inside the
+   * drum) to seat+riseY (just proud of the rim). On completion the summon
+   * clock attaches at timer 0 — the first batch fires on the next tick.
+   */
   private tickRise(delta: number): void {
     for (const chief of this.queries.rising.entities) {
       const object = chief.object3D;
@@ -169,9 +197,11 @@ export class BossChiefSystem extends createSystem({
       // of stopping dead.
       const eased = t * t * (3 - 2 * t);
       const baseY = Number(chief.getValue(ChiefRise, 'baseY'));
-      object.position.y = baseY + BOSS_CHIEF.riseY * eased;
+      object.position.y =
+        baseY - BOSS_CHIEF.riseSink + (BOSS_CHIEF.riseSink + BOSS_CHIEF.riseY) * eased;
       if (elapsed >= duration) {
         chief.removeComponent(ChiefRise);
+        chief.addComponent(ChiefSummon, { timer: 0 });
       } else {
         chief.setValue(ChiefRise, 'elapsed', elapsed);
       }

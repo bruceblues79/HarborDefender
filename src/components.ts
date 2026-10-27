@@ -631,6 +631,16 @@ export const ChiefMount = createComponent('ChiefMount', {
 });
 
 /**
+ * Explicit 0.5 s beat between the last boss turret dying and the chief head
+ * starting to rise. Mounted on the boss hull by BossChiefSystem, ticked down
+ * in place, removed at zero (which mounts the head). Pause-frozen with the
+ * system.
+ */
+export const ChiefPending = createComponent('ChiefPending', {
+  timer: { type: 'Float32', default: 0 },
+});
+
+/**
  * The phase-two pirate chief head (海盗头领) lifecycle tag. The head is a
  * child entity of the boss hull — Health + HitCore make it shootable, it
  * never attacks, and its death routes through ShellHitSystem's kill() into
@@ -752,6 +762,7 @@ export default defineComponents([
   GunCycle,
   LaserCycle,
   ChiefMount,
+  ChiefPending,
   IslewrathChief,
   ChiefSummon,
   ChiefRise,
