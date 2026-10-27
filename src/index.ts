@@ -22,6 +22,8 @@ import { FreeLockTargetSystem } from './free-lock-target-system.js';
 import { GunCycleSystem } from './gun-cycle-system.js';
 import { HitFlashSystem } from './hit-flash-system.js';
 import { HealthBarSystem } from './health-bar-system.js';
+import { LaserCycleSystem } from './laser-cycle-system.js';
+import { LaserFxSystem } from './laser-fx-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
 import { MenuSystem } from './menu-system.js';
 import { OceanSystem } from './ocean-system.js';
@@ -85,6 +87,12 @@ World.create(
   // the same shell in a frame.
   world.registerSystem(FreeLockTargetSystem, { priority: 11 });
   world.registerSystem(GunCycleSystem, { priority: 11 });
+  // Boss laser main cannon: the state machine settles on the same
+  // simulation tier as the guns — its damage writes land before
+  // ShellHitSystem's death sweep (14) picks them up the same frame. The fx
+  // rig mirrors the frozen state one tier later, after the settle.
+  world.registerSystem(LaserCycleSystem, { priority: 11 });
+  world.registerSystem(LaserFxSystem, { priority: 12 });
   // SpawnFade materialises hulls after the movement tier; ShellHitSystem
   // (14) sweeps every death.
   world.registerSystem(SpawnFadeSystem, { priority: 12 });

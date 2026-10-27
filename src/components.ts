@@ -562,6 +562,55 @@ export const GunCycle = createComponent('GunCycle', {
   muzzleName: { type: 'String', default: 'muzzle' },
 });
 
+/**
+ * Laser main cannon state machine (激光主炮状态机). Runs the
+ * `cooldown -> turning -> charging -> firing` loop: swing the pivot onto the
+ * LockTarget snapshot (quaternion rotateTowards, yaw + pitch in one arc),
+ * freeze the beam axis once converged, charge, then deduct
+ * laserDamageRatio of each swept defender's max Health once at the firing
+ * transition. The axis freeze (origin/dir/length below) locks a
+ * defense-slot DIRECTION: a target dying during charge/fire never re-aims,
+ * and FreeLockTargetSystem re-rolls of the slot are ignored until the next
+ * cooldown hands targeting back. LaserCycleSystem is the only writer; death
+ * stays single-truthed in ShellHitSystem's death sweep.
+ */
+export const LaserCycle = createComponent('LaserCycle', {
+  /** 'cooldown' | 'turning' | 'charging' | 'firing'. */
+  state: { type: 'String', default: 'cooldown' },
+  /** Countdown of the current phase, seconds. */
+  timer: { type: 'Float32', default: 0 },
+  /** Charge beat before the beam (energy gathering), seconds. */
+  chargeSec: { type: 'Float32', default: 2 },
+  /** Beam emission duration, seconds. */
+  fireSec: { type: 'Float32', default: 1 },
+  /** Base seconds between two emissions from this cannon. */
+  cooldownSec: { type: 'Float32', default: 5 },
+  /** Turn rate while acquiring (deg/s). */
+  turnSpeedDeg: { type: 'Float32', default: 120 },
+  /** Aim error under this (deg) ends the swing and freezes the beam axis. */
+  turnThresholdDeg: { type: 'Float32', default: 0.75 },
+  /** Entity index of the hull carrying this cannon (the berth gate). */
+  carrierIndex: { type: 'Int32', default: -1 },
+  /** When true the cycle only ticks once the carrier's state is 'stopped'. */
+  requireStopped: { type: 'Boolean', default: false },
+  /** Exact node names of the aim pivot and the beam origin muzzle. */
+  pivotName: { type: 'String', default: 'gun_rotate_laser' },
+  muzzleName: { type: 'String', default: 'muzzle_laser' },
+  /**
+   * Beam axis frozen at aim convergence: muzzle world position (origin),
+   * the muzzle's world -Z direction (dir, unit length), and the distance
+   * from origin to the frozen target snapshot (length). Written once per
+   * cycle; never re-read from LockTarget while charging/firing.
+   */
+  originX: { type: 'Float32', default: 0 },
+  originY: { type: 'Float32', default: 0 },
+  originZ: { type: 'Float32', default: 0 },
+  dirX: { type: 'Float32', default: 0 },
+  dirY: { type: 'Float32', default: 0 },
+  dirZ: { type: 'Float32', default: -1 },
+  length: { type: 'Float32', default: 0 },
+});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -600,4 +649,5 @@ export default defineComponents([
   BossTurret,
   LockTarget,
   GunCycle,
+  LaserCycle,
 ]);

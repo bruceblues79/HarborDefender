@@ -24,6 +24,7 @@ import {
   GunCycle,
   Health,
   HitCore,
+  LaserCycle,
   LevelDirector,
   LockTarget,
   PirateCannon,
@@ -580,9 +581,9 @@ export class LevelWaveSystem extends createSystem({
    * (HealthBarSystem attaches its own bar), a HitCore on the seat's baked
    * core node (so defender shells can knock it out), and — per gun — its
    * fire state machine (`GunCycle`, per-seat rhythm data) plus its
-   * `LockTarget` targeting slot. The generic systems do the rest; the hull
-   * itself never needs to know its guns exist. The laser turret is not a
-   * gun: Health + bar only, no combat parts.
+   * `LockTarget` targeting slot. The laser turret gets the same treatment
+   * with its own state machine (`LaserCycle`): the generic systems do the
+   * rest; the hull itself never needs to know its turrets exist.
    *
    * Node names in the v3 asset are unique per seat (`gun_rotate_1`,
    * `muzzle_1`, `hit_core_1`, …; `_laser`, `_hull` for the rest): three.js
@@ -604,7 +605,12 @@ export class LevelWaveSystem extends createSystem({
       { wrapper: 'gun_t2', core: 'hit_core_2', barY: BOSS.turretBarY, gun: true },
       { wrapper: 'gun_t3', core: 'hit_core_3', barY: BOSS.turretBarY, gun: true },
       { wrapper: 'gun_t4', core: 'hit_core_4', barY: BOSS.turretBarY, gun: true },
-      { wrapper: 'laser_turret', core: '', barY: BOSS.laserBarY, gun: false },
+      {
+        wrapper: 'laser_turret',
+        core: 'hit_core_laser',
+        barY: BOSS.laserBarY,
+        gun: false,
+      },
     ];
     for (const spec of parts) {
       const wrapper = root.getObjectByName(spec.wrapper);
@@ -618,7 +624,37 @@ export class LevelWaveSystem extends createSystem({
         max: COMBAT.unitHealth,
         barY: spec.barY,
       });
-      if (!spec.gun) continue;
+      if (!spec.gun) {
+        // Laser main cannon (task 030): the same free targeting slot as the
+        // guns, its own aim/charge/fire state machine, and a hit core so
+        // defenders can knock it out (existing `islewrath-turret` matrix
+        // rows apply). Opening beat shares the guns' base delay + jitter;
+        // the timer freezes until the hull berths (requireStopped).
+        part.addComponent(LockTarget);
+        part.addComponent(LaserCycle, {
+          state: 'cooldown',
+          timer:
+            BOSS.openFireDelay +
+            COMBAT.fireJitterMin +
+            Math.random() * (COMBAT.fireJitterMax - COMBAT.fireJitterMin),
+          chargeSec: BOSS.laserChargeSec,
+          fireSec: BOSS.laserFireSec,
+          cooldownSec: BOSS.laserCooldownSec,
+          turnSpeedDeg: BOSS.laserTurnSpeedDeg,
+          turnThresholdDeg: BOSS.laserTurnThresholdDeg,
+          carrierIndex: boss.index,
+          requireStopped: true,
+          pivotName: 'gun_rotate_laser',
+          muzzleName: 'muzzle_laser',
+        });
+        part.addComponent(HitCore, {
+          radius: BOSS.turretCoreRadius,
+          faction: 'attacker',
+          unitType: 'islewrath-turret',
+          nodeName: spec.core,
+        });
+        continue;
+      }
       // Staggered opening: each seat rolls its own first-shot delay — base,
       // plus one stagger step per seat index, plus the shared jitter. The
       // timers freeze until the hull berths (requireStopped), so the ripple

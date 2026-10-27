@@ -699,8 +699,10 @@ export const ORNITHOPTER = {
 /**
  * Boss Islewrath (怒岛号) — the island-ship warlord. Task 029 arms the four
  * gun turrets: each runs an independent fire cycle with its own targeting
- * slot. The laser turret is scenery with a health bar; summon/kamikaze come
- * with their own systems later.
+ * slot. Task 030 arms the laser main cannon: aim -> charge -> beam -> pause,
+ * locking a defense-slot direction at aim convergence (a target dying during
+ * charge/fire never re-aims). Summon/kamikaze come with their own systems
+ * later.
  */
 export const BOSS = {
   /** Straight-run berth point: centre line, one unit nearer the wall than
@@ -763,6 +765,24 @@ export const BOSS = {
    */
   turretBurstRatio: 0.45,
   turretBurstFloorY: -0.15,
+  /**
+   * Laser main cannon rhythm (task 030): each emission locks the beam axis
+   * at aim convergence, gathers energy for laserChargeSec, sweeps for
+   * laserFireSec, then waits laserCooldownSec (+ shared jitter) before the
+   * next cycle. Convergence uses its own tighter threshold — a hitscan beam
+   * has no shell radius to absorb residual aim error.
+   */
+  laserChargeSec: 2,
+  laserFireSec: 1,
+  laserCooldownSec: 5,
+  /** Turn rate while acquiring (deg/s) — shared with the gun turrets. */
+  laserTurnSpeedDeg: 120,
+  /** Aim error under this (deg) ends the swing and freezes the beam axis. */
+  laserTurnThresholdDeg: 0.75,
+  /** Fraction of the victim's max Health deducted per beam emission. */
+  laserDamageRatio: 0.6,
+  /** Damage-corridor half-width (m) around the beam centre line. */
+  laserDamageRadius: 0.35,
 };
 
 /**
