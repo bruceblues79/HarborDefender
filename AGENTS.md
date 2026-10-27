@@ -1,3 +1,9 @@
+# 执行规则（最高优先级）
+
+- 执行我的任务前，请先不要急着输出结果。
+- 请你先识别我这个需求里所有模糊、缺失、可能影响结果的信息，并列出问题向我确认；等我补充完关键信息之后，你再正式开始执行。
+- 如果你必须先做假设，请明确告诉我你做了哪些假设，不要自己硬补充。
+
 # IWSDK project
 
 A Vite + TypeScript or JavaScript app, but several things do **not** work the way
