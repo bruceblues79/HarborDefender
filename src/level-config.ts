@@ -833,16 +833,25 @@ export const BOSS = {
  * paces the kamikaze summons.
  */
 export const BOSS_CHIEF = {
-  /** Rise offset (m) above the laser pivot's hull-local y at rest. */
-  riseY: 0.35,
+  /** Seconds between all turrets dying and the rise starting (0.5 s). */
+  riseDelay: 0.5,
+  /** Hull-local depth the head starts SUNK into the citadel drum — a short
+   *  travel for the stocky bust: the helmet crest still peeks above the
+   *  rim at the start of the rise. */
+  riseSink: 0.22,
+  /** Hull-local y at rest relative to the laser pivot seat — 0: the bust
+   *  sits DIRECTLY on the drum (no neck; the model's flange bottom leaves a
+   *  0.004 local gap so it never z-fights the drum cap). */
+  riseY: 0,
   /** Seconds the emerge-from-the-citadel rise takes. */
   riseSec: 1.2,
   /** Health pool: the same normalised 100-point sheet as every unit. */
   health: COMBAT.unitHealth,
   /** Hit-core radius (m) of the head (baked hit_core helper). */
   coreRadius: 0.3,
-  /** Seconds between two summon batches — first batch fires immediately. */
-  summonInterval: 90,
+  /** Seconds between two summon batches — the first fires the instant the
+   *  rise completes, then every interval after. */
+  summonInterval: 30,
   /** Kamikaze ornithopters per summon batch. */
   summonBatch: 3,
   /** Death-burst size ratio over the shared debris pool (turret-scale, smaller). */
@@ -861,8 +870,8 @@ export const BOSS_CHIEF = {
  * kill bounty (self-destruction must not pay the player).
  */
 export const KAMIKAZE = {
-  /** Fuse seconds after the flyer has stopped (30 s). */
-  waitSec: 30,
+  /** Fuse seconds after the flyer has stopped (12 s). */
+  waitSec: 12,
   /** Straight-line dive speed (m/s). */
   diveSpeed: 2.0,
   /** Fraction of the victim's max Health deducted on impact. */

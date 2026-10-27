@@ -2413,93 +2413,125 @@ function createBossIslewrathExport(): Object3D {
 // Pirate chief head (task 031) — the boss's phase-two summoner head
 // ---------------------------------------------------------------------------
 
-const CHIEF_SKIN_COLOR = 0xd9a06b;
-const CHIEF_BEARD_COLOR = 0xbdb4a6;
-const CHIEF_HAT_COLOR = 0x232b38;
-const CHIEF_BAND_COLOR = 0xd1a249;
+// Mechanical palette: the boss ship's dark-iron + red-accent language.
+const CHIEF_IRON_COLOR = 0x33383f;
+const CHIEF_IRON_DARK_COLOR = 0x21252c;
+const CHIEF_RED_COLOR = 0xc23b2e;
+const CHIEF_LENS_COLOR = 0xe0483a;
+const CHIEF_PATCH_COLOR = 0x14161a;
 
 /**
  * Head of the pirate warlord that rises from the boss's laser citadel once
  * every turret is gone (task 031). It never attacks — it only exists to be
  * shot at and to summon kamikaze ornithopters.
  *
- * - Origin: the neck cut plane, y = 0 at the jaw cut, +y toward the crown.
- *   The runtime mounts it at the laser pivot's hull-local position + a rise
- *   offset, so the head base seats exactly where the citadel was.
+ * Design (v0.1.218 rework): an ANGULAR mechanical head in a samurai-kabuto
+ * style — blocky plates instead of a sphere, a flared lamellar skirt
+ * (shikoro), a flared helmet bowl with a front crest plate (maedate) and
+ * turned-back side flares (fukigaeshi), a red visor slit, one red lens eye
+ * with an eyepatch plate, and a vented jaw grill. NO neck: a flat seating
+ * flange at y≈0 lets the runtime rest the head DIRECTLY on the citadel
+ * drum like a bust on a plinth.
+ *
+ * - Origin: the seating plane, y = 0 at the flange bottom, +y to the crest.
+ *   The runtime sinks it fully INSIDE the drum and rises it to sit on it,
+ *   so it stays visually connected to the ship.
  * - Faces local -Z: the boss berths bow (-Z) toward the wall, so the face
  *   looks at the defenders.
  * - Baked empty nodes (unique names — GLTFLoader de-duplicates same-name
- *   siblings): `hp_blood` at the crown top for the health bar mount,
- *   `hit_core` at the skull centre (direct child, first) for shell hits.
- * - One merged vertex-coloured mesh, standard PBR (roughness 0.75, metal
- *   0, white base): the same surface contract as every other unit asset.
- * - Tricorn hat, full beard, eyepatch over the right eye — the one-eyed
- *   read is the silhouette; the visible eye is a dark bead.
+ *   siblings): `hp_blood` at the helmet top for the health bar mount,
+ *   `hit_core` at the head centre (direct child, first) for shell hits.
+ * - One merged vertex-coloured mesh, standard PBR (roughness 0.45, metal
+ *   0.35 — machine metal close to the boss turret finish), white base.
  */
 function buildPirateChief(rand: () => number): BufferGeometry {
   const parts: BufferGeometry[] = [];
 
-  // Neck stub down to the cut plane.
-  const neck = new CylinderGeometry(0.06, 0.075, 0.08, 6);
-  neck.translate(0, 0.04, 0);
-  paint(neck, CHIEF_SKIN_COLOR, 0.03, rand);
-  parts.push(neck);
+  // Seating flange: the flat disc that rests on the drum — no neck. Bottom
+  // face sits 0.004 above the origin plane so it never z-fights the drum
+  // cap when the head is at rest.
+  const flange = new CylinderGeometry(0.115, 0.115, 0.034, 8);
+  flange.translate(0, 0.021, 0);
+  paint(flange, CHIEF_IRON_DARK_COLOR, 0.03, rand);
+  parts.push(flange);
 
-  // Skull: slightly tall, slightly narrow — stylised low-poly head.
-  const skull = new SphereGeometry(0.13, 8, 6);
-  skull.scale(1, 1.08, 0.95);
-  skull.translate(0, 0.2, 0);
-  paint(skull, CHIEF_SKIN_COLOR, 0.03, rand);
+  // Shikoro: two flared lamellar skirt rings above the flange. Kept within
+  // the citadel drum's radius so the sunk pose stays hidden by the drum
+  // walls (no side clipping during the rise).
+  const skirtLower = new CylinderGeometry(0.1, 0.11, 0.03, 8);
+  skirtLower.translate(0, 0.053, 0);
+  paint(skirtLower, CHIEF_IRON_DARK_COLOR, 0.03, rand);
+  parts.push(skirtLower);
+  const skirtUpper = new CylinderGeometry(0.085, 0.103, 0.03, 8);
+  skirtUpper.translate(0, 0.083, 0);
+  paint(skirtUpper, CHIEF_IRON_DARK_COLOR, 0.03, rand);
+  parts.push(skirtUpper);
+
+  // Jaw block, then the skull block above it — the angular head mass,
+  // deliberately wide and squat for a stocky read.
+  const jaw = new BoxGeometry(0.18, 0.06, 0.18);
+  jaw.translate(0, 0.128, 0);
+  paint(jaw, CHIEF_IRON_COLOR, 0.03, rand);
+  parts.push(jaw);
+  const skull = new BoxGeometry(0.19, 0.085, 0.19);
+  skull.translate(0, 0.2005, 0);
+  paint(skull, CHIEF_IRON_COLOR, 0.03, rand);
   parts.push(skull);
 
-  // The one seeing eye (chief's left, viewer's right is patched).
-  const eye = new SphereGeometry(0.016, 6, 4);
-  eye.translate(-0.045, 0.225, -0.115);
-  paint(eye, BORE_COLOR, 0.02, rand);
-  parts.push(eye);
+  // Jaw grill: three stacked vent slats on the front of the jaw block.
+  for (let i = 0; i < 3; i++) {
+    const slat = new BoxGeometry(0.115 - i * 0.009, 0.014, 0.022);
+    slat.translate(0, 0.14 - i * 0.026, -0.098);
+    paint(slat, CHIEF_IRON_DARK_COLOR, 0.03, rand);
+    parts.push(slat);
+  }
 
-  // Nose bead between eye and beard.
-  const nose = new SphereGeometry(0.02, 6, 4);
-  nose.translate(0, 0.185, -0.128);
-  paint(nose, CHIEF_SKIN_COLOR, 0.03, rand);
-  parts.push(nose);
+  // Visor slit: the bright red "eye line" across the skull front.
+  const visor = new BoxGeometry(0.135, 0.018, 0.02);
+  visor.translate(0, 0.228, -0.103);
+  paint(visor, CHIEF_LENS_COLOR, 0.02, rand);
+  parts.push(visor);
 
-  // Eyepatch plate over the other eye, plus the strap ring around the skull.
-  const patch = new BoxGeometry(0.055, 0.045, 0.018);
-  patch.translate(0.048, 0.225, -0.125);
-  paint(patch, BORE_COLOR, 0.02, rand);
+  // The one seeing lens (chief's left, below the visor line).
+  const lens = new CylinderGeometry(0.017, 0.017, 0.014, 8);
+  lens.rotateX(Math.PI / 2);
+  lens.translate(-0.045, 0.19, -0.103);
+  paint(lens, CHIEF_LENS_COLOR, 0.02, rand);
+  parts.push(lens);
+
+  // Eyepatch plate over the other eye.
+  const patch = new BoxGeometry(0.055, 0.045, 0.02);
+  patch.translate(0.05, 0.195, -0.1);
+  paint(patch, CHIEF_PATCH_COLOR, 0.02, rand);
   parts.push(patch);
-  const strap = new TorusGeometry(0.132, 0.007, 4, 12);
-  strap.rotateX(Math.PI / 2);
-  strap.translate(0, 0.225, 0);
-  paint(strap, BORE_COLOR, 0.02, rand);
-  parts.push(strap);
 
-  // Full beard: a tapered mass hanging over jaw and chin down to the cut,
-  // plus a mustache strip over the mouth line.
-  const beard = new CylinderGeometry(0.115, 0.085, 0.16, 7);
-  beard.scale(1, 1, 0.82);
-  beard.translate(0, 0.085, -0.02);
-  paint(beard, CHIEF_BEARD_COLOR, 0.03, rand);
-  parts.push(beard);
-  const mustache = new BoxGeometry(0.1, 0.022, 0.03);
-  mustache.translate(0, 0.155, -0.115);
-  paint(mustache, CHIEF_BEARD_COLOR, 0.03, rand);
-  parts.push(mustache);
+  // Kabuto bowl: a flared funnel over the skull, capped on top.
+  const bowl = new CylinderGeometry(0.085, 0.13, 0.06, 8);
+  bowl.translate(0, 0.273, 0);
+  paint(bowl, CHIEF_IRON_DARK_COLOR, 0.03, rand);
+  parts.push(bowl);
+  const bowlCap = new CylinderGeometry(0.087, 0.085, 0.022, 8);
+  bowlCap.translate(0, 0.314, 0);
+  paint(bowlCap, CHIEF_IRON_COLOR, 0.03, rand);
+  parts.push(bowlCap);
 
-  // Tricorn: wide brim across the forehead, tapered crown, brass band.
-  const brim = new CylinderGeometry(0.175, 0.16, 0.025, 8);
-  brim.translate(0, 0.315, 0);
-  paint(brim, CHIEF_HAT_COLOR, 0.03, rand);
-  parts.push(brim);
-  const crown = new CylinderGeometry(0.1, 0.135, 0.1, 8);
-  crown.translate(0, 0.385, 0);
-  paint(crown, CHIEF_HAT_COLOR, 0.03, rand);
-  parts.push(crown);
-  const band = new CylinderGeometry(0.137, 0.137, 0.022, 8);
-  band.translate(0, 0.345, 0);
-  paint(band, CHIEF_BAND_COLOR, 0.02, rand);
-  parts.push(band);
+  // Maedate: the vertical red crest plate rising from the bowl front.
+  const crest = new BoxGeometry(0.02, 0.09, 0.05);
+  crest.translate(0, 0.322, -0.085);
+  paint(crest, CHIEF_RED_COLOR, 0.02, rand);
+  parts.push(crest);
+
+  // Fukigaeshi: the two turned-back side flares at the bowl front corners.
+  const flareLeft = new BoxGeometry(0.05, 0.045, 0.014);
+  flareLeft.rotateY(Math.PI / 5);
+  flareLeft.translate(-0.082, 0.29, -0.07);
+  paint(flareLeft, CHIEF_RED_COLOR, 0.02, rand);
+  parts.push(flareLeft);
+  const flareRight = new BoxGeometry(0.05, 0.045, 0.014);
+  flareRight.rotateY(-Math.PI / 5);
+  flareRight.translate(0.082, 0.29, -0.07);
+  paint(flareRight, CHIEF_RED_COLOR, 0.02, rand);
+  parts.push(flareRight);
 
   return mergeParts(parts);
 }
@@ -2510,8 +2542,8 @@ export function createPirateChiefExport(): Object3D {
   const material = new MeshStandardMaterial({
     name: 'pirate-chief',
     color: 0xffffff,
-    roughness: 0.75,
-    metalness: 0,
+    roughness: 0.45,
+    metalness: 0.35,
     vertexColors: true,
   });
 
@@ -2520,7 +2552,7 @@ export function createPirateChiefExport(): Object3D {
 
   const hitCore = new Object3D();
   hitCore.name = 'hit_core';
-  hitCore.position.set(0, 0.2, 0);
+  hitCore.position.set(0, 0.185, 0);
   root.add(hitCore);
 
   const mesh = new Mesh(buildPirateChief(rand), material);
@@ -2529,7 +2561,7 @@ export function createPirateChiefExport(): Object3D {
 
   const hpBlood = new Object3D();
   hpBlood.name = 'hp_blood';
-  hpBlood.position.set(0, 0.45, 0);
+  hpBlood.position.set(0, 0.375, 0);
   root.add(hpBlood);
 
   return root;

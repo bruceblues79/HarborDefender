@@ -36,15 +36,16 @@ Boss（怒岛号）五座炮塔均参战可击破：四门火炮塔 + 激光主�
 
 ## 二阶段（海盗头领，任务 031）
 
-五座炮塔全灭后，激光炮位升起海盗头领：不主动攻击，血池 100 点
+五座炮塔全灭后，等 0.5s（`BOSS_CHIEF.riseDelay`），激光炮位升起海盗
+头领（从城垛内沉入升起，与船体相连）：不主动攻击，血池 100 点
 （`BOSS_CHIEF.health`），守方每击固定扣 2%（上表 `islewrath-chief` 列）。
-头领出现后立即召唤 3 只玉碎扑翼机（`BOSS_CHIEF.summonBatch`），之后每
-90s（`BOSS_CHIEF.summonInterval`）再召唤一批。头领被击杀 → 全场敌方
+升起完毕后立即召唤 3 只玉碎扑翼机（`BOSS_CHIEF.summonBatch`），之后每
+30s（`BOSS_CHIEF.summonInterval`）再召唤一批。头领被击杀 → 全场敌方
 单位清空 → 获胜。
 
 玉碎扑翼机（`ornithopter_kamikaze`）：飞行、投石攻击与承伤完全与普通
 扑翼机相同（承伤沿用上表 ornithopter 列：cannon 25% / ballista 20%）；
-停稳后开始计时 30s（`KAMIKAZE.waitSec`），超时进入玉碎状态——停止
+停稳后开始计时 12s（`KAMIKAZE.waitSec`），超时进入玉碎状态——停止
 投石，俯冲撞向一名存活守方单位，造成其 **最大生命值的 40%**
 （`KAMIKAZE.damageRatio`）伤害并自毁。俯冲目标锁定后不更换——目标中途
 阵亡则仍撞向其最后位置碎裂。玉碎自毁不发击毁赏金。
