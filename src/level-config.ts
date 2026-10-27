@@ -779,6 +779,12 @@ export const BOSS = {
   laserTurnSpeedDeg: 120,
   /** Aim error under this (deg) ends the swing and freezes the beam axis. */
   laserTurnThresholdDeg: 0.75,
+  /**
+   * Hold at aim convergence before the charge beats in (s) — the axis is
+   * already frozen; the cannon pauses on target, then charge/fire run
+   * unchanged (mirrors the gun turrets' aimHoldSec beat).
+   */
+  laserAimHoldSec: 0.5,
   /** Fraction of the victim's max Health deducted per beam emission. */
   laserDamageRatio: 0.6,
   /** Damage-corridor half-width (m) around the beam centre line. */

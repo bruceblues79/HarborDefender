@@ -642,6 +642,7 @@ export class LevelWaveSystem extends createSystem({
           cooldownSec: BOSS.laserCooldownSec,
           turnSpeedDeg: BOSS.laserTurnSpeedDeg,
           turnThresholdDeg: BOSS.laserTurnThresholdDeg,
+          aimHoldSec: BOSS.laserAimHoldSec,
           carrierIndex: boss.index,
           requireStopped: true,
           pivotName: 'gun_rotate_laser',

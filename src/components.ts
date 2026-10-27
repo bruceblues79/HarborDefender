@@ -564,21 +564,23 @@ export const GunCycle = createComponent('GunCycle', {
 
 /**
  * Laser main cannon state machine (激光主炮状态机). Runs the
- * `cooldown -> turning -> charging -> firing` loop: swing the pivot onto the
- * LockTarget snapshot (quaternion rotateTowards, yaw + pitch in one arc),
- * freeze the beam axis once converged, charge, then deduct
- * laserDamageRatio of each swept defender's max Health once at the firing
- * transition. The axis freeze (origin/dir/length below) locks a
- * defense-slot DIRECTION: a target dying during charge/fire never re-aims,
- * and FreeLockTargetSystem re-rolls of the slot are ignored until the next
- * cooldown hands targeting back. LaserCycleSystem is the only writer; death
- * stays single-truthed in ShellHitSystem's death sweep.
+ * `cooldown -> turning -> hold -> charging -> firing` loop: swing the pivot
+ * onto the LockTarget snapshot (quaternion rotateTowards, yaw + pitch in
+ * one arc), hold briefly at convergence with the beam axis frozen, charge,
+ * then deduct laserDamageRatio of each swept defender's max Health once at
+ * the firing transition. The axis freeze (origin/dir/length below) locks a
+ * defense-slot DIRECTION: a target dying during hold/charge/fire never
+ * re-aims, and FreeLockTargetSystem re-rolls of the slot are ignored until
+ * the next cooldown hands targeting back. LaserCycleSystem is the only
+ * writer; death stays single-truthed in ShellHitSystem's death sweep.
  */
 export const LaserCycle = createComponent('LaserCycle', {
-  /** 'cooldown' | 'turning' | 'charging' | 'firing'. */
+  /** 'cooldown' | 'turning' | 'hold' | 'charging' | 'firing'. */
   state: { type: 'String', default: 'cooldown' },
   /** Countdown of the current phase, seconds. */
   timer: { type: 'Float32', default: 0 },
+  /** Hold at aim convergence before the charge, axis already frozen (s). */
+  aimHoldSec: { type: 'Float32', default: 0.5 },
   /** Charge beat before the beam (energy gathering), seconds. */
   chargeSec: { type: 'Float32', default: 2 },
   /** Beam emission duration, seconds. */

@@ -30,9 +30,9 @@ const FORWARD = new Vector3(0, 0, -1);
  * Laser main cannon fire state machine for every entity carrying
  * `LaserCycle` + `LockTarget` — the boss hull never needs to know its laser
  * exists. Each emission runs its own rhythm loop — turn onto the target
- * snapshot -> freeze the beam axis -> charge (energy gathering) -> sweep ->
- * pause (jittered cooldown) -> next cycle — fully independent of the four
- * gun turrets.
+ * snapshot -> hold on the frozen axis -> charge (energy gathering) -> sweep
+ * -> pause (jittered cooldown) -> next cycle — fully independent of the
+ * four gun turrets.
  *
  * The axis freeze is the behavioural core: at aim convergence the muzzle's
  * world position, world -Z direction and the distance to the target
@@ -111,15 +111,28 @@ export class LaserCycleSystem extends createSystem({
           Number(laser.getValue(LaserCycle, 'turnThresholdDeg')) * DEG2RAD
         ) {
           // Freeze the beam axis — from here the defense-slot direction is
-          // locked, whatever happens to the target.
+          // locked, whatever happens to the target. The cannon then holds
+          // on target for a beat before the charge beats in (same rhythm
+          // as the gun turrets' aimHoldSec).
           this.freezeAxis(laser);
-          laser.setValue(LaserCycle, 'state', 'charging');
+          laser.setValue(LaserCycle, 'state', 'hold');
           laser.setValue(
             LaserCycle,
             'timer',
-            Number(laser.getValue(LaserCycle, 'chargeSec')),
+            Number(laser.getValue(LaserCycle, 'aimHoldSec')),
           );
         }
+        continue;
+      }
+      if (state === 'hold') {
+        // Aim hold: a quiet beat on the frozen axis. Only the countdown
+        // ticks; the targeting slot stays ignored.
+        let timer = Number(laser.getValue(LaserCycle, 'timer')) - delta;
+        if (timer <= 0) {
+          laser.setValue(LaserCycle, 'state', 'charging');
+          timer = Number(laser.getValue(LaserCycle, 'chargeSec'));
+        }
+        laser.setValue(LaserCycle, 'timer', timer);
         continue;
       }
       if (state === 'charging') {
