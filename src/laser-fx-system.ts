@@ -31,14 +31,14 @@ import { rawSrgbColor } from './hit-flash-system.js';
 /** Charged energy shards: count, tetra size, and the shell they spawn on. */
 const PARTICLE_COUNT = 24;
 const PARTICLE_SIZE = 0.035;
-const PARTICLE_SHELL = 0.55;
+const PARTICLE_SHELL = 0.66;
 /** Each shard loops from the shell to the centre this many times per charge. */
 const PARTICLE_LOOPS = 2;
 /** Muzzle glow sphere radius at full charge (fresnel: blue rim, white core). */
-const GLOW_RADIUS = 0.14;
+const GLOW_RADIUS = 0.168;
 /** Beam radii: white-hot inner core, deep-blue inverted-normal outer glow. */
-const BEAM_CORE_RADIUS = 0.035;
-const BEAM_GLOW_RADIUS = 0.08;
+const BEAM_CORE_RADIUS = 0.0504;
+const BEAM_GLOW_RADIUS = 0.1152;
 /** Draw after every default transparent object (SpawnFade hulls, bars). */
 const FX_RENDER_ORDER = 10;
 

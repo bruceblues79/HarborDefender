@@ -206,6 +206,12 @@ export class LaserCycleSystem extends createSystem({
       Number(laser.getValue(LockTarget, 'targetY')) - this.muzzlePos.y,
       Number(laser.getValue(LockTarget, 'targetZ')) - this.muzzlePos.z,
     );
+    // Flatter bearing: shrink the aim drop by laserPitchFlatten so the
+    // cannon keeps a level-ish line instead of nose-diving at the core.
+    // The converged beam still sweeps the damage corridor over the aimed
+    // core (see BOSS.laserPitchFlatten), and the fixed-point loop below is
+    // untouched — the flattening is a constant scale on the vertical term.
+    this.dirWorld.y *= 1 - BOSS.laserPitchFlatten;
     // Degenerate snapshot (target on the muzzle): nothing to solve.
     if (this.dirWorld.lengthSq() < 1e-8) return 0;
     this.dirWorld.normalize();
@@ -242,7 +248,13 @@ export class LaserCycleSystem extends createSystem({
     laser.setValue(LaserCycle, 'dirX', this.beamDir.x);
     laser.setValue(LaserCycle, 'dirY', this.beamDir.y);
     laser.setValue(LaserCycle, 'dirZ', this.beamDir.z);
-    laser.setValue(LaserCycle, 'length', this.originToTarget(laser));
+    // Reach overshoots the locked target line by laserBeamLengthBoost — the
+    // column visibly blows past the wall instead of stopping at the core.
+    laser.setValue(
+      LaserCycle,
+      'length',
+      this.originToTarget(laser) * BOSS.laserBeamLengthBoost,
+    );
   }
 
   /** Distance from the frozen origin to the locked target snapshot. */

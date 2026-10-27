@@ -789,6 +789,19 @@ export const BOSS = {
   laserDamageRatio: 0.6,
   /** Damage-corridor half-width (m) around the beam centre line. */
   laserDamageRadius: 0.35,
+  /**
+   * Fraction of the natural aim drop removed for a flatter bearing. The
+   * muzzle sits ~0.9 m above a defender core at ~4.2 m (≈12° depression);
+   * 0.5 halves that to ≈6°, and the flattened beam still sweeps the damage
+   * corridor over the aimed core (passes ~0.45 m above it against a
+   * 0.22 + laserDamageRadius reach). 0 aims dead-on, 1 is fully level.
+   */
+  laserPitchFlatten: 0.5,
+  /**
+   * Beam reach multiplier over the locked target distance — the visual
+   * column overshoots the wall line instead of stopping at the core.
+   */
+  laserBeamLengthBoost: 1.44,
 };
 
 /**
