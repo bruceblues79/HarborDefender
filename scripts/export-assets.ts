@@ -2410,6 +2410,132 @@ function createBossIslewrathExport(): Object3D {
 }
 
 // ---------------------------------------------------------------------------
+// Pirate chief head (task 031) — the boss's phase-two summoner head
+// ---------------------------------------------------------------------------
+
+const CHIEF_SKIN_COLOR = 0xd9a06b;
+const CHIEF_BEARD_COLOR = 0xbdb4a6;
+const CHIEF_HAT_COLOR = 0x232b38;
+const CHIEF_BAND_COLOR = 0xd1a249;
+
+/**
+ * Head of the pirate warlord that rises from the boss's laser citadel once
+ * every turret is gone (task 031). It never attacks — it only exists to be
+ * shot at and to summon kamikaze ornithopters.
+ *
+ * - Origin: the neck cut plane, y = 0 at the jaw cut, +y toward the crown.
+ *   The runtime mounts it at the laser pivot's hull-local position + a rise
+ *   offset, so the head base seats exactly where the citadel was.
+ * - Faces local -Z: the boss berths bow (-Z) toward the wall, so the face
+ *   looks at the defenders.
+ * - Baked empty nodes (unique names — GLTFLoader de-duplicates same-name
+ *   siblings): `hp_blood` at the crown top for the health bar mount,
+ *   `hit_core` at the skull centre (direct child, first) for shell hits.
+ * - One merged vertex-coloured mesh, standard PBR (roughness 0.75, metal
+ *   0, white base): the same surface contract as every other unit asset.
+ * - Tricorn hat, full beard, eyepatch over the right eye — the one-eyed
+ *   read is the silhouette; the visible eye is a dark bead.
+ */
+function buildPirateChief(rand: () => number): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+
+  // Neck stub down to the cut plane.
+  const neck = new CylinderGeometry(0.06, 0.075, 0.08, 6);
+  neck.translate(0, 0.04, 0);
+  paint(neck, CHIEF_SKIN_COLOR, 0.03, rand);
+  parts.push(neck);
+
+  // Skull: slightly tall, slightly narrow — stylised low-poly head.
+  const skull = new SphereGeometry(0.13, 8, 6);
+  skull.scale(1, 1.08, 0.95);
+  skull.translate(0, 0.2, 0);
+  paint(skull, CHIEF_SKIN_COLOR, 0.03, rand);
+  parts.push(skull);
+
+  // The one seeing eye (chief's left, viewer's right is patched).
+  const eye = new SphereGeometry(0.016, 6, 4);
+  eye.translate(-0.045, 0.225, -0.115);
+  paint(eye, BORE_COLOR, 0.02, rand);
+  parts.push(eye);
+
+  // Nose bead between eye and beard.
+  const nose = new SphereGeometry(0.02, 6, 4);
+  nose.translate(0, 0.185, -0.128);
+  paint(nose, CHIEF_SKIN_COLOR, 0.03, rand);
+  parts.push(nose);
+
+  // Eyepatch plate over the other eye, plus the strap ring around the skull.
+  const patch = new BoxGeometry(0.055, 0.045, 0.018);
+  patch.translate(0.048, 0.225, -0.125);
+  paint(patch, BORE_COLOR, 0.02, rand);
+  parts.push(patch);
+  const strap = new TorusGeometry(0.132, 0.007, 4, 12);
+  strap.rotateX(Math.PI / 2);
+  strap.translate(0, 0.225, 0);
+  paint(strap, BORE_COLOR, 0.02, rand);
+  parts.push(strap);
+
+  // Full beard: a tapered mass hanging over jaw and chin down to the cut,
+  // plus a mustache strip over the mouth line.
+  const beard = new CylinderGeometry(0.115, 0.085, 0.16, 7);
+  beard.scale(1, 1, 0.82);
+  beard.translate(0, 0.085, -0.02);
+  paint(beard, CHIEF_BEARD_COLOR, 0.03, rand);
+  parts.push(beard);
+  const mustache = new BoxGeometry(0.1, 0.022, 0.03);
+  mustache.translate(0, 0.155, -0.115);
+  paint(mustache, CHIEF_BEARD_COLOR, 0.03, rand);
+  parts.push(mustache);
+
+  // Tricorn: wide brim across the forehead, tapered crown, brass band.
+  const brim = new CylinderGeometry(0.175, 0.16, 0.025, 8);
+  brim.translate(0, 0.315, 0);
+  paint(brim, CHIEF_HAT_COLOR, 0.03, rand);
+  parts.push(brim);
+  const crown = new CylinderGeometry(0.1, 0.135, 0.1, 8);
+  crown.translate(0, 0.385, 0);
+  paint(crown, CHIEF_HAT_COLOR, 0.03, rand);
+  parts.push(crown);
+  const band = new CylinderGeometry(0.137, 0.137, 0.022, 8);
+  band.translate(0, 0.345, 0);
+  paint(band, CHIEF_BAND_COLOR, 0.02, rand);
+  parts.push(band);
+
+  return mergeParts(parts);
+}
+
+/** Root contract: hit_core first, then the merged head mesh, then hp_blood. */
+export function createPirateChiefExport(): Object3D {
+  const rand = makeRandom(20261027);
+  const material = new MeshStandardMaterial({
+    name: 'pirate-chief',
+    color: 0xffffff,
+    roughness: 0.75,
+    metalness: 0,
+    vertexColors: true,
+  });
+
+  const root = new Object3D();
+  root.name = 'pirate-chief';
+
+  const hitCore = new Object3D();
+  hitCore.name = 'hit_core';
+  hitCore.position.set(0, 0.2, 0);
+  root.add(hitCore);
+
+  const mesh = new Mesh(buildPirateChief(rand), material);
+  mesh.name = 'pirate-chief-mesh';
+  root.add(mesh);
+
+  const hpBlood = new Object3D();
+  hpBlood.name = 'hp_blood';
+  hpBlood.position.set(0, 0.45, 0);
+  root.add(hpBlood);
+
+  return root;
+}
+
+// ---------------------------------------------------------------------------
 // Export driver
 // ---------------------------------------------------------------------------
 
@@ -2484,4 +2610,7 @@ await exportGLB(createOrnithopterExport(), 'ornithopter.glb');
 // owning a gun_rotate yaw pivot with muzzle/hit_core. The v2 file name isolates
 // the changed node hierarchy from any stale GLB caching.
 await exportGLB(createBossIslewrathExport(), 'boss-islewrath-v2.glb');
+// pirate-chief: the boss's phase-two summoner head (task 031); hp_blood and
+// hit_core are baked as named nodes for the runtime bar and shell systems.
+await exportGLB(createPirateChiefExport(), 'pirate-chief.glb');
 console.log('\nDone. GLBs written to public/gltf/');

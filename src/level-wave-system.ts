@@ -17,6 +17,8 @@ import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
 import {
   BossTurret,
   BuildOpen,
+  ChiefDown,
+  ChiefMount,
   Destroyed,
   GameOver,
   GamePaused,
@@ -24,6 +26,8 @@ import {
   GunCycle,
   Health,
   HitCore,
+  IslewrathChief,
+  Kamikaze,
   LaserCycle,
   LevelDirector,
   LockTarget,
@@ -31,6 +35,7 @@ import {
   PropellerSpin,
   ShipMovement,
   SpawnFade,
+  SummonCommand,
   UnitTag,
   WakeSource,
   Wallet,
@@ -40,6 +45,7 @@ import {
   activeLevelList,
   COMBAT,
   ECONOMY,
+  KAMIKAZE,
   OCEAN,
   OCEAN_FAR_Z,
   BOSS,
@@ -185,6 +191,7 @@ export class LevelWaveSystem extends createSystem({
   directors: { required: [LevelDirector] },
   attackers: { required: [UnitTag, ShipMovement] },
   bossTurrets: { required: [BossTurret] },
+  chiefs: { required: [IslewrathChief] },
   cores: { required: [HitCore] },
 }) {
   /** Unit prototypes keyed by unitType; clones share geometry and materials. */
@@ -222,6 +229,9 @@ export class LevelWaveSystem extends createSystem({
     // qualify and hides everything on its dismiss.
     this.director.addComponent(GameStarted);
     this.director.removeComponent(GameOver);
+    // Stale boss-phase commands must never leak into a fresh run.
+    this.director.removeComponent(ChiefDown);
+    this.director.removeComponent(SummonCommand);
     this.director.setValue(Wallet, 'money', this.startMoney());
     this.enterLevel(0);
   }
@@ -235,6 +245,8 @@ export class LevelWaveSystem extends createSystem({
     this.director.removeComponent(GameStarted);
     this.director.removeComponent(GameOver);
     this.director.removeComponent(BuildOpen);
+    this.director.removeComponent(ChiefDown);
+    this.director.removeComponent(SummonCommand);
     this.director.setValue(LevelDirector, 'levelIndex', 0);
     this.director.setValue(LevelDirector, 'waveIndex', 0);
     this.director.setValue(LevelDirector, 'pendingUnits', 0);
@@ -252,6 +264,8 @@ export class LevelWaveSystem extends createSystem({
     this.disposeAttackers();
     this.director.removeComponent(GameOver);
     this.director.removeComponent(BuildOpen);
+    this.director.removeComponent(ChiefDown);
+    this.director.removeComponent(SummonCommand);
     this.director.setValue(Wallet, 'money', this.startMoney());
     const index = Math.min(
       Math.max(0, this.levelIndex()),
@@ -274,11 +288,15 @@ export class LevelWaveSystem extends createSystem({
    * destroys exactly those shared GPU resources and poisons future spawns. */
   private disposeAttackers(): void {
     this.retiring.length = 0;
-    // Boss turret child entities die first, then their hull: Entity.dispose()
-    // never cascades into child entities, and the turrets' ECS Transform
-    // parent link must not outlive its target. They carry no UnitTag/
-    // ShipMovement, so the attackers query above cannot see them — the
-    // BossTurret tag is their only teardown handle.
+    // Boss hull CHILD entities die first, then their hull: Entity.dispose()
+    // never cascades into child entities, and the children's ECS Transform
+    // parent link must not outlive its target. The turret parts (BossTurret)
+    // and the phase-two chief head (IslewrathChief) carry no UnitTag/
+    // ShipMovement, so the attackers query above cannot see them — those
+    // tags are their only teardown handles.
+    for (const entity of this.queries.chiefs.entities) {
+      this.retiring.push(entity);
+    }
     for (const entity of this.queries.bossTurrets.entities) {
       this.retiring.push(entity);
     }
@@ -292,6 +310,11 @@ export class LevelWaveSystem extends createSystem({
 
   update(delta: number): void {
     if (this.paused()) return;
+    // Thin commands from the boss phase (task 031) run ahead of the wave
+    // state machine: a chief kill ends the run immediately, and summon
+    // batches ride the same spawn pipeline as wave dispatch.
+    if (this.consumeChiefDown()) return;
+    this.consumeSummons();
     const phase = this.director.getValue(
       LevelDirector,
       'phase',
@@ -337,6 +360,47 @@ export class LevelWaveSystem extends createSystem({
     this.director.setValue(LevelDirector, 'timer', timer);
     this.director.setValue(LevelDirector, 'pendingUnits', pending);
     if (pending <= 0) this.setPhase('clearing');
+  }
+
+  /**
+   * Chief-down thin command (task 031): the pirate chief head has been
+   * killed — the field clears and the run is won. Consumed ahead of the
+   * wave switch so it also stops a mid-dispatch spawner: declareCleared
+   * parks the phase at 'game-cleared' regardless of where the run was.
+   * GameOver stays single-writer through declareCleared.
+   */
+  private consumeChiefDown(): boolean {
+    if (!this.director.hasComponent(ChiefDown)) return false;
+    this.director.removeComponent(ChiefDown);
+    this.director.removeComponent(SummonCommand);
+    this.disposeAttackers();
+    this.declareCleared();
+    return true;
+  }
+
+  /**
+   * Summon-batch thin command (task 031): spawn the requested kamikaze
+   * ornithopters through the shared spawn pipeline. The command survives
+   * until every unit has left — a prototype still loading (null) does not
+   * consume the count, so the batch finishes on the following frames.
+   * Commands are ignored once an outcome is recorded (the field is already
+   * being torn down).
+   */
+  private consumeSummons(): void {
+    if (!this.director.hasComponent(SummonCommand)) return;
+    if (this.director.hasComponent(GameOver)) {
+      this.director.removeComponent(SummonCommand);
+      return;
+    }
+    let count = Number(this.director.getValue(SummonCommand, 'count'));
+    while (count > 0 && this.spawnUnitByType('ornithopter_kamikaze')) {
+      count -= 1;
+    }
+    if (count <= 0) {
+      this.director.removeComponent(SummonCommand);
+    } else {
+      this.director.setValue(SummonCommand, 'count', count);
+    }
   }
 
   /** World x a ship may emerge at: anywhere across the ocean minus edge margin. */
@@ -471,12 +535,16 @@ export class LevelWaveSystem extends createSystem({
 
     // Spawn point: best-candidate x on the far edge (spread away from active
     // attackers). A single-unit wave just comes down the centre line — no
-    // need to randomise when there is nothing to avoid. The stop target is
-    // the unit sheet's fixed point when it carries one (the boss's straight
-    // centre-line run), else the berth cascade — resolved before anything is
-    // committed.
+    // need to randomise when there is nothing to avoid — but summoned
+    // kamikaze flyers (task 031) always spread: their "wave" is the boss's
+    // single-unit sheet, so the centre-line rule would stack every batch at
+    // x = 0. The stop target is the unit sheet's fixed point when it carries
+    // one (the boss's straight centre-line run), else the berth cascade —
+    // resolved before anything is committed.
     const laneX =
-      this.currentWaveUnits().length === 1 ? 0 : this.pickSpawnX();
+      !def.kamikaze && this.currentWaveUnits().length === 1
+        ? 0
+        : this.pickSpawnX();
     const target = def.fixedTarget ?? this.pickTarget(def);
     // Altitude is the unit sheet's cruiseY — ships float at the waterline,
     // the bombardier holds FLYER_Y. Everything downstream reads the same
@@ -571,6 +639,12 @@ export class LevelWaveSystem extends createSystem({
         fireLineZ: def.stopZMin,
         stone: def.stone,
       });
+    }
+    // Kamikaze ability (task 031): the summoned ornithopter variant arms the
+    // fuse-and-dive on top of the shared armed-flyer behaviour above. The
+    // fuse only ticks once the flyer has stopped, and starts fully wound.
+    if (def.kamikaze) {
+      entity.addComponent(Kamikaze, { timer: KAMIKAZE.waitSec });
     }
     return entity;
   }
@@ -687,6 +761,31 @@ export class LevelWaveSystem extends createSystem({
         unitType: 'islewrath-turret',
         nodeName: spec.core,
       });
+    }
+    // Chief-head mount seat (task 031): captured HERE at assembly, the only
+    // moment the pivot node is guaranteed to exist — the laser turret's
+    // death strips its whole subtree (pivot included) from the hull clone,
+    // so a phase-two-time worldToLocal read finds nothing and would seat
+    // the head at the hull origin, buried inside the island rock. The seat
+    // is the pivot's position accumulated over the parent chain EXCLUDING
+    // the hull root: root.position is a world coordinate, not hull-local,
+    // and the head parents under the hull, so including it would
+    // double-count the hull's world position and plant the head out at sea.
+    const laserPivot = root.getObjectByName('gun_rotate_laser');
+    if (laserPivot) {
+      let mx = 0;
+      let my = 0;
+      let mz = 0;
+      let node: Object3D | null = laserPivot;
+      while (node && node !== root) {
+        mx += node.position.x;
+        my += node.position.y;
+        mz += node.position.z;
+        node = node.parent;
+      }
+      boss.addComponent(ChiefMount, { x: mx, y: my, z: mz });
+    } else {
+      console.error('LevelWaveSystem: boss hull has no "gun_rotate_laser"');
     }
   }
 

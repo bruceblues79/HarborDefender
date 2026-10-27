@@ -10,6 +10,7 @@ import type { Entity } from '@iwsdk/core';
 import {
   BallisticFlight,
   BossTurret,
+  ChiefDown,
   Destroyed,
   DieBurst,
   DieBurstTag,
@@ -18,6 +19,7 @@ import {
   HitCore,
   HitFlash,
   HitFlashTag,
+  IslewrathChief,
   LevelDirector,
   ShellFaction,
   ShellTag,
@@ -25,7 +27,14 @@ import {
   WakeSource,
   Wallet,
 } from './components.js';
-import { BOSS, COMBAT, DAMAGE_MATRIX, ECONOMY, OCEAN } from './level-config.js';
+import {
+  BOSS,
+  BOSS_CHIEF,
+  COMBAT,
+  DAMAGE_MATRIX,
+  ECONOMY,
+  OCEAN,
+} from './level-config.js';
 
 /**
  * Distance-based hit resolution between airborne shells and combatants'
@@ -209,8 +218,12 @@ export class ShellHitSystem extends createSystem({
   }
 
   /**
-   * Kill a core whose pool is empty. Three paths:
+   * Kill a core whose pool is empty. Four paths:
    *
+   * - the phase-two pirate chief head (IslewrathChief, task 031) pays the
+   *   unified bounty, bursts at the citadel top (deck-bounce chunks, no sink
+   *   ripple — it dies aboard), disposes, and raises the ChiefDown thin
+   *   command: LevelWaveSystem then clears the field and wins the run.
    * - a boss gun turret (BossTurret) pays the unified bounty, bursts into a
    *   scaled-down chunk cloud on the deck (no sink ripple — it dies aboard),
    *   and is disposed so the turret mesh leaves the hull clone. Its ECS
@@ -220,6 +233,25 @@ export class ShellHitSystem extends createSystem({
    */
   private kill(core: Entity): void {
     const at = this.corePositions.get(core.index);
+    if (core.hasComponent(IslewrathChief)) {
+      this.creditKillReward();
+      if (at) {
+        this.spawnDieBurst(
+          at,
+          BOSS_CHIEF.burstRatio,
+          BOSS_CHIEF.burstFloorY,
+          COMBAT.dieBurstFloorBounce,
+        );
+      }
+      core.dispose({ disposeResources: false });
+      // Thin command (薄命令): the run is won. The director is the single
+      // command bus; LevelWaveSystem consumes ChiefDown next update.
+      for (const director of this.queries.directors.entities) {
+        director.addComponent(ChiefDown);
+        break;
+      }
+      return;
+    }
     if (core.hasComponent(BossTurret)) {
       // Kill bounty: one unified price per attacker part destroyed, paid
       // into the director's wallet — each turret pays once on death.

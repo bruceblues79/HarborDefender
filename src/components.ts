@@ -613,6 +613,105 @@ export const LaserCycle = createComponent('LaserCycle', {
   length: { type: 'Float32', default: 0 },
 });
 
+/**
+ * The boss hull's laser-pivot mount seat for the phase-two chief head
+ * (海盗头领挂点). Written once by LevelWaveSystem while assembling the boss
+ * turrets — the ONLY moment the pivot node is guaranteed to exist, because
+ * the laser turret's death removes its whole subtree (pivot included) from
+ * the hull clone. The seat is the `gun_rotate_laser` pivot's position
+ * accumulated over the parent chain EXCLUDING the hull root: the root's
+ * position is a WORLD coordinate, not hull-local, and the head is parented
+ * under the hull so it would be double-counted. BossChiefSystem reads it
+ * to place and rise the head. Only the boss hull carries it.
+ */
+export const ChiefMount = createComponent('ChiefMount', {
+  x: { type: 'Float32', default: 0 },
+  y: { type: 'Float32', default: 0 },
+  z: { type: 'Float32', default: 0 },
+});
+
+/**
+ * The phase-two pirate chief head (海盗头领) lifecycle tag. The head is a
+ * child entity of the boss hull — Health + HitCore make it shootable, it
+ * never attacks, and its death routes through ShellHitSystem's kill() into
+ * the ChiefDown clear-the-field command. LevelWaveSystem's dispose sweep
+ * recycles it like the turret children.
+ */
+export const IslewrathChief = createComponent('IslewrathChief', {});
+
+/**
+ * Chief-head summon pacing (召唤节拍). One countdown to the next kamikaze
+ * batch; BossChiefSystem is the only writer. timer 0 at mount = the first
+ * batch leaves immediately ("出现后开始召唤").
+ */
+export const ChiefSummon = createComponent('ChiefSummon', {
+  /** Seconds until the next summon batch fires. */
+  timer: { type: 'Float32', default: 0 },
+});
+
+/**
+ * Chief-head emerge animation (升场状态). One-shot: BossChiefSystem
+ * integrates the head's local y from the mount point up to mount + riseY
+ * over `duration`, then removes the component (head sits at its rest pose).
+ * Pause-frozen like every other simulation timer.
+ */
+export const ChiefRise = createComponent('ChiefRise', {
+  /** Elapsed rise seconds. */
+  elapsed: { type: 'Float32', default: 0 },
+  /** Total rise seconds. */
+  duration: { type: 'Float32', default: 1.2 },
+  /**
+   * Hull-local y the rise starts from — the laser citadel's mount seat
+   * snapshotted at mount time so the rise tick never needs a parent lookup.
+   */
+  baseY: { type: 'Float32', default: 0 },
+});
+
+/**
+ * Kamikaze ability state (玉碎状态机) on the summoned ornithopter variant.
+ * Flight and the stone attack stay in the shared armed-flyer systems; this
+ * component only runs the fuse-and-dive: after the carrier's ShipMovement
+ * state reaches 'stopped', wait waitSec, snapshot one surviving defender
+ * core, then dive at it. The snapshot is never re-acquired — a victim that
+ * dies mid-dive still eats the crash at its last position. KamikazeSystem
+ * is the only writer; the crash itself deducts the victim's Health directly
+ * and death stays single-truthed (victim via the death sweep, flyer self-
+ * destructs without a bounty).
+ */
+export const Kamikaze = createComponent('Kamikaze', {
+  /** 'waiting' (fuse, only ticks once stopped) | 'diving'. */
+  state: { type: 'String', default: 'waiting' },
+  /** Fuse countdown while waiting (seconds). */
+  timer: { type: 'Float32', default: 0 },
+  /** Core index of the dive target (snapshot; -1 while waiting). */
+  targetCoreIndex: { type: 'Int32', default: -1 },
+  /** World-space dive endpoint snapshot (the target core's position). */
+  targetX: { type: 'Float32', default: 0 },
+  targetY: { type: 'Float32', default: 0 },
+  targetZ: { type: 'Float32', default: 0 },
+});
+
+/**
+ * Thin command (薄命令) on the director: the chief head has been killed —
+ * clear the field and win. ShellHitSystem's kill() is the only writer;
+ * LevelWaveSystem consumes it once (removes the tag, disposes every
+ * attacker including the head, declares the level cleared). Mounted on the
+ * director entity like BuildOpen.
+ */
+export const ChiefDown = createComponent('ChiefDown', {});
+
+/**
+ * Thin command (薄命令) on the director: spawn one batch of kamikaze
+ * ornithopters. BossChiefSystem writes it when the chief's summon timer
+ * elapses; LevelWaveSystem consumes it (removes the tag, runs its shared
+ * spawnUnitByType pipeline `count` times). Kept as a command so the spawn
+ * pipeline stays single-truthed inside LevelWaveSystem.
+ */
+export const SummonCommand = createComponent('SummonCommand', {
+  /** How many units this batch spawns. */
+  count: { type: 'Int32', default: 0 },
+});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -652,4 +751,11 @@ export default defineComponents([
   LockTarget,
   GunCycle,
   LaserCycle,
+  ChiefMount,
+  IslewrathChief,
+  ChiefSummon,
+  ChiefRise,
+  Kamikaze,
+  ChiefDown,
+  SummonCommand,
 ]);

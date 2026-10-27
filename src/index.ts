@@ -10,6 +10,7 @@ import projectOptions from 'virtual:iwsdk-project';
 import { BallisticSystem } from './ballistic-system.js';
 import { BillboardSystem } from './billboard-system.js';
 import { startBattle } from './battle-setup.js';
+import { BossChiefSystem } from './boss-chief-system.js';
 import { BuildPanelSystem } from './build-panel-system.js';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
 import { CannonAimSystem } from './cannon-aim-system.js';
@@ -22,6 +23,7 @@ import { FreeLockTargetSystem } from './free-lock-target-system.js';
 import { GunCycleSystem } from './gun-cycle-system.js';
 import { HitFlashSystem } from './hit-flash-system.js';
 import { HealthBarSystem } from './health-bar-system.js';
+import { KamikazeSystem } from './kamikaze-system.js';
 import { LaserCycleSystem } from './laser-cycle-system.js';
 import { LaserFxSystem } from './laser-fx-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
@@ -93,6 +95,12 @@ World.create(
   // rig mirrors the frozen state one tier later, after the settle.
   world.registerSystem(LaserCycleSystem, { priority: 11 });
   world.registerSystem(LaserFxSystem, { priority: 12 });
+  // Boss phase two (task 031): the chief-head mount/summon clock writes its
+  // commands on the simulation tier; the kamikaze fuse-and-dive runs with
+  // the ballistics — both land their Health writes before ShellHitSystem's
+  // death sweep (14) picks them up the same frame.
+  world.registerSystem(BossChiefSystem, { priority: 11 });
+  world.registerSystem(KamikazeSystem, { priority: 13 });
   // SpawnFade materialises hulls after the movement tier; ShellHitSystem
   // (14) sweeps every death.
   world.registerSystem(SpawnFadeSystem, { priority: 12 });

@@ -142,4 +142,10 @@ export default defineAssets({
     name: 'Boss Islewrath',
     priority: 'background',
   },
+  'pirate-chief': {
+    url: publicAssetUrl('gltf/pirate-chief.glb'),
+    type: AssetType.GLTF,
+    name: 'Pirate Chief',
+    priority: 'background',
+  },
 });
