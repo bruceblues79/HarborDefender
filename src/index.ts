@@ -18,6 +18,8 @@ import { Billboard } from './components.js';
 import { DefenseButtonSystem } from './defense-button-system.js';
 import { DefensePadSystem } from './defense-pad-system.js';
 import { DieBurstSystem } from './die-burst-system.js';
+import { FreeLockTargetSystem } from './free-lock-target-system.js';
+import { GunCycleSystem } from './gun-cycle-system.js';
 import { HitFlashSystem } from './hit-flash-system.js';
 import { HealthBarSystem } from './health-bar-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
@@ -75,6 +77,14 @@ World.create(
   // ever handing out the same shell in a frame.
   world.registerSystem(CannonFireSystem, { priority: 11 });
   world.registerSystem(PirateFireSystem, { priority: 11 });
+  // Free gun pipeline: the independent targeting system rolls each gun's
+  // LockTarget slot (registered first so a slot cleared by a shot this frame
+  // is refilled the same frame), then every per-gun fire state machine runs.
+  // All fire systems share the ball pool on the same tier; the claimed-set
+  // guard (and its live hasComponent check) keeps them from ever handing out
+  // the same shell in a frame.
+  world.registerSystem(FreeLockTargetSystem, { priority: 11 });
+  world.registerSystem(GunCycleSystem, { priority: 11 });
   // SpawnFade materialises hulls after the movement tier; ShellHitSystem
   // (14) sweeps every death.
   world.registerSystem(SpawnFadeSystem, { priority: 12 });

@@ -9,6 +9,7 @@ import { createSystem, Object3D, Vector3 } from '@iwsdk/core';
 import type { Entity } from '@iwsdk/core';
 import {
   BallisticFlight,
+  BossTurret,
   Destroyed,
   DieBurst,
   DieBurstTag,
@@ -24,7 +25,7 @@ import {
   WakeSource,
   Wallet,
 } from './components.js';
-import { COMBAT, DAMAGE_MATRIX, ECONOMY, OCEAN } from './level-config.js';
+import { BOSS, COMBAT, DAMAGE_MATRIX, ECONOMY, OCEAN } from './level-config.js';
 
 /**
  * Distance-based hit resolution between airborne shells and combatants'
@@ -75,7 +76,15 @@ export class ShellHitSystem extends createSystem({
 
   init(): void {
     this.queries.cores.subscribe('qualify', (entity) => {
-      const node = entity.object3D?.getObjectByName('hit_core');
+      // Resolve via the component's exact core-node name — unique per seat
+      // in multi-seat assets (GLTFLoader de-duplicates same-name nodes).
+      // Preference for a DIRECT child stays: deep-first search could bind a
+      // whole-ship entity to a nested turret core instead of the hull's.
+      const object = entity.object3D;
+      const coreName = String(entity.getValue(HitCore, 'nodeName'));
+      const node =
+        object?.children.find((child) => child.name === coreName) ??
+        object?.getObjectByName(coreName);
       if (!node) return;
       this.coreNodes.set(entity.index, node);
       this.corePositions.set(entity.index, new Vector3());
@@ -200,20 +209,46 @@ export class ShellHitSystem extends createSystem({
   }
 
   /**
-   * Kill a core whose pool is empty. An attacker bursts into pooled
-   * wood-and-iron chunks at the core's centre, then its hull is disposed (its
-   * materials are per-ship clones) and a splash ripple marks the sinking
-   * spot; a defender cannon is tagged Destroyed and hidden — the tag, not a
-   * component strip, takes it out of every combat query.
+   * Kill a core whose pool is empty. Three paths:
+   *
+   * - a boss gun turret (BossTurret) pays the unified bounty, bursts into a
+   *   scaled-down chunk cloud on the deck (no sink ripple — it dies aboard),
+   *   and is disposed so the turret mesh leaves the hull clone. Its ECS
+   *   children (health bar) tear down via disqualify. No revival.
+   * - any other attacker bursts at the waves, pays, sinks (dispose + ripple).
+   * - a defender cannon is tagged Destroyed and hidden.
    */
   private kill(core: Entity): void {
     const at = this.corePositions.get(core.index);
+    if (core.hasComponent(BossTurret)) {
+      // Kill bounty: one unified price per attacker part destroyed, paid
+      // into the director's wallet — each turret pays once on death.
+      this.creditKillReward();
+      if (at) {
+        this.spawnDieBurst(
+          at,
+          BOSS.turretBurstRatio,
+          BOSS.turretBurstFloorY,
+          COMBAT.dieBurstFloorBounce,
+        );
+      }
+      // Keep the shared prototype resources alive: boss parts are prototype
+      // clones. dispose() also removes the turret mesh from the hull clone
+      // (removeFromParent) and disqualifies it from every query this frame.
+      core.dispose({ disposeResources: false });
+      return;
+    }
     if (String(core.getValue(HitCore, 'faction')) === 'attacker') {
       // Kill bounty: one unified price per attacker sunk, paid into the
       // director's wallet — the same pool repairs and builds drain.
       this.creditKillReward();
       if (at) {
-        this.spawnDieBurst(at, true, COMBAT.dieBurstShipRatio);
+        this.spawnDieBurst(
+          at,
+          COMBAT.dieBurstShipRatio,
+          OCEAN.surfaceY - 0.05 - at.y,
+          0,
+        );
         this.spawnSinkRipple(at.x, at.z);
       }
       // Keep the shared prototype resources alive: ships are prototype
@@ -221,7 +256,14 @@ export class ShellHitSystem extends createSystem({
       // textures every later spawn clones from.
       core.dispose({ disposeResources: false });
     } else {
-      if (at) this.spawnDieBurst(at, false, COMBAT.dieBurstCannonRatio);
+      if (at) {
+        this.spawnDieBurst(
+          at,
+          COMBAT.dieBurstCannonRatio,
+          -0.085,
+          COMBAT.dieBurstFloorBounce,
+        );
+      }
       core.addComponent(Destroyed);
       if (core.object3D) core.object3D.visible = false;
     }
@@ -243,15 +285,19 @@ export class ShellHitSystem extends createSystem({
    * Claim a free pooled burst and plant it at the dying unit's core:
    * position, visible, then the `DieBurst` component that both hands
    * animation to DieBurstSystem and (via its synchronous qualify callback)
-   * scatters the chunks. Defenders burst on their wall top and rebound;
-   * attackers burst just above the waves and sink through, with boss armour
-   * plates scaled down by the caller. Pool empty: skip silently — a busy
-   * battle loses the odd burst, never a hit.
+   * scatters the chunks. Burst behaviour is fully explicit — `sizeRatio`
+   * scales the cloud, `floorY` is the rest floor in the pooled mesh's LOCAL
+   * space (chunk matrices integrate there, so callers convert once at
+   * spawn: the wall top sits slightly below the core so chunks read as
+   * resting on the stone, the water line a bit below a sinking hull), and
+   * `floorBounce` is the rebound damping. Pool empty: skip silently — a
+   * busy battle loses the odd burst, never a hit.
    */
   private spawnDieBurst(
     position: Vector3,
-    attacker: boolean,
     sizeRatio: number,
+    floorY: number,
+    floorBounce: number,
   ): void {
     for (const burst of this.queries.freeBursts.entities) {
       if (this.claimedBursts.has(burst.index)) continue;
@@ -263,18 +309,11 @@ export class ShellHitSystem extends createSystem({
       if (!object) return;
       object.position.copy(position);
       object.visible = true;
-      // Chunk matrices integrate in the pooled mesh's LOCAL space, so the
-      // rest floor must be converted into it once at spawn: the wall top
-      // sits slightly below the core (chunks read as resting on the stone,
-      // not hovering at gun height) and the water line sits a bit below a
-      // sinking ship's core.
       burst.addComponent(DieBurst, {
         duration: COMBAT.dieBurstDuration,
         sizeRatio,
-        floorY: attacker
-          ? OCEAN.surfaceY - 0.05 - position.y
-          : -0.085,
-        floorBounce: attacker ? 0 : COMBAT.dieBurstFloorBounce,
+        floorY,
+        floorBounce,
       });
       return;
     }

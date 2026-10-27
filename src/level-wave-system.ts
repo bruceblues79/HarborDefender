@@ -21,9 +21,11 @@ import {
   GameOver,
   GamePaused,
   GameStarted,
+  GunCycle,
   Health,
   HitCore,
   LevelDirector,
+  LockTarget,
   PirateCannon,
   PropellerSpin,
   ShipMovement,
@@ -110,6 +112,44 @@ function decorateShipPrototype(prototype: Object3D): void {
     hitCore.position.copy(center);
     prototype.add(hitCore);
   }
+}
+
+/**
+ * Spawn-time material state for a freshly cloned unit tree: per-clone
+ * material clones starting fully transparent, depth writes kept on through
+ * the fade, IBL re-linked from the prototype materials (clone() drops the
+ * reference), shadows off until SpawnFadeSystem solidifies the hull.
+ * Shared by the hull clone and the boss turret part clones so every piece
+ * of one unit fades in as one body.
+ */
+function prepareSpawnMaterials(object: Object3D): void {
+  object.traverse((child) => {
+    const mesh = child as Mesh;
+    if (!mesh.isMesh) return;
+    const original = mesh.material;
+    const solid = Array.isArray(original)
+      ? original.map((material) => material.clone())
+      : original.clone();
+    for (let i = 0; i < (Array.isArray(solid) ? solid.length : 1); i++) {
+      const material = Array.isArray(solid) ? solid[i] : solid;
+      const src = Array.isArray(original) ? original[i] : original;
+      material.transparent = true;
+      material.opacity = 0;
+      // Keep depth writes on during the fade so DoubleSide meshes (hull,
+      // sail) don't render front + back faces blended together — that
+      // stacking darkened the colour while translucent and made it snap
+      // lighter the moment the material flipped back to opaque.
+      material.depthWrite = true;
+      const srcStd = src as MeshStandardMaterial;
+      const matStd = material as MeshStandardMaterial;
+      if (!matStd.envMap && srcStd.envMap) {
+        matStd.envMap = srcStd.envMap;
+      }
+    }
+    mesh.material = solid;
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+  });
 }
 
 /** Ships emerge this far inside the ocean's far edge. */
@@ -454,37 +494,7 @@ export class LevelWaveSystem extends createSystem({
     // so each ship gets its own clones starting fully transparent. Driving that
     // opacity, and switching shadows on when the hull is solid, is
     // SpawnFadeSystem's job — the spawner only lands the starting state.
-    object.traverse((child) => {
-      const mesh = child as Mesh;
-      if (!mesh.isMesh) return;
-      const original = mesh.material;
-      const solid = Array.isArray(original)
-        ? original.map((material) => material.clone())
-        : original.clone();
-      for (let i = 0; i < (Array.isArray(solid) ? solid.length : 1); i++) {
-        const material = Array.isArray(solid) ? solid[i] : solid;
-        const src = Array.isArray(original) ? original[i] : original;
-        material.transparent = true;
-        material.opacity = 0;
-        // Keep depth writes on during the fade so DoubleSide meshes (hull,
-        // sail) don't render front + back faces blended together — that
-        // stacking darkened the colour while translucent and made it snap
-        // lighter the moment the material flipped back to opaque.
-        material.depthWrite = true;
-        // IWSDK's EnvironmentSystem may attach the IBL directly onto the
-        // prototype's materials (not only scene.environment); clone() drops
-        // that reference, so re-link it or the PBR ship spawns without
-        // environment reflections and looks unlit until something re-applies.
-        const srcStd = src as MeshStandardMaterial;
-        const matStd = material as MeshStandardMaterial;
-        if (!matStd.envMap && srcStd.envMap) {
-          matStd.envMap = srcStd.envMap;
-        }
-      }
-      mesh.material = solid;
-      mesh.castShadow = false;
-      mesh.receiveShadow = true;
-    });
+    prepareSpawnMaterials(object);
 
     const entity = this.world.createTransformEntity(object);
     entity.addComponent(UnitTag, { unitType, faction: def.faction });
@@ -527,12 +537,12 @@ export class LevelWaveSystem extends createSystem({
     if (def.flap) {
       entity.addComponent(WingFlap);
     }
-    // Boss hulls are navigation-only right now: they spawn, run their
-    // straight centre-line berth and hold. The hull itself stays
-    // Health-less — nothing for the defenders to hit — but the four baked
-    // turrets each carry their own Health pool, which is all a bar needs.
+    // Boss hull: navigation runs as usual, while the four baked gun
+    // turrets are independent combat parts (their own state machines and
+    // targeting slots). The hull itself stays Health-less — nothing can
+    // hit it; only the turrets fight.
     if (def.boss) {
-      this.attachBossTurretHealth(entity);
+      this.attachBossTurrets(entity);
       return entity;
     }
     // Hull hit points: the ship sinks once ShellHitSystem has charged
@@ -565,27 +575,39 @@ export class LevelWaveSystem extends createSystem({
   }
 
   /**
-   * Construction, not behaviour: turn the GLB's four baked turret wrappers
-   * (`gun_t1`..`gun_t4`) into child entities and give each one Health.
-   * HealthBarSystem then attaches and billboards a bar per turret on its
-   * own — no bar code lives here.
+   * Construction, not behaviour: turn the GLB's baked turret wrappers
+   * (`gun_t1`..`gun_t4`) into child entities, each with its own Health pool
+   * (HealthBarSystem attaches its own bar), a HitCore on the seat's baked
+   * core node (so defender shells can knock it out), and — per gun — its
+   * fire state machine (`GunCycle`, per-seat rhythm data) plus its
+   * `LockTarget` targeting slot. The generic systems do the rest; the hull
+   * itself never needs to know its guns exist. The laser turret is not a
+   * gun: Health + bar only, no combat parts.
+   *
+   * Node names in the v3 asset are unique per seat (`gun_rotate_1`,
+   * `muzzle_1`, `hit_core_1`, …; `_laser`, `_hull` for the rest): three.js
+   * GLTFLoader de-duplicates same-name nodes with numeric suffixes at load
+   * time, so same-name helpers in a multi-seat asset are an asset bug —
+   * with unique names every exact find resolves and the systems bind
+   * through the names frozen on the components.
    */
-  private attachBossTurretHealth(boss: Entity): void {
+  private attachBossTurrets(boss: Entity): void {
     const root = boss.object3D;
     if (!root) return;
-    // The armour-part wrappers are deterministic baked geometry, so each
-    // bar pins to an explicit carrier-local height (BOSS.*BarY). No bbox
-    // derivation here: a deep child spawned mid-frame carries a stale
-    // ancestor matrixWorld, which is exactly what floated the bars before.
-    const parts: Array<[string, number]> = [
-      ['gun_t1', BOSS.turretBarY],
-      ['gun_t2', BOSS.turretBarY],
-      ['gun_t3', BOSS.turretBarY],
-      ['gun_t4', BOSS.turretBarY],
-      ['laser_turret', BOSS.laserBarY],
+    const parts: Array<{
+      wrapper: string;
+      core: string;
+      barY: number;
+      gun: boolean;
+    }> = [
+      { wrapper: 'gun_t1', core: 'hit_core_1', barY: BOSS.turretBarY, gun: true },
+      { wrapper: 'gun_t2', core: 'hit_core_2', barY: BOSS.turretBarY, gun: true },
+      { wrapper: 'gun_t3', core: 'hit_core_3', barY: BOSS.turretBarY, gun: true },
+      { wrapper: 'gun_t4', core: 'hit_core_4', barY: BOSS.turretBarY, gun: true },
+      { wrapper: 'laser_turret', core: '', barY: BOSS.laserBarY, gun: false },
     ];
-    for (const [name, barY] of parts) {
-      const wrapper = root.getObjectByName(name);
+    for (const spec of parts) {
+      const wrapper = root.getObjectByName(spec.wrapper);
       if (!wrapper) continue;
       const part = this.world.createTransformEntity(wrapper, boss);
       // Lifecycle only: no UnitTag (parts must not count as wave units),
@@ -594,7 +616,40 @@ export class LevelWaveSystem extends createSystem({
       part.addComponent(Health, {
         current: COMBAT.unitHealth,
         max: COMBAT.unitHealth,
-        barY,
+        barY: spec.barY,
+      });
+      if (!spec.gun) continue;
+      // Staggered opening: each seat rolls its own first-shot delay — base,
+      // plus one stagger step per seat index, plus the shared jitter. The
+      // timers freeze until the hull berths (requireStopped), so the ripple
+      // survives the whole sail-in.
+      const match = /gun_t(\d+)/.exec(spec.wrapper);
+      const seat = match ? Number(match[1]) : 0;
+      part.addComponent(GunCycle, {
+        state: 'cooldown',
+        timer:
+          BOSS.openFireDelay +
+          (seat - 1) * BOSS.openFireStagger +
+          COMBAT.fireJitterMin +
+          Math.random() * (COMBAT.fireJitterMax - COMBAT.fireJitterMin),
+        fireInterval: BOSS.fireInterval,
+        turnSpeedDeg: BOSS.turnSpeedDeg,
+        turnThresholdDeg: BOSS.turnThresholdDeg,
+        aimHoldSec: BOSS.aimHoldSec,
+        turnTimeout: BOSS.turnTimeout,
+        shellSpeed: BOSS.shellSpeed,
+        shellUnitType: 'islewrath-turret',
+        carrierIndex: boss.index,
+        requireStopped: true,
+        pivotName: `gun_rotate_${seat}`,
+        muzzleName: `muzzle_${seat}`,
+      });
+      part.addComponent(LockTarget);
+      part.addComponent(HitCore, {
+        radius: BOSS.turretCoreRadius,
+        faction: 'attacker',
+        unitType: 'islewrath-turret',
+        nodeName: spec.core,
       });
     }
   }

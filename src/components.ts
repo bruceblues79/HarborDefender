@@ -270,6 +270,13 @@ export const HitCore = createComponent('HitCore', {
   faction: { type: 'String', default: 'attacker' },
   /** Unit id of the hittable combatant ('cannon', 'pirate-ship'…). */
   unitType: { type: 'String', default: '' },
+  /**
+   * Exact name of the hit-core node in the carrier's subtree. Multi-seat
+   * assets must use unique names per seat (GLTFLoader de-duplicates
+   * same-name nodes with numeric suffixes at load time, so a bare
+   * 'hit_core' only reliably resolves on single-seat assets — the default).
+   */
+  nodeName: { type: 'String', default: 'hit_core' },
 });
 
 /**
@@ -498,6 +505,68 @@ export const HideHealthBar = createComponent('HideHealthBar', {});
  */
 export const BossTurret = createComponent('BossTurret', {});
 
+/**
+ * Per-gun targeting slot (索敌组件). ANY gun entity carries one; the carrier
+ * hull never needs to know its guns exist. FreeLockTargetSystem is the ONLY
+ * writer — it re-rolls a live uniform-random defender core whenever the slot
+ * is empty or its target has died; a fire cycle clears the slot after each
+ * shot to request the next roll. Repeats are legal, especially when one
+ * defender is left.
+ */
+export const LockTarget = createComponent('LockTarget', {
+  /** Entity index of the locked defender core; -1 = no target. */
+  targetCoreIndex: { type: 'Int32', default: -1 },
+  /** Locked core's hit_core world-position snapshot (defenders never move). */
+  targetX: { type: 'Float32', default: 0 },
+  targetY: { type: 'Float32', default: 0 },
+  targetZ: { type: 'Float32', default: 0 },
+});
+
+/**
+ * Per-gun fire state machine (发射状态机). ANY gun entity carries one and
+ * runs the `cooldown -> turning -> hold -> fire` loop independently:
+ * swing its gun_rotate onto the LockTarget snapshot (turnSpeedDeg until the
+ * error is under turnThresholdDeg), hold the aim for aimHoldSec, launch one
+ * pooled shell on the closed-form intercept (shellSpeed, stamped
+ * shellUnitType for the damage matrix), then wait fireInterval (+ jitter)
+ * and clear the LockTarget slot for the next random roll. GunCycleSystem is
+ * the only writer; all rhythm values are per-gun data set at assembly.
+ */
+export const GunCycle = createComponent('GunCycle', {
+  /** 'cooldown' | 'turning' | 'hold'. */
+  state: { type: 'String', default: 'cooldown' },
+  /** Countdown of the current phase (cooldown wait / hold beat), seconds. */
+  timer: { type: 'Float32', default: 0 },
+  /** Base seconds between two shots from this gun. */
+  fireInterval: { type: 'Float32', default: 3 },
+  /** Yaw swing rate while acquiring (deg/s). */
+  turnSpeedDeg: { type: 'Float32', default: 120 },
+  /** Aim error under this (deg) ends the swing and starts the hold beat. */
+  turnThresholdDeg: { type: 'Float32', default: 3 },
+  /** Hold-beat seconds between "on target" and the shot. */
+  aimHoldSec: { type: 'Float32', default: 0.35 },
+  /**
+   * Turning-phase cap (s): the swing ends early on convergence, or is
+   * force-finished here — the fire cycle must never hang in turning.
+   */
+  turnTimeout: { type: 'Float32', default: 2.5 },
+  /** Muzzle horizontal shell speed (m/s) for the intercept solve. */
+  shellSpeed: { type: 'Float32', default: 8 },
+  /** Damage-matrix row key stamped onto every shell this gun fires. */
+  shellUnitType: { type: 'String', default: '' },
+  /** Entity index of the hull carrying this gun (the berth gate). */
+  carrierIndex: { type: 'Int32', default: -1 },
+  /** When true the cycle only ticks once the carrier's state is 'stopped'. */
+  requireStopped: { type: 'Boolean', default: false },
+  /**
+   * Exact node names of this gun's yaw pivot and muzzle inside its own
+   * subtree. Unique per seat in the GLB (see HitCore.nodeName for why);
+   * written at assembly — no shared names, no runtime guessing.
+   */
+  pivotName: { type: 'String', default: 'gun_rotate' },
+  muzzleName: { type: 'String', default: 'muzzle' },
+});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -534,4 +603,6 @@ export default defineComponents([
   DefenseButton,
   HideHealthBar,
   BossTurret,
+  LockTarget,
+  GunCycle,
 ]);

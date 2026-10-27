@@ -61,8 +61,8 @@ export interface UnitTypeDef {
   stopZMax: number;
   /**
    * Boss-carrier flag: the spawn pipeline skips the generic root HitCore and
-   * Health (the boss systems assemble per-turret cores and reveal the main
-   * hull pool only once every turret is destroyed). Carries no behaviour of
+   * Health (the boss's four gun turrets are assembled as independent combat
+   * parts instead; the hull itself is not a target). Carries no behaviour of
    * its own.
    */
   boss?: boolean;
@@ -625,6 +625,14 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   'bombardier->sky-ballista': 12.5,
   'ornithopter->cannon': 7.5,
   'ornithopter->sky-ballista': 10,
+  // Boss Islewrath gun turrets (task 029). The `islewrath-turret` core
+  // unitType is a damage-matrix key, deliberately distinct from the
+  // UNIT_TYPES sheet key `boss_islewrath` (underscore) — never look rows up
+  // by the sheet key.
+  'islewrath-turret->cannon': 20,
+  'islewrath-turret->sky-ballista': 20,
+  'cannon->islewrath-turret': 6,
+  'sky-ballista->islewrath-turret': 3,
 };
 
 /**
@@ -689,9 +697,10 @@ export const ORNITHOPTER = {
 };
 
 /**
- * Boss Islewrath (怒岛号) — the island-ship warlord. Currently navigation
- * only: the GLB spawns and runs its straight centre-line berth. Combat knobs
- * (armour plates, summon cycle, kamikaze) return with their systems.
+ * Boss Islewrath (怒岛号) — the island-ship warlord. Task 029 arms the four
+ * gun turrets: each runs an independent fire cycle with its own targeting
+ * slot. The laser turret is scenery with a health bar; summon/kamikaze come
+ * with their own systems later.
  */
 export const BOSS = {
   /** Straight-run berth point: centre line, one unit nearer the wall than
@@ -715,6 +724,51 @@ export const BOSS = {
    */
   turretBarY: 0.176 + COMBAT.healthBarMarginY,
   laserBarY: 0.465 + COMBAT.healthBarMarginY,
+  /**
+   * Turret fire rhythm (task 029): each gun loops
+   * fire -> pause -> retarget/turn -> hold -> fire. Every shot is a
+   * guaranteed-hit intercept solved from the muzzle, exactly like the pirate
+   * deck guns; only the horizontal speed differs.
+   */
+  /** Muzzle horizontal speed (m/s) — shared solver, flat arc. */
+  shellSpeed: COMBAT.pirateShellSpeed,
+  /** Base seconds between two shots from one turret (pause 1). */
+  fireInterval: 3.0,
+  /** Turn rate while swinging onto a fresh target (deg/s). */
+  turnSpeedDeg: 120,
+  /** Aim error under this (deg) ends the swing and starts the hold beat. */
+  turnThresholdDeg: 3,
+  /**
+   * Turning-phase cap (s): convergence normally ends the swing in well under
+   * a second; this cap force-finishes the aim if the swing ever stalls, so a
+   * gun can never hang in turning and stop contributing fire.
+   */
+  turnTimeout: 2.5,
+  /** Hold-beat seconds between "on target" and the shot (pause 2). */
+  aimHoldSec: 0.35,
+  /**
+   * Opening fanfare: base delay after berthing, plus a per-seat offset so
+   * the four guns open in a rolling ripple (t0, t0+0.45, t0+0.9, t0+1.35)
+   * instead of a salvo. Timers only tick once the hull has berthed, so the
+   * stagger survives the whole sail-in.
+   */
+  openFireDelay: 0.8,
+  openFireStagger: 0.45,
+  /**
+   * Per-shot jitter reuses COMBAT.fireJitterMin/Max — one jitter truth for
+   * every gun in the game, boss included.
+   */
+  /** Hit-core radius (m) of a gun turret (baked hit_core helper). */
+  turretCoreRadius: 0.3,
+  /**
+   * Turret death burst: scaled-down shatter of the shared debris pool.
+   * turretBurstFloorY is a carrier-LOCAL rest height relative to the burst
+   * centre (same convention as the defender cannons' -0.085): chunks settle
+   * on the deck around the gone turret, and they rebound (wall-top bounce)
+   * instead of sinking.
+   */
+  turretBurstRatio: 0.45,
+  turretBurstFloorY: -0.15,
 };
 
 /**

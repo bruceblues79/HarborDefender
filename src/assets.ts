@@ -137,7 +137,7 @@ export default defineAssets({
     priority: 'background',
   },
   'boss-islewrath': {
-    url: publicAssetUrl('gltf/boss-islewrath-v2.glb'),
+    url: publicAssetUrl('gltf/boss-islewrath-v3.glb'),
     type: AssetType.GLTF,
     name: 'Boss Islewrath',
     priority: 'background',
