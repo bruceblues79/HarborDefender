@@ -631,8 +631,8 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   // by the sheet key.
   'islewrath-turret->cannon': 20,
   'islewrath-turret->sky-ballista': 20,
-  'cannon->islewrath-turret': 6,
-  'sky-ballista->islewrath-turret': 3,
+  'cannon->islewrath-turret': 2,
+  'sky-ballista->islewrath-turret': 1,
 };
 
 /**
