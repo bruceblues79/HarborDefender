@@ -30,7 +30,7 @@ import {
   OceanTag,
   Repairing,
 } from './components.js';
-import { COMBAT, BALLISTA_MUZZLE_LOCAL_Y, BALLISTA_MUZZLE_LOCAL_Z, DEFENSE_BUTTONS, DEFENSE_PAD, DEFENSE_SLOTS, SKY_BALLISTA } from './level-config.js';
+import { COMBAT, BALLISTA_MUZZLE_LOCAL_Y, BALLISTA_MUZZLE_LOCAL_Z, activeLevelList, DEFENSE_BUTTONS, DEFENSE_PAD, DEFENSE_SLOTS, DEFENDER_BAR_Y, SKY_BALLISTA } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
 import { createDefenseButtonRig } from './defense-buttons.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
@@ -39,6 +39,55 @@ import { CannonFireSystem } from './cannon-fire-system.js';
 import { DieBurstSystem } from './die-burst-system.js';
 import { HitFlashSystem } from './hit-flash-system.js';
 import { SplashSystem } from './splash-system.js';
+
+/**
+ * Re-bake the harbor wall's vertex colors into per-face stone mottle. The
+ * GLB's baked colors are sparse (1694 verts across a 3.4 m wall), so their
+ * large-scale variation interpolates over huge faces into a near-flat wash —
+ * extra faces would buy mottling far too dearly. Instead the geometry goes
+ * non-indexed (original normals kept — no recompute, shading is unchanged)
+ * so each face can carry ONE solid tint: its averaged baked color jittered
+ * by a seeded ±7% brightness and a whisper of warmth. Zero extra triangles,
+ * zero textures, and the sequence is deterministic across sessions.
+ * Idempotent: already non-indexed geometry is left untouched.
+ */
+function bakeWallFaceMottle(root: Object3D): void {
+  let seed = 0x9e3779b9;
+  const rand = () => {
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    return ((seed >>> 0) / 0xffffffff) * 2 - 1; // -1..1
+  };
+  root.traverse((child: Object3D) => {
+    const mesh = child as Mesh;
+    if (!mesh.isMesh || !mesh.geometry.index) return;
+    const geometry = mesh.geometry.toNonIndexed();
+    const color = geometry.attributes.color;
+    if (!color) return;
+    for (let face = 0; face < color.count; face += 3) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let v = 0; v < 3; v++) {
+        r += color.getX(face + v);
+        g += color.getY(face + v);
+        b += color.getZ(face + v);
+      }
+      r /= 3;
+      g /= 3;
+      b /= 3;
+      const jitter = 1 + rand() * 0.07;
+      const warm = rand() * 0.02;
+      const tint = (c: number): number => Math.min(1, Math.max(0, c));
+      r = tint(r * jitter + warm);
+      g = tint(g * jitter);
+      b = tint(b * jitter - warm * 0.5);
+      for (let v = 0; v < 3; v++) color.setXYZ(face + v, r, g, b);
+    }
+    mesh.geometry = geometry;
+  });
+}
 
 /**
  * Hang the two invisible combat helpers on a mounted-defender prototype once,
@@ -113,6 +162,7 @@ function mountDefenseUnit(
     unitEntity.addComponent(Health, {
       current: COMBAT.unitHealth,
       max: COMBAT.unitHealth,
+      barY: DEFENDER_BAR_Y.cannon,
     });
     defenseEntities.push({
       entity: unitEntity,
@@ -149,6 +199,7 @@ function mountDefenseUnit(
     unitEntity.addComponent(Health, {
       current: COMBAT.unitHealth,
       max: COMBAT.unitHealth,
+      barY: DEFENDER_BAR_Y['sky-ballista'],
     });
     defenseEntities.push({
       entity: unitEntity,
@@ -361,6 +412,7 @@ export function startBattle(world: World): void {
 
           // Place harbor wall at the ocean body's maxZ edge
           const wallObject = wallGltf.scene;
+          bakeWallFaceMottle(wallObject);
           wallObject.position.set(0, 0.55, -0.8);
           // Runtime-instantiated GLB meshes keep three.js defaults
           // (both false); scene-JSON assets get these via content flags.
@@ -378,7 +430,9 @@ export function startBattle(world: World): void {
           // Cloning keeps geometry/materials shared while each gun_rotate
           // pivot stays independent; both prototypes carry the muzzle and
           // hit_core helpers, so cannons and ballistas alike are armed,
-          // targetable combatants.
+          // targetable combatants. The active level may re-crew the slots
+          // (LevelSpec.initialUnits — the design boss stage opens with a
+          // full five-gun battery); the slots' own units are the default.
           cannonPrototype = cannonGltf.scene;
           decorateCombatPrototype(cannonPrototype, 0, -0.2);
           ballistaPrototype = ballistaGltf.scene;
@@ -387,12 +441,15 @@ export function startBattle(world: World): void {
             BALLISTA_MUZZLE_LOCAL_Y,
             BALLISTA_MUZZLE_LOCAL_Z,
           );
+          const initialUnits =
+            activeLevelList[0]?.initialUnits ??
+            DEFENSE_SLOTS.map((slot) => slot.unit);
           for (
             let slotIndex = 0;
             slotIndex < DEFENSE_SLOTS.length;
             slotIndex++
           ) {
-            const initial = DEFENSE_SLOTS[slotIndex].unit;
+            const initial = initialUnits[slotIndex] ?? DEFENSE_SLOTS[slotIndex].unit;
             if (initial) mountDefenseUnit(world, slotIndex, initial);
           }
 

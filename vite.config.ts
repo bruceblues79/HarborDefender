@@ -6,10 +6,18 @@
  */
 
 import { iwsdkDev } from '@iwsdk/vite-plugin-dev';
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// Baked into src/assets.ts as the cache-busting revision for UI text assets:
+// nginx serves public/*.uikitml without Cache-Control, so an unversioned URL
+// can stay "fresh" in a client's HTTP cache across deploys (observed on Huawei
+// Browser). Flags such as --v= on the page do not change subresource URLs.
+const buildVersion = JSON.parse(readFileSync('./package.json', 'utf8')).version as string;
+
 export default defineConfig({
+  define: { __BUILD_VERSION__: JSON.stringify(buildVersion) },
   plugins: [
     iwsdkDev(),
     VitePWA({

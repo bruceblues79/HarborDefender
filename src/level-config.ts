@@ -51,9 +51,40 @@ export interface UnitTypeDef {
   stone: boolean;
   /** Disturbs the ocean surface (WakeSource); flyers never touch water. */
   wake: boolean;
+  /**
+   * Ripple radius (m) this unit drags across the surface. Optional: falls
+   * back to the shared WAKE_RADIUS — only oversized hulls (the boss) set it.
+   */
+  wakeRadius?: number;
   /** Berth z bounds rolled for this unit's stop point (MIN far, MAX near). */
   stopZMin: number;
   stopZMax: number;
+  /**
+   * Boss-carrier flag: the spawn pipeline skips the generic root HitCore and
+   * Health (the boss's four gun turrets are assembled as independent combat
+   * parts instead; the hull itself is not a target). Carries no behaviour of
+   * its own.
+   */
+  boss?: boolean;
+  /**
+   * Fixed sail target (designer data): the unit runs a straight line to this
+   * point instead of a rolled berth-band stop. Absent: the berth cascade
+   * picks the stop like every other attacker.
+   */
+  fixedTarget?: { x: number; z: number };
+  /**
+   * Explicit health-bar height in the carrier's LOCAL space (GLB units, so
+   * `scale` carries it naturally). Every Health-carrying unit must set it:
+   * measured GLB subtree top plus the shared bar margin — the bar system
+   * has no bounding-box fallback. Boss hulls carry no Health and skip it.
+   */
+  barY?: number;
+  /**
+   * Kamikaze ability (task 031): the summoned ornithopter variant. Flight
+   * and attack are the shared armed-flyer behaviour; KamikazeSystem adds
+   * the timed crash into a surviving defender once the unit has stopped.
+   */
+  kamikaze?: boolean;
 }
 
 /**
@@ -73,6 +104,17 @@ export interface WaveSpec {
 export interface LevelSpec {
   name: string;
   waves: WaveSpec[];
+  /**
+   * Money the run starts (and every RESTART) with for this level. Absent:
+   * ECONOMY.startMoney applies.
+   */
+  startMoney?: number;
+  /**
+   * Units mounted per DEFENSE_SLOTS index at first battlefield build,
+   * overriding the slots' own static `unit` fields for this level. Absent:
+   * the slots' own units stand.
+   */
+  initialUnits?: (DefenseUnitId | null)[];
 }
 
 /** Director pacing in seconds. Retune the rhythm of the defence here. */
@@ -336,17 +378,18 @@ export const SPAWN_ROLL_TRIES = 6;
  * The wave is as long as `PACING.maxConcurrentUnits`, so the level runs to
  * completion. A longer wave would simply queue: the director holds units until
  * slots free up, which is what keeps the water from flooding.
+ *
+ * Boss sandbox (task 028): the Islewrath comes down the centre line and the
+ * battery starts fully crewed with deep pockets — a pure boss-fight stage.
  */
 export const designList: LevelSpec[] = [
   {
     name: 'design',
+    startMoney: 9999,
+    initialUnits: ['cannon', 'cannon', 'cannon', 'cannon', 'cannon'],
     waves: [
       {
-        units: [
-          'ornithopter',
-          'ornithopter',
-          'ornithopter',
-        ],
+        units: ['boss_islewrath'],
       },
     ],
   },
@@ -558,6 +601,17 @@ export const COMBAT = {
 };
 
 /**
+ * Explicit defender health-bar heights (carrier-local y, baked margin
+ * included): measured GLB subtree tops at the baked pose — cannon 0.186
+ * (barrel level at rest), sky ballista 0.2874 — plus the shared defender
+ * margin. The bar system no longer derives heights from bounding boxes.
+ */
+export const DEFENDER_BAR_Y: Record<DefenseUnitId, number> = {
+  cannon: 0.186 + COMBAT.healthBarDefenderMarginY,
+  'sky-ballista': 0.2874 + COMBAT.healthBarDefenderMarginY,
+};
+
+/**
  * Attacker->target damage table, keyed `${attackerUnitType}->${targetUnitType}`:
  * one shot's damage as a percentage of the target's 100-point pool. Unknown
  * pairs read 0 — immunity is explicit data, never a guessed default. Mirrors
@@ -577,6 +631,29 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   'bombardier->sky-ballista': 12.5,
   'ornithopter->cannon': 7.5,
   'ornithopter->sky-ballista': 10,
+  // Boss Islewrath gun turrets (task 029). The `islewrath-turret` core
+  // unitType is a damage-matrix key, deliberately distinct from the
+  // UNIT_TYPES sheet key `boss_islewrath` (underscore) — never look rows up
+  // by the sheet key.
+  'islewrath-turret->cannon': 20,
+  'islewrath-turret->sky-ballista': 20,
+  // Boss Islewrath turret incoming rows (task 028/031): a city cannon shell
+  // chips a flat 2% of the turret's 100-point pool, a sky-ballista bolt 1%.
+  'cannon->islewrath-turret': 2,
+  'sky-ballista->islewrath-turret': 1,
+  // Pirate chief head (task 031): every defender hit — shell or bolt —
+  // chips a flat 2% of its 100-point pool.
+  'cannon->islewrath-chief': 2,
+  'sky-ballista->islewrath-chief': 2,
+  // Kamikaze ornithopter (task 031): identical combat values to the plain
+  // ornithopter on BOTH directions — it takes the same incoming rows and
+  // its stones land through its own attacker rows (the stone shell carries
+  // the shooter's unitType). Its 40%-of-max crash payload is NOT a matrix
+  // row — KamikazeSystem writes it directly.
+  'ornithopter_kamikaze->cannon': 7.5,
+  'ornithopter_kamikaze->sky-ballista': 10,
+  'cannon->ornithopter_kamikaze': 25,
+  'sky-ballista->ornithopter_kamikaze': 20,
 };
 
 /**
@@ -641,6 +718,168 @@ export const ORNITHOPTER = {
 };
 
 /**
+ * Boss Islewrath (怒岛号) — the island-ship warlord. Task 029 arms the four
+ * gun turrets: each runs an independent fire cycle with its own targeting
+ * slot. Task 030 arms the laser main cannon: aim -> charge -> beam -> pause,
+ * locking a defense-slot direction at aim convergence (a target dying during
+ * charge/fire never re-aims). Task 031 adds the phase-two chief head: once
+ * every turret is gone, the chief rises at the laser pivot and summons
+ * kamikaze ornithopters.
+ */
+export const BOSS = {
+  /** Straight-run berth point: centre line, one unit nearer the wall than
+   * the ocean midpoint — the wake rings and broadside read better there. */
+  targetX: 0,
+  targetZ: OCEAN.centerZ + 1,
+  /**
+   * Ripple radius (m) of the boss's wake. The hull is 3-4x a raider's beam,
+   * so its wake dwarfs the shared WAKE_RADIUS (1.25 × 3 = 3.75); a radius
+   * wider than the ocean body is fine — the surface shader simply clips
+   * what it can't show.
+   */
+  wakeRadius: 3.75,
+  /**
+   * Explicit bar heights (carrier-local y) for the armour-part wrappers'
+   * health bars. The turret subtrees are deterministic baked geometry, so
+   * the bars pin to known tops (gun barrel top 0.176, laser barrel top
+   * 0.465) plus the shared bar margin (0.12) instead of deriving from
+   * runtime bounding boxes — a deep child spawned mid-frame carries a stale
+   * ancestor matrix, and the bbox path would float the bar.
+   */
+  turretBarY: 0.176 + COMBAT.healthBarMarginY,
+  laserBarY: 0.465 + COMBAT.healthBarMarginY,
+  /**
+   * Turret fire rhythm (task 029): each gun loops
+   * fire -> pause -> retarget/turn -> hold -> fire. Every shot is a
+   * guaranteed-hit intercept solved from the muzzle, exactly like the pirate
+   * deck guns; only the horizontal speed differs.
+   */
+  /** Muzzle horizontal speed (m/s) — shared solver, flat arc. */
+  shellSpeed: COMBAT.pirateShellSpeed,
+  /** Base seconds between two shots from one turret (pause 1). */
+  fireInterval: 3.0,
+  /** Turn rate while swinging onto a fresh target (deg/s). */
+  turnSpeedDeg: 120,
+  /** Aim error under this (deg) ends the swing and starts the hold beat. */
+  turnThresholdDeg: 3,
+  /** Hold-beat seconds between "on target" and the shot (pause 2). */
+  aimHoldSec: 0.35,
+  /**
+   * Opening fanfare: base delay after berthing, plus a per-seat offset so
+   * the four guns open in a rolling ripple (t0, t0+0.45, t0+0.9, t0+1.35)
+   * instead of a salvo. Timers only tick once the hull has berthed, so the
+   * stagger survives the whole sail-in.
+   */
+  openFireDelay: 0.8,
+  openFireStagger: 0.45,
+  /**
+   * Per-shot jitter reuses COMBAT.fireJitterMin/Max — one jitter truth for
+   * every gun in the game, boss included.
+   */
+  /** Hit-core radius (m) of a gun turret (baked hit_core helper). */
+  turretCoreRadius: 0.3,
+  /**
+   * Turret death burst: scaled-down shatter of the shared debris pool.
+   * turretBurstFloorY is a carrier-LOCAL rest height relative to the burst
+   * centre (same convention as the defender cannons' -0.085): chunks settle
+   * on the deck around the gone turret, and they rebound (wall-top bounce)
+   * instead of sinking.
+   */
+  turretBurstRatio: 0.45,
+  turretBurstFloorY: -0.15,
+  /**
+   * Laser main cannon rhythm (task 030): each emission locks the beam axis
+   * at aim convergence, gathers energy for laserChargeSec, sweeps for
+   * laserFireSec, then waits laserCooldownSec (+ shared jitter) before the
+   * next cycle. Convergence uses its own tighter threshold — a hitscan beam
+   * has no shell radius to absorb residual aim error.
+   */
+  laserChargeSec: 2,
+  laserFireSec: 1,
+  laserCooldownSec: 5,
+  /** Turn rate while acquiring (deg/s) — shared with the gun turrets. */
+  laserTurnSpeedDeg: 120,
+  /** Aim error under this (deg) ends the swing and freezes the beam axis. */
+  laserTurnThresholdDeg: 0.75,
+  /**
+   * Hold at aim convergence before the charge beats in (s) — the axis is
+   * already frozen; the cannon pauses on target, then charge/fire run
+   * unchanged (mirrors the gun turrets' aimHoldSec beat).
+   */
+  laserAimHoldSec: 0.5,
+  /** Fraction of the victim's max Health deducted per beam emission. */
+  laserDamageRatio: 0.6,
+  /** Damage-corridor half-width (m) around the beam centre line. */
+  laserDamageRadius: 0.35,
+  /**
+   * Fraction of the natural aim drop removed for a flatter bearing. The
+   * muzzle sits ~0.9 m above a defender core at ~4.2 m (≈12° depression);
+   * 0.5 halves that to ≈6°, and the flattened beam still sweeps the damage
+   * corridor over the aimed core (passes ~0.45 m above it against a
+   * 0.22 + laserDamageRadius reach). 0 aims dead-on, 1 is fully level.
+   */
+  laserPitchFlatten: 0.5,
+  /**
+   * Beam reach multiplier over the locked target distance — the visual
+   * column overshoots the wall line instead of stopping at the core.
+   */
+  laserBeamLengthBoost: 1.44,
+};
+
+/**
+ * Phase-two pirate chief (task 031). The head rises where the laser citadel
+ * stood, never attacks, chips 2% per defender hit (DAMAGE_MATRIX rows), and
+ * paces the kamikaze summons.
+ */
+export const BOSS_CHIEF = {
+  /** Seconds between all turrets dying and the rise starting (0.5 s). */
+  riseDelay: 0.5,
+  /** Hull-local depth the head starts SUNK into the citadel drum — a short
+   *  travel for the stocky bust: the helmet crest still peeks above the
+   *  rim at the start of the rise. */
+  riseSink: 0.22,
+  /** Hull-local y at rest relative to the laser pivot seat — 0: the bust
+   *  sits DIRECTLY on the drum (no neck; the model's flange bottom leaves a
+   *  0.004 local gap so it never z-fights the drum cap). */
+  riseY: 0,
+  /** Seconds the emerge-from-the-citadel rise takes. */
+  riseSec: 1.2,
+  /** Health pool: the same normalised 100-point sheet as every unit. */
+  health: COMBAT.unitHealth,
+  /** Hit-core radius (m) of the head (baked hit_core helper). */
+  coreRadius: 0.3,
+  /** Seconds between two summon batches — the first fires the instant the
+   *  rise completes, then every interval after. */
+  summonInterval: 30,
+  /** Kamikaze ornithopters per summon batch. */
+  summonBatch: 3,
+  /** Death-burst size ratio over the shared debris pool (turret-scale, smaller). */
+  burstRatio: 0.3,
+  /** Carrier-LOCAL rest height of the burst chunks (deck bounce, like turrets). */
+  burstFloorY: -0.15,
+};
+
+/**
+ * Kamikaze ornithopter (task 031). Identical flight and stone attack to the
+ * plain ornithopter; once it has stopped it starts a fuse, then dives into
+ * one surviving defender. The target is snapshotted at dive start and never
+ * re-acquired — a target that dies mid-dive still eats the crash at its last
+ * position (the ornithopter shatters on the wall). The crash deducts
+ * `damageRatio` of the victim's max Health and destroys the flyer with no
+ * kill bounty (self-destruction must not pay the player).
+ */
+export const KAMIKAZE = {
+  /** Fuse seconds after the flyer has stopped (12 s). */
+  waitSec: 12,
+  /** Straight-line dive speed (m/s). */
+  diveSpeed: 2.0,
+  /** Fraction of the victim's max Health deducted on impact. */
+  damageRatio: 0.4,
+  /** Distance (m) under which the flyer counts as crashed into the target. */
+  arriveRadius: 0.15,
+};
+
+/**
  * Unit registry keyed by the unitType string used in level data. Adding a new
  * enemy (goblin flyer, boss) is one entry here plus its asset manifest entry.
  */
@@ -648,6 +887,8 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   'pirate-ship': {
     assetId: 'pirate-ship',
     scale: 1,
+    // Measured GLB subtree top 0.8775 (mast cap) + the shared bar margin.
+    barY: 0.8775 + COMBAT.healthBarMarginY,
     movement: 'default-ship',
     faction: 'attacker',
     cruiseY: SHIP_Y,
@@ -663,6 +904,8 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   bombardier: {
     assetId: 'bombardier',
     scale: 1,
+    // Measured GLB subtree top 0.359 (propeller disc) + the shared bar margin.
+    barY: 0.359 + COMBAT.healthBarMarginY,
     movement: 'default-flyer',
     faction: 'attacker',
     cruiseY: FLYER_Y,
@@ -678,6 +921,9 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   ornithopter: {
     assetId: 'ornithopter',
     scale: ORNITHOPTER.scale,
+    // Measured GLB subtree top 0.165 (wing shoulders at rest) + the shared
+    // bar margin. Local GLB units — `scale` 0.9 carries it at spawn.
+    barY: 0.165 + COMBAT.healthBarMarginY,
     movement: 'default-ship',
     faction: 'attacker',
     cruiseY: ORNITHOPTER.y,
@@ -689,5 +935,53 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     wake: false,
     stopZMin: ORNITHOPTER.stopZMin,
     stopZMax: ORNITHOPTER.stopZMax,
+  },
+  'boss_islewrath': {
+    assetId: 'boss-islewrath',
+    scale: 1,
+    movement: 'default-ship',
+    faction: 'attacker',
+    // Waterline seat (v0.1.180): two draft orders consolidated — the surface
+    // cuts the mesa at model +0.35, so the hull skirt is fully buried and
+    // the basalt mesa itself rises straight out of the sea, the floating-
+    // island read. Going deeper would drown the mesa base and the front
+    // gun seats, and sink the bow ram's visible tip below the waves.
+    cruiseY: OCEAN.surfaceY - 0.35,
+    // Unarmed at the sheet level: the boss systems drive the turrets, the
+    // shared PirateCannon deck-gun path never touches this hull. The turret
+    // cadence lives in BOSS's rhythm knobs, not the unit sheet.
+    armed: false,
+    fireInterval: 0,
+    rotor: false,
+    flap: false,
+    stone: false,
+    wake: true,
+    wakeRadius: BOSS.wakeRadius,
+    // Collapsed berth band + fixed target: the straight centre-line run.
+    stopZMin: BOSS.targetZ,
+    stopZMax: BOSS.targetZ,
+    boss: true,
+    fixedTarget: { x: BOSS.targetX, z: BOSS.targetZ },
+  },
+  'ornithopter_kamikaze': {
+    // The summoned kamikaze variant (task 031): same glTF prototype, flight
+    // envelope and stone attack as the plain ornithopter — the sheet only
+    // flips the `kamikaze` ability on. Summoned by the phase-two chief head,
+    // never part of a wave sheet.
+    assetId: 'ornithopter',
+    scale: ORNITHOPTER.scale,
+    barY: 0.165 + COMBAT.healthBarMarginY,
+    movement: 'default-ship',
+    faction: 'attacker',
+    cruiseY: ORNITHOPTER.y,
+    armed: true,
+    fireInterval: COMBAT.ornithopterFireInterval,
+    rotor: false,
+    flap: true,
+    stone: true,
+    wake: false,
+    stopZMin: ORNITHOPTER.stopZMin,
+    stopZMax: ORNITHOPTER.stopZMax,
+    kamikaze: true,
   },
 };

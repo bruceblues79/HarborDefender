@@ -6,7 +6,7 @@
  */
 
 import { createComponent, defineComponents } from '@iwsdk/core';
-import { COMBAT, ECONOMY, ORNITHOPTER, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y } from './level-config.js';
+import { COMBAT, ECONOMY, ORNITHOPTER, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y, WAKE_RADIUS } from './level-config.js';
 
 /** Marks the ocean body entity so OceanSystem can find it via query. */
 export const OceanTag = createComponent('OceanTag', {});
@@ -85,6 +85,12 @@ export const ShipMovement = createComponent('ShipMovement', {
   laneHalfWidth: { type: 'Float32', default: 0.35 },
   /** Set while a ship ahead keeps this one waiting. */
   blocked: { type: 'Boolean', default: false },
+  /**
+   * This hull's own wake radius (m) — the unit sheet's wakeRadius at spawn.
+   * ShipMovementSystem retargets the WakeSource between this and half of it;
+   * per-entity so oversized hulls (the boss) churn ship-scaled ripples.
+   */
+  wakeRadius: { type: 'Float32', default: WAKE_RADIUS },
 });
 
 /**
@@ -264,6 +270,13 @@ export const HitCore = createComponent('HitCore', {
   faction: { type: 'String', default: 'attacker' },
   /** Unit id of the hittable combatant ('cannon', 'pirate-ship'…). */
   unitType: { type: 'String', default: '' },
+  /**
+   * Exact name of the hit-core node in the carrier's subtree. Multi-seat
+   * assets must use unique names per seat (GLTFLoader de-duplicates
+   * same-name nodes with numeric suffixes at load time, so a bare
+   * 'hit_core' only reliably resolves on single-seat assets — the default).
+   */
+  nodeName: { type: 'String', default: 'hit_core' },
 });
 
 /**
@@ -277,6 +290,14 @@ export const Health = createComponent('Health', {
   current: { type: 'Float32', default: 1 },
   /** Hits the unit starts with; the RESTART restore target. */
   max: { type: 'Float32', default: 1 },
+  /**
+   * Explicit bar height in the carrier's LOCAL space. HealthBarSystem pins
+   * the bar here verbatim — there is no bounding-box fallback: a derivation
+   * on a deep child spawned mid-frame reads a stale ancestor matrixWorld and
+   * floats the bar. Every Health carrier sets it (hulls: the unit sheet's
+   * measured top + margin; boss armour parts: the baked-geometry constants).
+   */
+  barY: { type: 'Float32', default: 0 },
 });
 
 /**
@@ -469,6 +490,238 @@ export const DefenseButton = createComponent('DefenseButton', {
   kind: { type: 'String', default: 'build' },
 });
 
+/**
+ * Explicit tag (no fields): `HideHealthBar` — HealthBarSystem skips carriers.
+ */
+export const HideHealthBar = createComponent('HideHealthBar', {});
+
+/**
+ * Explicit tag (no fields): `BossTurret` — lifecycle marker on the boss's
+ * four baked turret child entities. Each turret carries its own Health pool
+ * (so its own bar via HealthBarSystem) but has no UnitTag/ShipMovement, so
+ * the attackers query never sees them; reset and restart tear them down
+ * through this tag, because Entity.dispose() does not cascade into child
+ * entities and they must die with their hull.
+ */
+export const BossTurret = createComponent('BossTurret', {});
+
+/**
+ * Per-gun targeting slot (索敌组件). ANY gun entity carries one; the carrier
+ * hull never needs to know its guns exist. FreeLockTargetSystem is the ONLY
+ * writer — it re-rolls a live uniform-random defender core whenever the slot
+ * is empty or its target has died; a fire cycle clears the slot after each
+ * shot to request the next roll. Repeats are legal, especially when one
+ * defender is left.
+ */
+export const LockTarget = createComponent('LockTarget', {
+  /** Entity index of the locked defender core; -1 = no target. */
+  targetCoreIndex: { type: 'Int32', default: -1 },
+  /** Locked core's hit_core world-position snapshot (defenders never move). */
+  targetX: { type: 'Float32', default: 0 },
+  targetY: { type: 'Float32', default: 0 },
+  targetZ: { type: 'Float32', default: 0 },
+});
+
+/**
+ * Per-gun fire state machine (发射状态机). ANY gun entity carries one and
+ * runs the `cooldown -> turning -> hold -> fire` loop independently:
+ * swing its gun_rotate onto the LockTarget snapshot (turnSpeedDeg until the
+ * error is under turnThresholdDeg), hold the aim for aimHoldSec, launch one
+ * pooled shell on the closed-form intercept (shellSpeed, stamped
+ * shellUnitType for the damage matrix), then wait fireInterval (+ jitter)
+ * and clear the LockTarget slot for the next random roll. GunCycleSystem is
+ * the only writer; all rhythm values are per-gun data set at assembly.
+ */
+export const GunCycle = createComponent('GunCycle', {
+  /** 'cooldown' | 'turning' | 'hold'. */
+  state: { type: 'String', default: 'cooldown' },
+  /** Countdown of the current phase (cooldown wait / hold beat), seconds. */
+  timer: { type: 'Float32', default: 0 },
+  /** Base seconds between two shots from this gun. */
+  fireInterval: { type: 'Float32', default: 3 },
+  /** Yaw swing rate while acquiring (deg/s). */
+  turnSpeedDeg: { type: 'Float32', default: 120 },
+  /** Aim error under this (deg) ends the swing and starts the hold beat. */
+  turnThresholdDeg: { type: 'Float32', default: 3 },
+  /** Hold-beat seconds between "on target" and the shot. */
+  aimHoldSec: { type: 'Float32', default: 0.35 },
+  /** Muzzle horizontal shell speed (m/s) for the intercept solve. */
+  shellSpeed: { type: 'Float32', default: 8 },
+  /** Damage-matrix row key stamped onto every shell this gun fires. */
+  shellUnitType: { type: 'String', default: '' },
+  /** Entity index of the hull carrying this gun (the berth gate). */
+  carrierIndex: { type: 'Int32', default: -1 },
+  /** When true the cycle only ticks once the carrier's state is 'stopped'. */
+  requireStopped: { type: 'Boolean', default: false },
+  /**
+   * Exact node names of this gun's yaw pivot and muzzle inside its own
+   * subtree. Unique per seat in the GLB (see HitCore.nodeName for why);
+   * written at assembly — no shared names, no runtime guessing.
+   */
+  pivotName: { type: 'String', default: 'gun_rotate' },
+  muzzleName: { type: 'String', default: 'muzzle' },
+});
+
+/**
+ * Laser main cannon state machine (激光主炮状态机). Runs the
+ * `cooldown -> turning -> hold -> charging -> firing` loop: swing the pivot
+ * onto the LockTarget snapshot (quaternion rotateTowards, yaw + pitch in
+ * one arc), hold briefly at convergence with the beam axis frozen, charge,
+ * then deduct laserDamageRatio of each swept defender's max Health once at
+ * the firing transition. The axis freeze (origin/dir/length below) locks a
+ * defense-slot DIRECTION: a target dying during hold/charge/fire never
+ * re-aims, and FreeLockTargetSystem re-rolls of the slot are ignored until
+ * the next cooldown hands targeting back. LaserCycleSystem is the only
+ * writer; death stays single-truthed in ShellHitSystem's death sweep.
+ */
+export const LaserCycle = createComponent('LaserCycle', {
+  /** 'cooldown' | 'turning' | 'hold' | 'charging' | 'firing'. */
+  state: { type: 'String', default: 'cooldown' },
+  /** Countdown of the current phase, seconds. */
+  timer: { type: 'Float32', default: 0 },
+  /** Hold at aim convergence before the charge, axis already frozen (s). */
+  aimHoldSec: { type: 'Float32', default: 0.5 },
+  /** Charge beat before the beam (energy gathering), seconds. */
+  chargeSec: { type: 'Float32', default: 2 },
+  /** Beam emission duration, seconds. */
+  fireSec: { type: 'Float32', default: 1 },
+  /** Base seconds between two emissions from this cannon. */
+  cooldownSec: { type: 'Float32', default: 5 },
+  /** Turn rate while acquiring (deg/s). */
+  turnSpeedDeg: { type: 'Float32', default: 120 },
+  /** Aim error under this (deg) ends the swing and freezes the beam axis. */
+  turnThresholdDeg: { type: 'Float32', default: 0.75 },
+  /** Entity index of the hull carrying this cannon (the berth gate). */
+  carrierIndex: { type: 'Int32', default: -1 },
+  /** When true the cycle only ticks once the carrier's state is 'stopped'. */
+  requireStopped: { type: 'Boolean', default: false },
+  /** Exact node names of the aim pivot and the beam origin muzzle. */
+  pivotName: { type: 'String', default: 'gun_rotate_laser' },
+  muzzleName: { type: 'String', default: 'muzzle_laser' },
+  /**
+   * Beam axis frozen at aim convergence: muzzle world position (origin),
+   * the muzzle's world -Z direction (dir, unit length), and the distance
+   * from origin to the frozen target snapshot (length). Written once per
+   * cycle; never re-read from LockTarget while charging/firing.
+   */
+  originX: { type: 'Float32', default: 0 },
+  originY: { type: 'Float32', default: 0 },
+  originZ: { type: 'Float32', default: 0 },
+  dirX: { type: 'Float32', default: 0 },
+  dirY: { type: 'Float32', default: 0 },
+  dirZ: { type: 'Float32', default: -1 },
+  length: { type: 'Float32', default: 0 },
+});
+
+/**
+ * The boss hull's laser-pivot mount seat for the phase-two chief head
+ * (海盗头领挂点). Written once by LevelWaveSystem while assembling the boss
+ * turrets — the ONLY moment the pivot node is guaranteed to exist, because
+ * the laser turret's death removes its whole subtree (pivot included) from
+ * the hull clone. The seat is the `gun_rotate_laser` pivot's position
+ * accumulated over the parent chain EXCLUDING the hull root: the root's
+ * position is a WORLD coordinate, not hull-local, and the head is parented
+ * under the hull so it would be double-counted. BossChiefSystem reads it
+ * to place and rise the head. Only the boss hull carries it.
+ */
+export const ChiefMount = createComponent('ChiefMount', {
+  x: { type: 'Float32', default: 0 },
+  y: { type: 'Float32', default: 0 },
+  z: { type: 'Float32', default: 0 },
+});
+
+/**
+ * Explicit 0.5 s beat between the last boss turret dying and the chief head
+ * starting to rise. Mounted on the boss hull by BossChiefSystem, ticked down
+ * in place, removed at zero (which mounts the head). Pause-frozen with the
+ * system.
+ */
+export const ChiefPending = createComponent('ChiefPending', {
+  timer: { type: 'Float32', default: 0 },
+});
+
+/**
+ * The phase-two pirate chief head (海盗头领) lifecycle tag. The head is a
+ * child entity of the boss hull — Health + HitCore make it shootable, it
+ * never attacks, and its death routes through ShellHitSystem's kill() into
+ * the ChiefDown clear-the-field command. LevelWaveSystem's dispose sweep
+ * recycles it like the turret children.
+ */
+export const IslewrathChief = createComponent('IslewrathChief', {});
+
+/**
+ * Chief-head summon pacing (召唤节拍). One countdown to the next kamikaze
+ * batch; BossChiefSystem is the only writer. timer 0 at mount = the first
+ * batch leaves immediately ("出现后开始召唤").
+ */
+export const ChiefSummon = createComponent('ChiefSummon', {
+  /** Seconds until the next summon batch fires. */
+  timer: { type: 'Float32', default: 0 },
+});
+
+/**
+ * Chief-head emerge animation (升场状态). One-shot: BossChiefSystem
+ * integrates the head's local y from the mount point up to mount + riseY
+ * over `duration`, then removes the component (head sits at its rest pose).
+ * Pause-frozen like every other simulation timer.
+ */
+export const ChiefRise = createComponent('ChiefRise', {
+  /** Elapsed rise seconds. */
+  elapsed: { type: 'Float32', default: 0 },
+  /** Total rise seconds. */
+  duration: { type: 'Float32', default: 1.2 },
+  /**
+   * Hull-local y the rise starts from — the laser citadel's mount seat
+   * snapshotted at mount time so the rise tick never needs a parent lookup.
+   */
+  baseY: { type: 'Float32', default: 0 },
+});
+
+/**
+ * Kamikaze ability state (玉碎状态机) on the summoned ornithopter variant.
+ * Flight and the stone attack stay in the shared armed-flyer systems; this
+ * component only runs the fuse-and-dive: after the carrier's ShipMovement
+ * state reaches 'stopped', wait waitSec, snapshot one surviving defender
+ * core, then dive at it. The snapshot is never re-acquired — a victim that
+ * dies mid-dive still eats the crash at its last position. KamikazeSystem
+ * is the only writer; the crash itself deducts the victim's Health directly
+ * and death stays single-truthed (victim via the death sweep, flyer self-
+ * destructs without a bounty).
+ */
+export const Kamikaze = createComponent('Kamikaze', {
+  /** 'waiting' (fuse, only ticks once stopped) | 'diving'. */
+  state: { type: 'String', default: 'waiting' },
+  /** Fuse countdown while waiting (seconds). */
+  timer: { type: 'Float32', default: 0 },
+  /** Core index of the dive target (snapshot; -1 while waiting). */
+  targetCoreIndex: { type: 'Int32', default: -1 },
+  /** World-space dive endpoint snapshot (the target core's position). */
+  targetX: { type: 'Float32', default: 0 },
+  targetY: { type: 'Float32', default: 0 },
+  targetZ: { type: 'Float32', default: 0 },
+});
+
+/**
+ * Thin command (薄命令) on the director: the chief head has been killed —
+ * clear the field and win. ShellHitSystem's kill() is the only writer;
+ * LevelWaveSystem consumes it once (removes the tag, disposes every
+ * attacker including the head, declares the level cleared). Mounted on the
+ * director entity like BuildOpen.
+ */
+export const ChiefDown = createComponent('ChiefDown', {});
+
+/**
+ * Thin command (薄命令) on the director: spawn one batch of kamikaze
+ * ornithopters. BossChiefSystem writes it when the chief's summon timer
+ * elapses; LevelWaveSystem consumes it (removes the tag, runs its shared
+ * spawnUnitByType pipeline `count` times). Kept as a command so the spawn
+ * pipeline stays single-truthed inside LevelWaveSystem.
+ */
+export const SummonCommand = createComponent('SummonCommand', {
+  /** How many units this batch spawns. */
+  count: { type: 'Int32', default: 0 },
+});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -503,4 +756,17 @@ export default defineComponents([
   Repairing,
   BuildOpen,
   DefenseButton,
+  HideHealthBar,
+  BossTurret,
+  LockTarget,
+  GunCycle,
+  LaserCycle,
+  ChiefMount,
+  ChiefPending,
+  IslewrathChief,
+  ChiefSummon,
+  ChiefRise,
+  Kamikaze,
+  ChiefDown,
+  SummonCommand,
 ]);

@@ -15,18 +15,27 @@ import {
 } from '@iwsdk/core';
 import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
 import {
+  BossTurret,
   BuildOpen,
+  ChiefDown,
+  ChiefMount,
   Destroyed,
   GameOver,
   GamePaused,
   GameStarted,
+  GunCycle,
   Health,
   HitCore,
+  IslewrathChief,
+  Kamikaze,
+  LaserCycle,
   LevelDirector,
+  LockTarget,
   PirateCannon,
   PropellerSpin,
   ShipMovement,
   SpawnFade,
+  SummonCommand,
   UnitTag,
   WakeSource,
   Wallet,
@@ -36,8 +45,10 @@ import {
   activeLevelList,
   COMBAT,
   ECONOMY,
+  KAMIKAZE,
   OCEAN,
   OCEAN_FAR_Z,
+  BOSS,
   PACING,
   SPAWN_FADE_DURATION,
   SPAWN_ROLL_TRIES,
@@ -67,7 +78,11 @@ const MUZZLE_LOCAL_Z = -0.2;
  *   wrapper copies that position before attach(), so yawing the mount spins
  *   turntable + barrel around the pedestal's own axis — the hull stays put
  *   and the gun never sweeps around the ship centre — gunned units only;
- * - a `hit_core` at the model's bounding-box centre — every unit.
+ * - a `hit_core` at the model's bounding-box centre — every non-boss unit.
+ *   Boss hulls bake their own rig (root hit_core plus per-part
+ *   gun_rotate/muzzle/hit_core nodes), so they skip this decorator entirely:
+ *   wrapping a boss `gun_rotate` in `cannon_mount` would entangle the hull's
+ *   own articulation with a deck-gun wrapper.
  */
 function decorateShipPrototype(prototype: Object3D): void {
   const gunPivot = prototype.getObjectByName('gun_rotate');
@@ -106,6 +121,44 @@ function decorateShipPrototype(prototype: Object3D): void {
   }
 }
 
+/**
+ * Spawn-time material state for a freshly cloned unit tree: per-clone
+ * material clones starting fully transparent, depth writes kept on through
+ * the fade, IBL re-linked from the prototype materials (clone() drops the
+ * reference), shadows off until SpawnFadeSystem solidifies the hull.
+ * Shared by the hull clone and the boss turret part clones so every piece
+ * of one unit fades in as one body.
+ */
+function prepareSpawnMaterials(object: Object3D): void {
+  object.traverse((child) => {
+    const mesh = child as Mesh;
+    if (!mesh.isMesh) return;
+    const original = mesh.material;
+    const solid = Array.isArray(original)
+      ? original.map((material) => material.clone())
+      : original.clone();
+    for (let i = 0; i < (Array.isArray(solid) ? solid.length : 1); i++) {
+      const material = Array.isArray(solid) ? solid[i] : solid;
+      const src = Array.isArray(original) ? original[i] : original;
+      material.transparent = true;
+      material.opacity = 0;
+      // Keep depth writes on during the fade so DoubleSide meshes (hull,
+      // sail) don't render front + back faces blended together — that
+      // stacking darkened the colour while translucent and made it snap
+      // lighter the moment the material flipped back to opaque.
+      material.depthWrite = true;
+      const srcStd = src as MeshStandardMaterial;
+      const matStd = material as MeshStandardMaterial;
+      if (!matStd.envMap && srcStd.envMap) {
+        matStd.envMap = srcStd.envMap;
+      }
+    }
+    mesh.material = solid;
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+  });
+}
+
 /** Ships emerge this far inside the ocean's far edge. */
 const SPAWN_Z = OCEAN_FAR_Z + 0.1;
 /** Keep a lane clear of the ocean edge. */
@@ -137,6 +190,8 @@ type DirectorPhase =
 export class LevelWaveSystem extends createSystem({
   directors: { required: [LevelDirector] },
   attackers: { required: [UnitTag, ShipMovement] },
+  bossTurrets: { required: [BossTurret] },
+  chiefs: { required: [IslewrathChief] },
   cores: { required: [HitCore] },
 }) {
   /** Unit prototypes keyed by unitType; clones share geometry and materials. */
@@ -156,7 +211,10 @@ export class LevelWaveSystem extends createSystem({
     for (const [type, def] of Object.entries(UNIT_TYPES)) {
       AssetManager.loadGLTFById(def.assetId)
         .then((gltf) => {
-          decorateShipPrototype(gltf.scene);
+          // Boss hulls already ship every functional node; generic decoration
+          // would add a cannon_mount around the first gun_rotate and break
+          // the hull's own articulation.
+          if (!def.boss) decorateShipPrototype(gltf.scene);
           this.prototypes.set(type, gltf.scene);
         })
         .catch((err: unknown) =>
@@ -171,7 +229,10 @@ export class LevelWaveSystem extends createSystem({
     // qualify and hides everything on its dismiss.
     this.director.addComponent(GameStarted);
     this.director.removeComponent(GameOver);
-    this.director.setValue(Wallet, 'money', ECONOMY.startMoney);
+    // Stale boss-phase commands must never leak into a fresh run.
+    this.director.removeComponent(ChiefDown);
+    this.director.removeComponent(SummonCommand);
+    this.director.setValue(Wallet, 'money', this.startMoney());
     this.enterLevel(0);
   }
 
@@ -184,6 +245,8 @@ export class LevelWaveSystem extends createSystem({
     this.director.removeComponent(GameStarted);
     this.director.removeComponent(GameOver);
     this.director.removeComponent(BuildOpen);
+    this.director.removeComponent(ChiefDown);
+    this.director.removeComponent(SummonCommand);
     this.director.setValue(LevelDirector, 'levelIndex', 0);
     this.director.setValue(LevelDirector, 'waveIndex', 0);
     this.director.setValue(LevelDirector, 'pendingUnits', 0);
@@ -201,12 +264,20 @@ export class LevelWaveSystem extends createSystem({
     this.disposeAttackers();
     this.director.removeComponent(GameOver);
     this.director.removeComponent(BuildOpen);
-    this.director.setValue(Wallet, 'money', ECONOMY.startMoney);
+    this.director.removeComponent(ChiefDown);
+    this.director.removeComponent(SummonCommand);
+    this.director.setValue(Wallet, 'money', this.startMoney());
     const index = Math.min(
       Math.max(0, this.levelIndex()),
       activeLevelList.length - 1,
     );
     this.enterLevel(index);
+  }
+
+  /** The current level's starting purse (per-level override, else the stock). */
+  private startMoney(): number {
+    const level = activeLevelList[this.levelIndex()];
+    return level?.startMoney ?? ECONOMY.startMoney;
   }
 
   /** Dispose every unit on the water. Resources stay shared with the
@@ -217,6 +288,18 @@ export class LevelWaveSystem extends createSystem({
    * destroys exactly those shared GPU resources and poisons future spawns. */
   private disposeAttackers(): void {
     this.retiring.length = 0;
+    // Boss hull CHILD entities die first, then their hull: Entity.dispose()
+    // never cascades into child entities, and the children's ECS Transform
+    // parent link must not outlive its target. The turret parts (BossTurret)
+    // and the phase-two chief head (IslewrathChief) carry no UnitTag/
+    // ShipMovement, so the attackers query above cannot see them — those
+    // tags are their only teardown handles.
+    for (const entity of this.queries.chiefs.entities) {
+      this.retiring.push(entity);
+    }
+    for (const entity of this.queries.bossTurrets.entities) {
+      this.retiring.push(entity);
+    }
     for (const entity of this.queries.attackers.entities) {
       this.retiring.push(entity);
     }
@@ -227,6 +310,11 @@ export class LevelWaveSystem extends createSystem({
 
   update(delta: number): void {
     if (this.paused()) return;
+    // Thin commands from the boss phase (task 031) run ahead of the wave
+    // state machine: a chief kill ends the run immediately, and summon
+    // batches ride the same spawn pipeline as wave dispatch.
+    if (this.consumeChiefDown()) return;
+    this.consumeSummons();
     const phase = this.director.getValue(
       LevelDirector,
       'phase',
@@ -272,6 +360,47 @@ export class LevelWaveSystem extends createSystem({
     this.director.setValue(LevelDirector, 'timer', timer);
     this.director.setValue(LevelDirector, 'pendingUnits', pending);
     if (pending <= 0) this.setPhase('clearing');
+  }
+
+  /**
+   * Chief-down thin command (task 031): the pirate chief head has been
+   * killed — the field clears and the run is won. Consumed ahead of the
+   * wave switch so it also stops a mid-dispatch spawner: declareCleared
+   * parks the phase at 'game-cleared' regardless of where the run was.
+   * GameOver stays single-writer through declareCleared.
+   */
+  private consumeChiefDown(): boolean {
+    if (!this.director.hasComponent(ChiefDown)) return false;
+    this.director.removeComponent(ChiefDown);
+    this.director.removeComponent(SummonCommand);
+    this.disposeAttackers();
+    this.declareCleared();
+    return true;
+  }
+
+  /**
+   * Summon-batch thin command (task 031): spawn the requested kamikaze
+   * ornithopters through the shared spawn pipeline. The command survives
+   * until every unit has left — a prototype still loading (null) does not
+   * consume the count, so the batch finishes on the following frames.
+   * Commands are ignored once an outcome is recorded (the field is already
+   * being torn down).
+   */
+  private consumeSummons(): void {
+    if (!this.director.hasComponent(SummonCommand)) return;
+    if (this.director.hasComponent(GameOver)) {
+      this.director.removeComponent(SummonCommand);
+      return;
+    }
+    let count = Number(this.director.getValue(SummonCommand, 'count'));
+    while (count > 0 && this.spawnUnitByType('ornithopter_kamikaze')) {
+      count -= 1;
+    }
+    if (count <= 0) {
+      this.director.removeComponent(SummonCommand);
+    } else {
+      this.director.setValue(SummonCommand, 'count', count);
+    }
   }
 
   /** World x a ship may emerge at: anywhere across the ocean minus edge margin. */
@@ -385,30 +514,45 @@ export class LevelWaveSystem extends createSystem({
   private spawnUnit(pending: number): boolean {
     const units = this.currentWaveUnits();
     const unitType = units[units.length - pending];
+    return this.spawnUnitByType(unitType) !== null;
+  }
+
+  /**
+   * Spawn one unit of the given type — the single spawn truth of the wave
+   * dispatch. Returns the new entity, or null while the prototype is still
+   * loading (the caller retries next frame).
+   */
+  spawnUnitByType(unitType: string): Entity | null {
     const def = UNIT_TYPES[unitType];
     if (!def) {
       console.error(`LevelWaveSystem: unknown unit type "${unitType}"`);
-      return false;
+      return null;
     }
     const prototype = this.prototypes.get(unitType);
-    if (!prototype) return false;
+    if (!prototype) return null;
 
     const object = prototype.clone(true);
 
     // Spawn point: best-candidate x on the far edge (spread away from active
     // attackers). A single-unit wave just comes down the centre line — no
-    // need to randomise when there is nothing to avoid. The stop target comes
-    // from the berth cascade, which is why it is resolved before anything is
-    // committed.
-    const spawnX = units.length === 1 ? 0 : this.pickSpawnX();
-    const target = this.pickTarget(def);
+    // need to randomise when there is nothing to avoid — but summoned
+    // kamikaze flyers (task 031) always spread: their "wave" is the boss's
+    // single-unit sheet, so the centre-line rule would stack every batch at
+    // x = 0. The stop target is the unit sheet's fixed point when it carries
+    // one (the boss's straight centre-line run), else the berth cascade —
+    // resolved before anything is committed.
+    const laneX =
+      !def.kamikaze && this.currentWaveUnits().length === 1
+        ? 0
+        : this.pickSpawnX();
+    const target = def.fixedTarget ?? this.pickTarget(def);
     // Altitude is the unit sheet's cruiseY — ships float at the waterline,
     // the bombardier holds FLYER_Y. Everything downstream reads the same
     // value off ShipMovement, so no system ever hard-codes an altitude.
-    object.position.set(spawnX, def.cruiseY, SPAWN_Z);
+    object.position.set(laneX, def.cruiseY, SPAWN_Z);
     // Bow is the hull's local -Z; yaw it onto the spawn -> target direction.
     object.rotation.y = Math.atan2(
-      -(target.x - spawnX),
+      -(target.x - laneX),
       -(target.z - SPAWN_Z),
     );
     // Unit-sheet model scale: the clone shrinks uniformly, so every child
@@ -419,37 +563,7 @@ export class LevelWaveSystem extends createSystem({
     // so each ship gets its own clones starting fully transparent. Driving that
     // opacity, and switching shadows on when the hull is solid, is
     // SpawnFadeSystem's job — the spawner only lands the starting state.
-    object.traverse((child) => {
-      const mesh = child as Mesh;
-      if (!mesh.isMesh) return;
-      const original = mesh.material;
-      const solid = Array.isArray(original)
-        ? original.map((material) => material.clone())
-        : original.clone();
-      for (let i = 0; i < (Array.isArray(solid) ? solid.length : 1); i++) {
-        const material = Array.isArray(solid) ? solid[i] : solid;
-        const src = Array.isArray(original) ? original[i] : original;
-        material.transparent = true;
-        material.opacity = 0;
-        // Keep depth writes on during the fade so DoubleSide meshes (hull,
-        // sail) don't render front + back faces blended together — that
-        // stacking darkened the colour while translucent and made it snap
-        // lighter the moment the material flipped back to opaque.
-        material.depthWrite = true;
-        // IWSDK's EnvironmentSystem may attach the IBL directly onto the
-        // prototype's materials (not only scene.environment); clone() drops
-        // that reference, so re-link it or the PBR ship spawns without
-        // environment reflections and looks unlit until something re-applies.
-        const srcStd = src as MeshStandardMaterial;
-        const matStd = material as MeshStandardMaterial;
-        if (!matStd.envMap && srcStd.envMap) {
-          matStd.envMap = srcStd.envMap;
-        }
-      }
-      mesh.material = solid;
-      mesh.castShadow = false;
-      mesh.receiveShadow = true;
-    });
+    prepareSpawnMaterials(object);
 
     const entity = this.world.createTransformEntity(object);
     entity.addComponent(UnitTag, { unitType, faction: def.faction });
@@ -459,30 +573,27 @@ export class LevelWaveSystem extends createSystem({
     // altitude instead of a shared waterline constant.
     entity.addComponent(ShipMovement, {
       pattern: def.movement,
-      spawnX,
+      spawnX: laneX,
       targetX: target.x,
       targetZ: target.z,
       cruiseY: def.cruiseY,
+      // Per-hull wake radius: oversized hulls (the boss) churn ship-scaled
+      // ripples; everyone else rides the shared WAKE_RADIUS default.
+      wakeRadius: def.wakeRadius ?? WAKE_RADIUS,
     });
     entity.addComponent(SpawnFade, { duration: SPAWN_FADE_DURATION });
-    // Hull hit points: the ship sinks once ShellHitSystem has charged
-    // COMBAT.shellDamage per defender-shell hit into this pool. Normalised:
-    // every unit shares COMBAT.unitHealth (100) as its pool size.
-    entity.addComponent(Health, {
-      current: COMBAT.unitHealth,
-      max: COMBAT.unitHealth,
-    });
     // Water contact is a unit-sheet fact: ships churn a wake, the airborne
     // bombardier never touches the surface and gets none.
     if (def.wake) {
+      const wakeRadius = def.wakeRadius ?? WAKE_RADIUS;
       entity.addComponent(WakeSource, {
         strength: 0,
         // Under way (or held up) from frame one, so the wake aims at the
         // sailing values; ShipMovementSystem retargets it the moment the ship
         // stops or starts waiting.
         targetStrength: WAKE_STRENGTH_MOVING,
-        radius: WAKE_RADIUS,
-        targetRadius: WAKE_RADIUS,
+        radius: wakeRadius,
+        targetRadius: wakeRadius,
       });
     }
     // The rotor is also a unit-sheet fact: PropellerSpinSystem turns the
@@ -495,6 +606,23 @@ export class LevelWaveSystem extends createSystem({
     if (def.flap) {
       entity.addComponent(WingFlap);
     }
+    // Boss hull: navigation runs as usual, while the four baked gun
+    // turrets are independent combat parts (their own state machines and
+    // targeting slots). The hull itself stays Health-less — nothing can
+    // hit it; only the turrets fight.
+    if (def.boss) {
+      this.attachBossTurrets(entity);
+      return entity;
+    }
+    // Hull hit points: the ship sinks once ShellHitSystem has charged
+    // COMBAT.shellDamage per defender-shell hit into this pool. Normalised:
+    // every unit shares COMBAT.unitHealth (100) as its pool size. barY comes
+    // off the unit sheet — every Health-carrying def pins its measured top.
+    entity.addComponent(Health, {
+      current: COMBAT.unitHealth,
+      max: COMBAT.unitHealth,
+      barY: def.barY,
+    });
     // Combat: attacker hit core (defender shells are consumed inside it) and
     // — for armed units — the deck-gun ability with the unit sheet's own
     // fire interval (pirate ships 3 s, the bombardier 2 s, the ornithopter
@@ -512,7 +640,153 @@ export class LevelWaveSystem extends createSystem({
         stone: def.stone,
       });
     }
-    return true;
+    // Kamikaze ability (task 031): the summoned ornithopter variant arms the
+    // fuse-and-dive on top of the shared armed-flyer behaviour above. The
+    // fuse only ticks once the flyer has stopped, and starts fully wound.
+    if (def.kamikaze) {
+      entity.addComponent(Kamikaze, { timer: KAMIKAZE.waitSec });
+    }
+    return entity;
+  }
+
+  /**
+   * Construction, not behaviour: turn the GLB's baked turret wrappers
+   * (`gun_t1`..`gun_t4`) into child entities, each with its own Health pool
+   * (HealthBarSystem attaches its own bar), a HitCore on the seat's baked
+   * core node (so defender shells can knock it out), and — per gun — its
+   * fire state machine (`GunCycle`, per-seat rhythm data) plus its
+   * `LockTarget` targeting slot. The laser turret gets the same treatment
+   * with its own state machine (`LaserCycle`): the generic systems do the
+   * rest; the hull itself never needs to know its turrets exist.
+   *
+   * Node names in the v3 asset are unique per seat (`gun_rotate_1`,
+   * `muzzle_1`, `hit_core_1`, …; `_laser`, `_hull` for the rest): three.js
+   * GLTFLoader de-duplicates same-name nodes with numeric suffixes at load
+   * time, so same-name helpers in a multi-seat asset are an asset bug —
+   * with unique names every exact find resolves and the systems bind
+   * through the names frozen on the components.
+   */
+  private attachBossTurrets(boss: Entity): void {
+    const root = boss.object3D;
+    if (!root) return;
+    const parts: Array<{
+      wrapper: string;
+      core: string;
+      barY: number;
+      gun: boolean;
+    }> = [
+      { wrapper: 'gun_t1', core: 'hit_core_1', barY: BOSS.turretBarY, gun: true },
+      { wrapper: 'gun_t2', core: 'hit_core_2', barY: BOSS.turretBarY, gun: true },
+      { wrapper: 'gun_t3', core: 'hit_core_3', barY: BOSS.turretBarY, gun: true },
+      { wrapper: 'gun_t4', core: 'hit_core_4', barY: BOSS.turretBarY, gun: true },
+      {
+        wrapper: 'laser_turret',
+        core: 'hit_core_laser',
+        barY: BOSS.laserBarY,
+        gun: false,
+      },
+    ];
+    for (const spec of parts) {
+      const wrapper = root.getObjectByName(spec.wrapper);
+      if (!wrapper) continue;
+      const part = this.world.createTransformEntity(wrapper, boss);
+      // Lifecycle only: no UnitTag (parts must not count as wave units),
+      // teardown finds them through BossTurret (see disposeAttackers).
+      part.addComponent(BossTurret);
+      part.addComponent(Health, {
+        current: COMBAT.unitHealth,
+        max: COMBAT.unitHealth,
+        barY: spec.barY,
+      });
+      if (!spec.gun) {
+        // Laser main cannon (task 030): the same free targeting slot as the
+        // guns, its own aim/charge/fire state machine, and a hit core so
+        // defenders can knock it out (existing `islewrath-turret` matrix
+        // rows apply). Opening beat shares the guns' base delay + jitter;
+        // the timer freezes until the hull berths (requireStopped).
+        part.addComponent(LockTarget);
+        part.addComponent(LaserCycle, {
+          state: 'cooldown',
+          timer:
+            BOSS.openFireDelay +
+            COMBAT.fireJitterMin +
+            Math.random() * (COMBAT.fireJitterMax - COMBAT.fireJitterMin),
+          chargeSec: BOSS.laserChargeSec,
+          fireSec: BOSS.laserFireSec,
+          cooldownSec: BOSS.laserCooldownSec,
+          turnSpeedDeg: BOSS.laserTurnSpeedDeg,
+          turnThresholdDeg: BOSS.laserTurnThresholdDeg,
+          aimHoldSec: BOSS.laserAimHoldSec,
+          carrierIndex: boss.index,
+          requireStopped: true,
+          pivotName: 'gun_rotate_laser',
+          muzzleName: 'muzzle_laser',
+        });
+        part.addComponent(HitCore, {
+          radius: BOSS.turretCoreRadius,
+          faction: 'attacker',
+          unitType: 'islewrath-turret',
+          nodeName: spec.core,
+        });
+        continue;
+      }
+      // Staggered opening: each seat rolls its own first-shot delay — base,
+      // plus one stagger step per seat index, plus the shared jitter. The
+      // timers freeze until the hull berths (requireStopped), so the ripple
+      // survives the whole sail-in.
+      const match = /gun_t(\d+)/.exec(spec.wrapper);
+      const seat = match ? Number(match[1]) : 0;
+      part.addComponent(GunCycle, {
+        state: 'cooldown',
+        timer:
+          BOSS.openFireDelay +
+          (seat - 1) * BOSS.openFireStagger +
+          COMBAT.fireJitterMin +
+          Math.random() * (COMBAT.fireJitterMax - COMBAT.fireJitterMin),
+        fireInterval: BOSS.fireInterval,
+        turnSpeedDeg: BOSS.turnSpeedDeg,
+        turnThresholdDeg: BOSS.turnThresholdDeg,
+        aimHoldSec: BOSS.aimHoldSec,
+        shellSpeed: BOSS.shellSpeed,
+        shellUnitType: 'islewrath-turret',
+        carrierIndex: boss.index,
+        requireStopped: true,
+        pivotName: `gun_rotate_${seat}`,
+        muzzleName: `muzzle_${seat}`,
+      });
+      part.addComponent(LockTarget);
+      part.addComponent(HitCore, {
+        radius: BOSS.turretCoreRadius,
+        faction: 'attacker',
+        unitType: 'islewrath-turret',
+        nodeName: spec.core,
+      });
+    }
+    // Chief-head mount seat (task 031): captured HERE at assembly, the only
+    // moment the pivot node is guaranteed to exist — the laser turret's
+    // death strips its whole subtree (pivot included) from the hull clone,
+    // so a phase-two-time worldToLocal read finds nothing and would seat
+    // the head at the hull origin, buried inside the island rock. The seat
+    // is the pivot's position accumulated over the parent chain EXCLUDING
+    // the hull root: root.position is a world coordinate, not hull-local,
+    // and the head parents under the hull, so including it would
+    // double-count the hull's world position and plant the head out at sea.
+    const laserPivot = root.getObjectByName('gun_rotate_laser');
+    if (laserPivot) {
+      let mx = 0;
+      let my = 0;
+      let mz = 0;
+      let node: Object3D | null = laserPivot;
+      while (node && node !== root) {
+        mx += node.position.x;
+        my += node.position.y;
+        mz += node.position.z;
+        node = node.parent;
+      }
+      boss.addComponent(ChiefMount, { x: mx, y: my, z: mz });
+    } else {
+      console.error('LevelWaveSystem: boss hull has no "gun_rotate_laser"');
+    }
   }
 
   /** Begin the given level, or declare the run complete past the last one. */

@@ -15,7 +15,6 @@ import {
   WakeSource,
 } from './components.js';
 import {
-  WAKE_RADIUS,
   WAKE_STRENGTH_HALTED,
   WAKE_STRENGTH_MOVING,
 } from './level-config.js';
@@ -25,8 +24,9 @@ import {
  *
  * Moving: sail the straight line from the spawn point to the rolled target at
  * the unit's own cruiseY — ships ride the waterline, the bombardier holds
- * FLYER_Y; a unit keeps `stopDistance` behind a same-type unit ahead along
- * its travel direction and waits for it to clear.
+ * FLYER_Y; a water unit keeps `stopDistance` behind a same-type water unit
+ * ahead along its travel direction and waits for it to clear (airborne units
+ * never queue — WakeSource presence marks water contact).
  * Stopped: hold at the target, wake eased down.
  *
  * The wake is bound to motion: WAKE_STRENGTH_MOVING while under way,
@@ -83,10 +83,10 @@ export class ShipMovementSystem extends createSystem({
     entity.setValue(ShipMovement, 'blocked', blocked);
     if (blocked) {
       // Waiting for the way to clear reads as halted: ripples halved.
-      this.setWake(entity, WAKE_STRENGTH_HALTED, WAKE_RADIUS * 0.5);
+      this.setWake(entity, WAKE_STRENGTH_HALTED, false);
       return;
     }
-    this.setWake(entity, WAKE_STRENGTH_MOVING, WAKE_RADIUS);
+    this.setWake(entity, WAKE_STRENGTH_MOVING, true);
 
     // Altitude is per-unit: ships cruise at the waterline, the bombardier
     // holds FLYER_Y. Read once per advance, applied to both arrival and
@@ -96,7 +96,7 @@ export class ShipMovementSystem extends createSystem({
     if (step >= remaining) {
       object.position.set(targetX, cruiseY, targetZ);
       entity.setValue(ShipMovement, 'state', 'stopped');
-      this.setWake(entity, WAKE_STRENGTH_HALTED, WAKE_RADIUS * 0.5);
+      this.setWake(entity, WAKE_STRENGTH_HALTED, false);
       return;
     }
     object.position.set(
@@ -130,6 +130,12 @@ export class ShipMovementSystem extends createSystem({
       const otherObject = other.object3D;
       if (!otherObject || otherObject === object) continue;
       if (other.getValue(UnitTag, 'unitType') !== unitType) continue;
+      // Airborne units never queue: they march above the water where hulls
+      // cannot collide, and the corridor yield would only deadlock crossing
+      // routes (two simultaneous kamikaze flyers blocking each other forever).
+      // WakeSource presence is the unit-sheet water-contact fact — flyers
+      // carry none (same unitType ⇒ same wake-ness, so one check covers both).
+      if (!other.hasComponent(WakeSource)) continue;
       const ox = otherObject.position.x - object.position.x;
       const oz = otherObject.position.z - object.position.z;
       const ahead = ox * fx + oz * fz;
@@ -141,11 +147,18 @@ export class ShipMovementSystem extends createSystem({
     return false;
   }
 
-  /** Retarget the wake; OceanSystem eases the running values over ~0.3 s. */
-  private setWake(entity: Entity, strength: number, radius: number): void {
+  /**
+   * Retarget the wake; OceanSystem eases the running values over ~0.3 s.
+   * The radius swings between the hull's own base (ShipMovement.wakeRadius —
+   * ship-scaled for the boss) and half of it, matching the raider rule.
+   */
+  private setWake(entity: Entity, strength: number, moving: boolean): void {
     // Flyers (and any future non-water unit) carry no WakeSource; the march
     // stays shared and the water stays still.
     if (!entity.hasComponent(WakeSource)) return;
+    const radius = moving
+      ? Number(entity.getValue(ShipMovement, 'wakeRadius'))
+      : Number(entity.getValue(ShipMovement, 'wakeRadius')) * 0.5;
     if (Number(entity.getValue(WakeSource, 'targetStrength')) !== strength) {
       entity.setValue(WakeSource, 'targetStrength', strength);
     }

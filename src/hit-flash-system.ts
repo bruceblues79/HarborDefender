@@ -143,11 +143,12 @@ export class HitFlashSystem extends createSystem({
 
 /**
  * Build a Color straight from sRGB hex components, bypassing three's
- * sRGB->linear conversion. The custom shader writes gl_FragColor directly
+ * sRGB->linear conversion. The custom shaders write gl_FragColor directly
  * with no output colour-space chunk, so raw sRGB values display exactly as
- * the hex constants read.
+ * the hex constants read. Shared with the other custom-shader fx
+ * (laser-fx-system).
  */
-function rawSrgbColor(hex: number): Color {
+export function rawSrgbColor(hex: number): Color {
   return new Color(
     ((hex >> 16) & 0xff) / 255,
     ((hex >> 8) & 0xff) / 255,

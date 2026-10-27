@@ -1,16 +1,35 @@
 <!--
-  START gate panel.
-  100 × 100 UIKit units = 1 m × 1 m at scale 1. Faces +Z by default; the
-  Billboard component keeps it turned toward the viewer.
+  START gate panel: a mode picker over the persistent START button.
 
-  The kit's opaque white Panel surface wins over a custom root background,
-  so the button carries the dark fill with light text for contrast, matching
-  the welcome panel's button treatment.
+  Heights lock the split at exactly 3:1. flex-grow alone distributes only the
+  space left after each item's content basis, which let the button section eat
+  into the quarter; pairing flex-grow with flex-basis: 0 makes the mode section
+  take 3/4 and the START section 1/4 regardless of their contents. The mode
+  section is a plain <div> with a transparent background: a Horizon <Panel>
+  carries the kit's glass default and paints a second white plate around the
+  rows. Each mode row is a lowercase <button> so its class fill renders
+  exactly (Container, no kit material).
+
+  The leading glyph is sized 15 inside a 4-unit row padding so it stays a
+  compact checkbox rather than a panel-sized block. border-radius 12 makes the
+  row read as a near-capsule wedge (row height is about 33.5). The label grows
+  to fill the area right of the icon and centres its text inside that area.
+  Both rows share the same light-grey fill: ENDLESS is the selected playable
+  mode and earns contrast through its dark text and solid icon, while STORY is
+  unavailable and keeps grey text with the outline icon instead of a heavy dark
+  plate that could be mistaken for an active selection.
+
+  Icons load through the <svg> tag (uikit Svg -> SVGLoader), which builds fill
+  geometry only and drops strokes entirely. The requested streamline
+  "select-all" outline is stroke-only, so mode-select.svg carries the same
+  geometry baked into filled rect subpaths; the solid variant keeps its fill
+  and gets a hardcoded colour because currentColor resolves to black. src
+  resolves against the page base URL (not this file), so the ui/ prefix is
+  required.
 
   Panel surface: stock glass preset over a light-grey background; the hex8
-  alpha channel (0.75) doubles as the panel surface opacity (0.25 see-through)
-  and overrides the Horizon Panel's black default (UIKitML style blocks do not
-  support CSS comments).
+  alpha channel (0.75) doubles as the panel surface opacity (0.25 see-through).
+  UIKitML style blocks do not support CSS comments.
 -->
 <style>
   .panel-root {
@@ -18,8 +37,6 @@
     flex-direction: column;
     width: 100;
     height: 100;
-    justify-content: center;
-    align-items: center;
     border-radius: 4;
     padding-top: 4;
     padding-right: 4;
@@ -27,6 +44,63 @@
     padding-left: 4;
     panel-material-class: glass;
     background-color: #ffffffaa;
+  }
+
+  .mode-section {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 3;
+    flex-basis: 0;
+    gap: 2;
+    background-color: #00000000;
+  }
+
+  .mode-row {
+    display: flex;
+    flex-direction: row;
+    flex-grow: 1;
+    flex-basis: 0;
+    align-items: center;
+    gap: 3;
+    border-radius: 12;
+    background-color: #c9ced6;
+    padding-top: 4;
+    padding-right: 4;
+    padding-bottom: 4;
+    padding-left: 4;
+  }
+
+  .mode-icon {
+    display: flex;
+    width: 15;
+    height: 15;
+    background-color: #00000000;
+  }
+
+  .mode-label {
+    display: flex;
+    flex-grow: 1;
+    font-size: 7;
+    font-weight: 700;
+    text-align: center;
+    background-color: #00000000;
+  }
+
+  .mode-label-on {
+    color: #26262b;
+  }
+
+  .mode-label-off {
+    color: #7c848d;
+  }
+
+  .start-section {
+    display: flex;
+    flex-direction: row;
+    flex-grow: 1;
+    flex-basis: 0;
+    justify-content: center;
+    align-items: center;
   }
 
   .start-button {
@@ -59,5 +133,17 @@
 </style>
 
 <Panel class="panel-root">
-  <button id="start-button" class="start-button">START</button>
+  <div class="mode-section">
+    <button id="mode-story" class="mode-row">
+      <svg class="mode-icon" src="ui/icons/mode-select.svg" />
+      <div class="mode-label mode-label-off">STORY</div>
+    </button>
+    <button id="mode-endless" class="mode-row">
+      <svg class="mode-icon" src="ui/icons/mode-select-solid.svg" />
+      <div class="mode-label mode-label-on">ENDLESS</div>
+    </button>
+  </div>
+  <div class="start-section">
+    <button id="start-button" class="start-button">START</button>
+  </div>
 </Panel>
