@@ -303,7 +303,7 @@ export const REWARD_TABLE: Record<RewardTier, number> = {
   [RewardTier.None]: 0,
   [RewardTier.Stock]: ECONOMY.killReward,
   [RewardTier.Elite]: 1000,
-  [RewardTier.BossTurret]: 2000,
+  [RewardTier.BossTurret]: 1200,
   [RewardTier.BossChief]: 800,
 };
 
@@ -487,24 +487,24 @@ export const ENDLESS = {
    */
   cost: { 'pirate-ship': 1, bombardier: 0.9, ornithopter: 0.6 },
   /**
-   * Elite rhythm (精英单体): waveNumber/5 odd (5, 15, 25, …) IS a lone-elite
-   * wave — one pooled unit down the centre line, scaled by `eliteScale`,
-   * no escorts. The pool stays normalised (100, no oversized health pools):
-   * the elite's toughness is a FIXED bite per landed hit — `eliteHitLifeFraction`
-   * of its own max life (0.02 → 50 hits from full), whatever fires at it —
-   * and its bite is `eliteDamageRatio` on outgoing shells. waveNumber/5 even
-   * (10, 20, 30, …) is a boss wave — one lone boss rolled from the pool,
-   * phases of its own.
+   * Special cadence (精英/boss 交替): every `specialEvery` waves the wave is
+   * special — waveNumber/4 odd (4, 12, 20, …) IS a lone-elite wave — one
+   * pooled unit down the centre line, scaled by `eliteScale`, no escorts.
+   * The pool stays normalised (100, no oversized health pools): the elite's
+   * toughness is a FIXED bite per landed hit — `eliteHitLifeFraction` of its
+   * own max life (0.02 → 50 hits from full), whatever fires at it — and its
+   * bite is `eliteDamageRatio` on outgoing shells. waveNumber/4 even (8, 16,
+   * 24, …) is a boss wave — one lone boss rolled from the pool, phases of
+   * its own.
    */
-  eliteEvery: 5,
+  specialEvery: 4,
   eliteScale: 1.75,
   /** Elite HitCore radius growth — linear with eliteScale, so the core
    *  bubble hugs the hull at any size. */
   eliteCoreScale: 1.75,
   eliteHitLifeFraction: 0.02,
   eliteDamageRatio: 1.5,
-  /** Boss rhythm: every `bossEvery` waves a lone boss, rolled from the pool. */
-  bossEvery: 10,
+  /** Boss pool: a boss wave rolls one at random. */
   bossPool: ['boss_islewrath'],
   /** Wave-list entry prefix marking an elite variant of the named unit. */
   elitePrefix: 'elite:',
