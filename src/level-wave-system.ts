@@ -281,8 +281,10 @@ export class LevelWaveSystem extends createSystem({
    * RESTART command: clear the field and rerun the current level from its
    * first wave. Caller removes GamePaused first (MenuSystem owns that tag).
    * Dropping GameOver re-shows the pause-menu call button and dismisses the
-   * result panel. In endless mode the generated wave list crops back to the
-   * seed wave, so the run restarts from wave 1.
+   * result panel. syncBatteryToLevel re-crews the slots to the level's own
+   * initialUnits — mid-run swaps (a ballista where a cannon stood, wing-slot
+   * builds) do not survive a restart. In endless mode the generated wave
+   * list crops back to the seed wave, so the run restarts from wave 1.
    */
   restartLevel(): void {
     this.disposeAttackers();
@@ -294,6 +296,7 @@ export class LevelWaveSystem extends createSystem({
     this.director.removeComponent(WaveIntermission);
     resetEndlessWaves();
     this.director.setValue(Wallet, 'money', this.startMoney());
+    syncBatteryToLevel(this.world);
     const index = Math.min(
       Math.max(0, this.levelIndex()),
       activeLevelList.length - 1,

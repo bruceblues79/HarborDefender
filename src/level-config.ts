@@ -431,8 +431,8 @@ export function setActiveLevelList(list: LevelSpec[]): void {
  * block only — every knob a designer touches lives here.
  */
 export const ENDLESS = {
-  /** Shortest seconds the GET READY intermission panel shows (纯展示，非暂停). */
-  intermissionSec: 1,
+  /** Seconds the GET READY intermission panel shows (纯展示，非暂停). */
+  intermissionSec: 3,
   /** Budget of wave 2; each later wave adds `budgetPerWave`. */
   baseBudgetWave2: 2,
   budgetPerWave: 0.75,

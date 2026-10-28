@@ -28,12 +28,7 @@ import {
 } from './components.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
-import {
-  recycleCombatEffects,
-  resetCannonAim,
-  restoreCannons,
-  returnToWelcome,
-} from './battle-setup.js';
+import { recycleCombatEffects, returnToWelcome } from './battle-setup.js';
 
 /** Scale the call button shrinks to while the menu is open (hidden, not removed). */
 const CALL_HIDDEN_SCALE = 0.001;
@@ -436,13 +431,13 @@ export class MenuSystem extends createSystem({
   }
 
   /**
-   * RESTART: clear the field, restore the battery, rerun the current level.
-   * Public: the result panel's RESTART button runs the same reset.
+   * RESTART: clear the field, re-crew the battery to the level's initial
+   * layout, rerun the current level. Public: the result panel's RESTART
+   * button runs the same reset. (restoreCannons / resetCannonAim ride
+   * inside restartLevel's syncBatteryToLevel — no separate pass here.)
    */
   runRestart(): void {
     recycleCombatEffects(this.world);
-    restoreCannons();
-    resetCannonAim();
     this.findByClass(LevelWaveSystem)?.restartLevel();
   }
 
