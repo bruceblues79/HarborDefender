@@ -1,0 +1,49 @@
+<!--
+  Wave intermission panel (endless mode): raised over the battlefield for the
+  shortest moment between two generated waves. Same surface recipe and
+  geometry as the result panel (150 x 100 UIKit units = 1.5 m x 1 m at scale
+  1, stock glass over #ffffffaa) so the two read as one presentation language,
+  but with NO buttons — the window is pure display, the player is never
+  paused, and the wave starts on its own. The title (next wave number) and
+  colour are set at runtime; the subtitle is the fixed GET READY copy. No CSS
+  comments inside the style block.
+-->
+<style>
+  .inter-root {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    width: 150;
+    height: 100;
+    border-radius: 6;
+    padding-top: 10;
+    padding-right: 10;
+    padding-bottom: 10;
+    padding-left: 10;
+    panel-material-class: glass;
+    background-color: #ffffffaa;
+  }
+
+  .inter-title {
+    display: flex;
+    width: 112;
+    font-size: 12;
+    font-weight: 700;
+    text-align: center;
+    color: #1e6f34;
+  }
+
+  .inter-subtitle {
+    display: flex;
+    width: 112;
+    font-size: 5;
+    text-align: center;
+    color: #26262b;
+  }
+</style>
+
+<Panel class="inter-root">
+  <span id="inter-title" class="inter-title">WAVE 2</span>
+  <span id="inter-subtitle" class="inter-subtitle">GET READY FOR NEXT WAVE</span>
+</Panel>

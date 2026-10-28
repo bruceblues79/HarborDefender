@@ -1,0 +1,115 @@
+/**
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+import { createSystem } from '@iwsdk/core';
+import type { Entity } from '@iwsdk/core';
+import {
+  Destroyed,
+  EndlessMode,
+  HitCore,
+  LevelDirector,
+  NextWaveCommand,
+  Wallet,
+} from './components.js';
+import { ENDLESS, ECONOMY, endlessLevel } from './level-config.js';
+import type { WaveSpec } from './level-config.js';
+
+/**
+ * Endless dynamic-difficulty planner (DDT 发兵系统).
+ *
+ * Single job: when the director raises a `NextWaveCommand`, sample the
+ * player's live state — surviving battery and wallet — and append one
+ * generated WaveSpec to endlessLevel.waves. The command is consumed in the
+ * same frame (synchronous qualify), so the wave is always ready before the
+ * intermission's shortest window ends and LevelWaveSystem's enterWave reads
+ * it. No behaviour of its own beyond the plan: spawning stays inside
+ * LevelWaveSystem's shared pipeline.
+ *
+ * Composition (all knobs in ENDLESS):
+ * - every `bossEvery` waves: a lone boss rolled from `bossPool` — no escort;
+ * - otherwise a budget buys units from the `cost` pool (equal-weight picks
+ *   among what remains affordable): budget = base growth × defender
+ *   pressure × money grind. A richer wall and a fatter wallet both draw a
+ *   heavier wave — 消磨玩家金币;
+ * - every `eliteEvery` waves (never boss waves) one extra unit is appended
+ *   as `elite:<unitType>`; the prefix is resolved at spawn time
+ *   (LevelWaveSystem) into a scaled, double-health variant. Damage stays
+ *   untouched everywhere — difficulty is composition only.
+ */
+export class EndlessPlannerSystem extends createSystem({
+  /** Exclusive command query: a runtime-mounted tag needs its own query —
+   *  qualify only fires for entities entering THIS query (elics 陷阱). */
+  commands: { required: [LevelDirector, EndlessMode, NextWaveCommand] },
+  cores: { required: [HitCore] },
+}) {
+  init(): void {
+    this.queries.commands.subscribe('qualify', (director) =>
+      this.planNextWave(director),
+    );
+  }
+
+  /** Consume the command: append the next wave to the endless list. */
+  private planNextWave(director: Entity): void {
+    // Wave numbers are 1-based: the seed wave (index 0) is wave 1.
+    const waveNumber = endlessLevel.waves.length + 1;
+    endlessLevel.waves.push(this.composeWave(waveNumber, director));
+    director.removeComponent(NextWaveCommand);
+  }
+
+  /** Build the WaveSpec for the given 1-based wave number. */
+  private composeWave(waveNumber: number, director: Entity): WaveSpec {
+    // Boss waves stand alone — the boss has its own phases, no escorts.
+    if (waveNumber % ENDLESS.bossEvery === 0) {
+      const boss =
+        ENDLESS.bossPool[Math.floor(Math.random() * ENDLESS.bossPool.length)];
+      return { units: [boss] };
+    }
+
+    // Budget: linear growth, scaled up by how strong the defence looks.
+    const base =
+      ENDLESS.baseBudgetWave2 + (waveNumber - 2) * ENDLESS.budgetPerWave;
+    const money = Number(director.getValue(Wallet, 'money'));
+    const moneyFactor = 1 + Math.min(ENDLESS.moneyBonusMax, money / ENDLESS.moneyDiv);
+    let budget = Math.max(1, base) * this.defenderPressure() * moneyFactor;
+
+    const pool = Object.entries(ENDLESS.cost);
+    const units: string[] = [];
+    while (units.length < ENDLESS.maxUnitsPerWave) {
+      const affordable = pool.filter(([, cost]) => cost <= budget);
+      if (affordable.length === 0) break;
+      const [type, cost] =
+        affordable[Math.floor(Math.random() * affordable.length)];
+      units.push(type);
+      budget -= cost;
+    }
+
+    // Elite beat: one extra unit rides along on its wave, always last out.
+    if (waveNumber % ENDLESS.eliteEvery === 0 && units.length > 0) {
+      const [type] = pool[Math.floor(Math.random() * pool.length)];
+      units.push(ENDLESS.elitePrefix + type);
+    }
+    return { units };
+  }
+
+  /**
+   * Defender pressure multiplier: the surviving battery's book value (every
+   * unit shares the 200 g value) interpolated between pressureMin (empty
+   * wall) and pressureMax (battery at pressureMoneyFull). Destroyed cannons
+   * are skipped — a crumbling defence draws a lighter wave.
+   */
+  private defenderPressure(): number {
+    let alive = 0;
+    for (const core of this.queries.cores.entities) {
+      if (core.getValue(HitCore, 'faction') !== 'defender') continue;
+      if (core.hasComponent(Destroyed)) continue;
+      alive += 1;
+    }
+    const value = alive * ECONOMY.killReward;
+    const t = Math.min(1, value / ENDLESS.pressureMoneyFull);
+    return ENDLESS.pressureMin + (ENDLESS.pressureMax - ENDLESS.pressureMin) * t;
+  }
+}

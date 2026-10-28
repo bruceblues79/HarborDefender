@@ -19,10 +19,12 @@ import { Billboard } from './components.js';
 import { DefenseButtonSystem } from './defense-button-system.js';
 import { DefensePadSystem } from './defense-pad-system.js';
 import { DieBurstSystem } from './die-burst-system.js';
+import { EndlessPlannerSystem } from './endless-planner-system.js';
 import { FreeLockTargetSystem } from './free-lock-target-system.js';
 import { GunCycleSystem } from './gun-cycle-system.js';
 import { HitFlashSystem } from './hit-flash-system.js';
 import { HealthBarSystem } from './health-bar-system.js';
+import { IntermissionPanelSystem } from './intermission-panel-system.js';
 import { KamikazeSystem } from './kamikaze-system.js';
 import { LaserCycleSystem } from './laser-cycle-system.js';
 import { LaserFxSystem } from './laser-fx-system.js';
@@ -67,8 +69,12 @@ World.create(
   world.registerSystem(CameraOrbitSystem);
   world.registerSystem(OceanSystem);
   // Simulation tier: the director paces dispatch, movement runs the ships in
-  // while the fade system materialises their hulls in parallel.
+  // while the fade system materialises their hulls in parallel. The endless
+  // planner rides the same tier, one step after the director: its
+  // NextWaveCommand consumption appends the generated wave before any
+  // same-frame reader (intermission panel) looks at the wave list.
   world.registerSystem(LevelWaveSystem, { priority: 5 });
+  world.registerSystem(EndlessPlannerSystem, { priority: 6 });
   world.registerSystem(CannonAimSystem, { priority: 8 });
   world.registerSystem(ShipMovementSystem, { priority: 10 });
   // Rotor spin rides the simulation tier: same march cadence as movement,
@@ -129,6 +135,9 @@ World.create(
   // End-of-run result panel: qualifies on GameOver (victory / defeat) and
   // hands RESTART / MAIN to MenuSystem's shared reset sequences.
   world.registerSystem(ResultPanelSystem, { priority: 33 });
+  // Endless wave intermission: qualifies on WaveIntermission, shows the
+  // GET READY panel while the shortest window counts down.
+  world.registerSystem(IntermissionPanelSystem, { priority: 33 });
   // Shared build panel: qualifies on the director's BuildOpen tag, owns the
   // row prices / wallet readout and the structural unit swaps.
   world.registerSystem(BuildPanelSystem, { priority: 34 });

@@ -398,8 +398,81 @@ export const designList: LevelSpec[] = [
 /** Authored campaign levels. Empty until the design list is promoted. */
 export const gameLevels: LevelSpec[] = [];
 
-/** The list the director runs. Flip to gameLevels to ship a campaign. */
-export const activeLevelList: LevelSpec[] = designList;
+/**
+ * Endless mode (动态难度 endless 关卡): three cannons and a 200 g purse, the
+ * first wave fixed at three pirate ships. Waves 2+ are NOT authored here —
+ * EndlessPlannerSystem appends one dynamically generated WaveSpec per
+ * intermission, so this file's single entry is only the seed. `waves` is the
+ * runtime truth of the endless run: waveIndex walks it forever.
+ */
+export const endlessLevel: LevelSpec = {
+  name: 'endless',
+  startMoney: 200,
+  // 守方 3 加农炮：省略 initialUnits，沿用 DEFENSE_SLOTS 默认（中央三炮，
+  // 两翼 x±1.2 空位留给玩家自建）。
+  waves: [{ units: ['pirate-ship', 'pirate-ship', 'pirate-ship'] }],
+};
+export const endlessList: LevelSpec[] = [endlessLevel];
+
+/** Crop the endless wave list back to its seed wave (begin / restart / MAIN). */
+export function resetEndlessWaves(): void {
+  endlessLevel.waves.length = 1;
+}
+
+/** The list the director runs. Switched by LevelWaveSystem.beginLevel. */
+export let activeLevelList: LevelSpec[] = designList;
+export function setActiveLevelList(list: LevelSpec[]): void {
+  activeLevelList = list;
+}
+
+/**
+ * Endless dynamic-difficulty tuning (DDT 发兵调参). The planner reads this
+ * block only — every knob a designer touches lives here.
+ */
+export const ENDLESS = {
+  /** Shortest seconds the GET READY intermission panel shows (纯展示，非暂停). */
+  intermissionSec: 1,
+  /** Budget of wave 2; each later wave adds `budgetPerWave`. */
+  baseBudgetWave2: 2,
+  budgetPerWave: 0.75,
+  /**
+   * Defender pressure: the surviving battery's book value (unitValues ×
+   * alive count) over `pressureMoneyFull` interpolates the budget multiplier
+   * from `pressureMin` (empty wall) to `pressureMax` (full battery) — a
+   * stronger defence draws a stronger wave.
+   */
+  pressureMoneyFull: 600,
+  pressureMin: 0.7,
+  pressureMax: 1.15,
+  /**
+   * Money grind: the wallet adds money / `moneyDiv` to the budget multiplier
+   * (200 g ≈ +12.5%, 800 g hits the cap) — 存款越多，下一波越重.
+   */
+  moneyDiv: 1600,
+  moneyBonusMax: 0.5,
+  /** Hard unit cap per generated wave (overflow waits out the concurrency cap). */
+  maxUnitsPerWave: 8,
+  /**
+   * Purchase pool for a generated wave: unitType -> budget cost, equal-weight
+   * random picks among what the remaining budget affords. Keys are UNIT_TYPES
+   * ids — bosses and the kamikaze variant are deliberately absent.
+   */
+  cost: { 'pirate-ship': 1, bombardier: 0.9, ornithopter: 0.6 },
+  /**
+   * Elite rhythm (精英单体): every `eliteEvery` waves (never on a boss wave)
+   * one unit of the pool is appended as `elite:<unitType>` — spawn scales it
+   * by `eliteScale` and doubles its health pool; the damage matrix is NOT
+   * touched (elite rows read the stock unit's rows).
+   */
+  eliteEvery: 5,
+  eliteScale: 1.3,
+  eliteHealthRatio: 2,
+  /** Boss rhythm: every `bossEvery` waves a lone boss, rolled from the pool. */
+  bossEvery: 10,
+  bossPool: ['boss_islewrath'],
+  /** Wave-list entry prefix marking an elite variant of the named unit. */
+  elitePrefix: 'elite:',
+};
 
 /**
  * Combat tuning: cannon fire, shell ballistics, splash ripples and aim drag.
@@ -487,7 +560,7 @@ export const COMBAT = {
   /** Seconds between two shots from one pirate ship that is in fire range. */
   pirateFireInterval: 3.0,
   /** Seconds between two bolts from one sky ballista (anti-air mount). */
-  ballistaFireInterval: 1.5,
+  ballistaFireInterval: 1.0,
   /** Seconds between two bombs from one bombardier. */
   bombardierFireInterval: 2,
   /** Seconds between two stones from one ornithopter. */

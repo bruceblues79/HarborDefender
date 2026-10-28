@@ -58,7 +58,7 @@ Boss（怒岛号）五座炮塔均参战可击破：四门火炮塔 + 激光主�
 | 海盗船 | `COMBAT.pirateFireInterval` | 3.0 |
 | 投弹飞行器 | `COMBAT.bombardierFireInterval` | 2 |
 | 机械扑翼机 | `COMBAT.ornithopterFireInterval` | 1.2 |
-| 防空弩 | `COMBAT.ballistaFireInterval` | 1.5 |
+| 防空弩 | `COMBAT.ballistaFireInterval` | 1.0 |
 | 怒岛号炮塔 | `BOSS.fireInterval` | 3.0（+共用抖动） |
 | 怒岛号激光主炮 | `BOSS.laserChargeSec` / `laserFireSec` / `laserCooldownSec` / `laserAimHoldSec` | 蓄力 2 / 喷射 1 / 冷却 5（+共用抖动）/ 收敛后停顿 0.5 |
 

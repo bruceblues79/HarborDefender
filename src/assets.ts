@@ -55,6 +55,12 @@ export default defineAssets({
     name: 'Result Panel',
     priority: 'critical',
   },
+  'intermission-panel': {
+    url: uiAssetUrl('ui/intermission.uikitml'),
+    type: AssetType.UIKitML,
+    name: 'Intermission Panel',
+    priority: 'critical',
+  },
   'build-panel': {
     url: uiAssetUrl('ui/build-panel.uikitml'),
     type: AssetType.UIKitML,

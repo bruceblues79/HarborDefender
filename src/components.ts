@@ -722,6 +722,34 @@ export const SummonCommand = createComponent('SummonCommand', {
   count: { type: 'Int32', default: 0 },
 });
 
+/**
+ * Explicit tag: the current run is the endless level (endless 模式标记).
+ * LevelWaveSystem adds it in beginLevel('endless') and removes it on
+ * beginLevel('design') / resetToWelcome. EndlessPlannerSystem qualifies on
+ * it alongside NextWaveCommand; LevelWaveSystem's wave-gap / chief-down
+ * branches read it instead of declaring victory.
+ */
+export const EndlessMode = createComponent('EndlessMode', {});
+
+/**
+ * Thin command (薄命令) on the director: the current endless wave has
+ * cleared — plan the next one. LevelWaveSystem writes it when an endless
+ * wave-gap opens; EndlessPlannerSystem consumes it in the SAME frame
+ * (synchronous qualify): it samples the defender battery + wallet, composes
+ * one WaveSpec and appends it to endlessLevel.waves. The spawn pipeline
+ * stays single-truthed inside LevelWaveSystem.
+ */
+export const NextWaveCommand = createComponent('NextWaveCommand', {});
+
+/**
+ * Explicit tag: the endless intermission window (波间歇) is open — the
+ * GET READY panel shows while it sits on the director. LevelWaveSystem adds
+ * it when an endless wave gap begins and removes it in enterWave; the
+ * IntermissionPanelSystem qualifies/disqualifies on exactly that. Pure
+ * presentation: the player is never paused during the window.
+ */
+export const WaveIntermission = createComponent('WaveIntermission', {});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -769,4 +797,7 @@ export default defineComponents([
   Kamikaze,
   ChiefDown,
   SummonCommand,
+  EndlessMode,
+  NextWaveCommand,
+  WaveIntermission,
 ]);

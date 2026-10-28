@@ -22,14 +22,18 @@ const PANEL_SCALE = 1;
 const PANEL_HIDDEN_SCALE = 0.5;
 
 type StartPhase = 'idle' | 'appearing' | 'ready' | 'dismissing' | 'delay';
+/** Playable gate modes, in panel-row order. */
+type StartMode = 'design' | 'endless';
 
 /**
  * Owns the START gate between loading and the first level.
  *
  * Sequence: the loading panel hides, then this panel grows in (0.5 -> 1.0)
- * above the ocean near edge, billboarded toward the player. Clicking START
- * shrinks it back to 0.5, hides it, and — one second later — hands control to
- * LevelWaveSystem. This is the beat that separates menu, load and play.
+ * above the ocean near edge, billboarded toward the player. The mode picker
+ * defaults to ENDLESS; clicking a row moves the -active classes, clicking
+ * START shrinks the panel back to 0.5, hides it, and — one second later —
+ * hands the picked mode to LevelWaveSystem. This is the beat that separates
+ * menu, load and play.
  */
 export class StartPanelSystem extends createSystem({}) {
   private levelSystem: LevelWaveSystem | undefined;
@@ -37,6 +41,7 @@ export class StartPanelSystem extends createSystem({}) {
   private panelEntity: Entity | undefined;
   private phase: StartPhase = 'idle';
   private timer = 0;
+  private mode: StartMode = 'endless';
 
   init(): void {
     this.levelSystem = this.world
@@ -76,6 +81,14 @@ export class StartPanelSystem extends createSystem({}) {
           currentScale: PANEL_HIDDEN_SCALE,
         });
 
+        // Mode rows: clicking moves the dark -active plate between rows.
+        // The markup defaults to ENDLESS; keep the runtime state in step.
+        panel
+          .getElementById('mode-design')
+          ?.addEventListener('click', () => this.pickMode('design'));
+        panel
+          .getElementById('mode-endless')
+          ?.addEventListener('click', () => this.pickMode('endless'));
         panel
           .getElementById('start-button')
           ?.addEventListener('click', () => this.dismiss());
@@ -87,6 +100,28 @@ export class StartPanelSystem extends createSystem({}) {
       .catch((err: unknown) =>
         console.error('StartPanelSystem: failed to load start panel', err),
       );
+  }
+
+  /** Move the selection plate to the clicked row (runtime class swap). */
+  private pickMode(mode: StartMode): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    const onRow = this.panel?.getElementById(`mode-${mode}`);
+    const offRow = this.panel?.getElementById(
+      `mode-${mode === 'design' ? 'endless' : 'design'}`,
+    );
+    onRow?.classList.remove('mode-row');
+    onRow?.classList.add('mode-row-active');
+    offRow?.classList.remove('mode-row-active');
+    offRow?.classList.add('mode-row');
+    const onLabel = this.panel?.getElementById(`mode-${mode}-label`);
+    const offLabel = this.panel?.getElementById(
+      `mode-${mode === 'design' ? 'endless' : 'design'}-label`,
+    );
+    onLabel?.classList.remove('mode-label-on');
+    onLabel?.classList.add('mode-label-active');
+    offLabel?.classList.remove('mode-label-active');
+    offLabel?.classList.add('mode-label-on');
   }
 
   /** START pressed: shrink out, then wait out the hand-off delay. */
@@ -137,7 +172,7 @@ export class StartPanelSystem extends createSystem({}) {
       this.timer -= delta;
       if (this.timer <= 0) {
         this.phase = 'idle';
-        this.levelSystem?.beginLevel();
+        this.levelSystem?.beginLevel(this.mode);
       }
     }
   }

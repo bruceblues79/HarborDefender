@@ -20,6 +20,7 @@ import {
   ChiefDown,
   ChiefMount,
   Destroyed,
+  EndlessMode,
   GameOver,
   GamePaused,
   GameStarted,
@@ -31,6 +32,7 @@ import {
   LaserCycle,
   LevelDirector,
   LockTarget,
+  NextWaveCommand,
   PirateCannon,
   PropellerSpin,
   ShipMovement,
@@ -39,17 +41,23 @@ import {
   UnitTag,
   WakeSource,
   Wallet,
+  WaveIntermission,
   WingFlap,
 } from './components.js';
 import {
   activeLevelList,
   COMBAT,
+  designList,
+  ENDLESS,
+  endlessList,
   ECONOMY,
   KAMIKAZE,
   OCEAN,
   OCEAN_FAR_Z,
   BOSS,
   PACING,
+  resetEndlessWaves,
+  setActiveLevelList,
   SPAWN_FADE_DURATION,
   SPAWN_ROLL_TRIES,
   STOP_MIN_GAP_X,
@@ -60,6 +68,7 @@ import {
   WAKE_STRENGTH_MOVING,
 } from './level-config.js';
 import type { UnitTypeDef } from './level-config.js';
+import { syncBatteryToLevel } from './battle-setup.js';
 
 /** Local z of the muzzle helper under a gun_rotate pivot (barrel -Z tip). */
 const MUZZLE_LOCAL_Z = -0.2;
@@ -223,16 +232,28 @@ export class LevelWaveSystem extends createSystem({
     }
   }
 
-  /** Hand control to the first level. Called after the START panel dismisses. */
-  beginLevel(): void {
+  /**
+   * Hand control to the chosen level. Called after the START panel dismisses:
+   * 'design' runs the designer sandbox list, 'endless' runs the DDT-driven
+   * endless list. Switching levels also re-mounts the battery to the level's
+   * own initialUnits (the battlefield persists across MAIN round trips).
+   */
+  beginLevel(mode: 'design' | 'endless'): void {
+    setActiveLevelList(mode === 'endless' ? endlessList : designList);
     // Explicit "game running" tag: MenuSystem shows the call button on its
     // qualify and hides everything on its dismiss.
     this.director.addComponent(GameStarted);
     this.director.removeComponent(GameOver);
-    // Stale boss-phase commands must never leak into a fresh run.
+    // Stale boss-phase and endless-phase state must never leak into a run.
     this.director.removeComponent(ChiefDown);
     this.director.removeComponent(SummonCommand);
+    this.director.removeComponent(NextWaveCommand);
+    this.director.removeComponent(WaveIntermission);
+    resetEndlessWaves();
+    if (mode === 'endless') this.director.addComponent(EndlessMode);
+    else this.director.removeComponent(EndlessMode);
     this.director.setValue(Wallet, 'money', this.startMoney());
+    syncBatteryToLevel(this.world);
     this.enterLevel(0);
   }
 
@@ -247,6 +268,10 @@ export class LevelWaveSystem extends createSystem({
     this.director.removeComponent(BuildOpen);
     this.director.removeComponent(ChiefDown);
     this.director.removeComponent(SummonCommand);
+    this.director.removeComponent(EndlessMode);
+    this.director.removeComponent(NextWaveCommand);
+    this.director.removeComponent(WaveIntermission);
+    resetEndlessWaves();
     this.director.setValue(LevelDirector, 'levelIndex', 0);
     this.director.setValue(LevelDirector, 'waveIndex', 0);
     this.director.setValue(LevelDirector, 'pendingUnits', 0);
@@ -258,7 +283,8 @@ export class LevelWaveSystem extends createSystem({
    * RESTART command: clear the field and rerun the current level from its
    * first wave. Caller removes GamePaused first (MenuSystem owns that tag).
    * Dropping GameOver re-shows the pause-menu call button and dismisses the
-   * result panel.
+   * result panel. In endless mode the generated wave list crops back to the
+   * seed wave, so the run restarts from wave 1.
    */
   restartLevel(): void {
     this.disposeAttackers();
@@ -266,6 +292,9 @@ export class LevelWaveSystem extends createSystem({
     this.director.removeComponent(BuildOpen);
     this.director.removeComponent(ChiefDown);
     this.director.removeComponent(SummonCommand);
+    this.director.removeComponent(NextWaveCommand);
+    this.director.removeComponent(WaveIntermission);
+    resetEndlessWaves();
     this.director.setValue(Wallet, 'money', this.startMoney());
     const index = Math.min(
       Math.max(0, this.levelIndex()),
@@ -364,17 +393,19 @@ export class LevelWaveSystem extends createSystem({
 
   /**
    * Chief-down thin command (task 031): the pirate chief head has been
-   * killed — the field clears and the run is won. Consumed ahead of the
-   * wave switch so it also stops a mid-dispatch spawner: declareCleared
-   * parks the phase at 'game-cleared' regardless of where the run was.
-   * GameOver stays single-writer through declareCleared.
+   * killed — the field clears and the run is won. In endless mode the win
+   * never comes: the field clears and the run flows on through the regular
+   * advanceAfterWave branch (下一波间歇), forever. Consumed ahead of the
+   * wave switch so it also stops a mid-dispatch spawner. GameOver stays
+   * single-writer through declareCleared.
    */
   private consumeChiefDown(): boolean {
     if (!this.director.hasComponent(ChiefDown)) return false;
     this.director.removeComponent(ChiefDown);
     this.director.removeComponent(SummonCommand);
     this.disposeAttackers();
-    this.declareCleared();
+    if (this.isEndless()) this.advanceAfterWave();
+    else this.declareCleared();
     return true;
   }
 
@@ -513,16 +544,22 @@ export class LevelWaveSystem extends createSystem({
   /** Spawn the next unit of the current wave. False when it cannot spawn yet. */
   private spawnUnit(pending: number): boolean {
     const units = this.currentWaveUnits();
-    const unitType = units[units.length - pending];
-    return this.spawnUnitByType(unitType) !== null;
+    const raw = units[units.length - pending];
+    // Elite entries (endless DDT) carry the `elite:` prefix and resolve to
+    // the named unit with a scale-and-health boost; the damage matrix rows
+    // of the stock unit apply unchanged.
+    const elite = raw.startsWith(ENDLESS.elitePrefix);
+    const unitType = elite ? raw.slice(ENDLESS.elitePrefix.length) : raw;
+    return this.spawnUnitByType(unitType, elite) !== null;
   }
 
   /**
    * Spawn one unit of the given type — the single spawn truth of the wave
    * dispatch. Returns the new entity, or null while the prototype is still
-   * loading (the caller retries next frame).
+   * loading (the caller retries next frame). `elite` scales the clone up and
+   * doubles its health pool; nothing else about the unit changes.
    */
-  spawnUnitByType(unitType: string): Entity | null {
+  spawnUnitByType(unitType: string, elite = false): Entity | null {
     const def = UNIT_TYPES[unitType];
     if (!def) {
       console.error(`LevelWaveSystem: unknown unit type "${unitType}"`);
@@ -556,8 +593,9 @@ export class LevelWaveSystem extends createSystem({
       -(target.z - SPAWN_Z),
     );
     // Unit-sheet model scale: the clone shrinks uniformly, so every child
-    // (embedded muzzle, hit_core) rides along in the right place.
-    object.scale.setScalar(def.scale);
+    // (embedded muzzle, hit_core) rides along in the right place. Elite
+    // variants multiply the sheet scale (endless DDT).
+    object.scale.setScalar(def.scale * (elite ? ENDLESS.eliteScale : 1));
 
     // Instancing setup for the fade: hull materials are shared across clones,
     // so each ship gets its own clones starting fully transparent. Driving that
@@ -616,20 +654,23 @@ export class LevelWaveSystem extends createSystem({
     }
     // Hull hit points: the ship sinks once ShellHitSystem has charged
     // COMBAT.shellDamage per defender-shell hit into this pool. Normalised:
-    // every unit shares COMBAT.unitHealth (100) as its pool size. barY comes
-    // off the unit sheet — every Health-carrying def pins its measured top.
+    // every unit shares COMBAT.unitHealth (100) as its pool size — the elite
+    // variant doubles the pool (bar shows 200). barY comes off the unit
+    // sheet — every Health-carrying def pins its measured top.
+    const healthPool = COMBAT.unitHealth * (elite ? ENDLESS.eliteHealthRatio : 1);
     entity.addComponent(Health, {
-      current: COMBAT.unitHealth,
-      max: COMBAT.unitHealth,
+      current: healthPool,
+      max: healthPool,
       barY: def.barY,
     });
     // Combat: attacker hit core (defender shells are consumed inside it) and
     // — for armed units — the deck-gun ability with the unit sheet's own
     // fire interval (pirate ships 3 s, the bombardier 2 s, the ornithopter
     // 1.2 s between shots) and its own fire line, the far edge of its berth
-    // band. `stone` reroutes the shots to the pooled-stone free query.
+    // band. `stone` reroutes the shots to the pooled-stone free query. The
+    // elite's core radius grows with its scale so the bigger hull reads.
     entity.addComponent(HitCore, {
-      radius: COMBAT.attackerCoreRadius,
+      radius: COMBAT.attackerCoreRadius * (elite ? ENDLESS.eliteScale : 1),
       faction: def.faction,
       unitType,
     });
@@ -807,6 +848,11 @@ export class LevelWaveSystem extends createSystem({
       this.advanceAfterWave();
       return;
     }
+    // Close the endless intermission: the GET READY panel hides as the wave
+    // dispatch starts. (A NextWaveCommand never survives to here — the
+    // planner consumes it the frame it is raised — but clear it defensively.)
+    this.director.removeComponent(WaveIntermission);
+    this.director.removeComponent(NextWaveCommand);
     this.director.setValue(LevelDirector, 'waveIndex', index);
     this.director.setValue(LevelDirector, 'pendingUnits', wave.units.length);
     this.director.setValue(LevelDirector, 'timer', 0);
@@ -815,6 +861,17 @@ export class LevelWaveSystem extends createSystem({
 
   /** A wave is done: wait, then start the next wave or level. */
   private advanceAfterWave(): void {
+    // Endless runs forever: no level list to walk, no victory to declare.
+    // The NextWaveCommand goes out first so the planner's synchronous
+    // qualify appends the wave BEFORE the intermission panel reads its
+    // number; the shortest window then counts down and enterWave consumes it.
+    if (this.isEndless()) {
+      this.setPhase('wave-gap');
+      this.director.setValue(LevelDirector, 'timer', ENDLESS.intermissionSec);
+      this.director.addComponent(NextWaveCommand);
+      this.director.addComponent(WaveIntermission);
+      return;
+    }
     const level = activeLevelList[this.levelIndex()];
     if (this.waveIndex() + 1 < level.waves.length) {
       this.setPhase('wave-gap');
@@ -920,6 +977,11 @@ export class LevelWaveSystem extends createSystem({
   /** True while the pause-menu tag sits on the director entity. */
   private paused(): boolean {
     return this.director.hasComponent(GamePaused);
+  }
+
+  /** True while the current run is the endless level (EndlessMode on the director). */
+  private isEndless(): boolean {
+    return this.director.hasComponent(EndlessMode);
   }
 
   /** Returns true on the frame the countdown reaches zero. */

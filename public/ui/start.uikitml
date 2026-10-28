@@ -14,10 +14,13 @@
   compact checkbox rather than a panel-sized block. border-radius 12 makes the
   row read as a near-capsule wedge (row height is about 33.5). The label grows
   to fill the area right of the icon and centres its text inside that area.
-  Both rows share the same light-grey fill: ENDLESS is the selected playable
-  mode and earns contrast through its dark text and solid icon, while STORY is
-  unavailable and keeps grey text with the outline icon instead of a heavy dark
-  plate that could be mistaken for an active selection.
+
+  Both rows are selectable: DESIGN runs the designer sandbox battery, ENDLESS
+  the DDT-driven endless defence. Selection reads through the row fill — the
+  active row takes the dark plate with a white label, the idle row keeps the
+  light-grey fill with dark text. The glyphs stay fixed (outline for DESIGN,
+  solid for ENDLESS) so no runtime svg swap is needed; StartPanelSystem
+  toggles the -active classes on click and defaults the pick to ENDLESS.
 
   Icons load through the <svg> tag (uikit Svg -> SVGLoader), which builds fill
   geometry only and drops strokes entirely. The requested streamline
@@ -70,6 +73,10 @@
     padding-left: 4;
   }
 
+  .mode-row-active {
+    background-color: #26262b;
+  }
+
   .mode-icon {
     display: flex;
     width: 15;
@@ -90,8 +97,8 @@
     color: #26262b;
   }
 
-  .mode-label-off {
-    color: #7c848d;
+  .mode-label-active {
+    color: #ffffff;
   }
 
   .start-section {
@@ -134,13 +141,13 @@
 
 <Panel class="panel-root">
   <div class="mode-section">
-    <button id="mode-story" class="mode-row">
+    <button id="mode-design" class="mode-row">
       <svg class="mode-icon" src="ui/icons/mode-select.svg" />
-      <div class="mode-label mode-label-off">STORY</div>
+      <div id="mode-design-label" class="mode-label mode-label-on">DESIGN</div>
     </button>
-    <button id="mode-endless" class="mode-row">
+    <button id="mode-endless" class="mode-row mode-row-active">
       <svg class="mode-icon" src="ui/icons/mode-select-solid.svg" />
-      <div class="mode-label mode-label-on">ENDLESS</div>
+      <div id="mode-endless-label" class="mode-label mode-label-active">ENDLESS</div>
     </button>
   </div>
   <div class="start-section">
