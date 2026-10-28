@@ -46,3 +46,4 @@ pids/
 
 # Trae agent workspace
 .trae/
+.trae-html-share-packages/
