@@ -32,6 +32,7 @@ import {
   BOSS_CHIEF,
   COMBAT,
   DAMAGE_MATRIX,
+  ENDLESS,
   ECONOMY,
   OCEAN,
 } from './level-config.js';
@@ -155,10 +156,16 @@ export class ShellHitSystem extends createSystem({
           );
           // Damage is a matrix lookup, not a faction flat rate: the shell's
           // attacker unit type x the core's unit type (unknown pair -> 0).
-          this.hitDamages.push(
+          // An elite-fired shell multiplies the stock row (endless DDT) —
+          // the matrix itself stays untouched.
+          const matrixDamage =
             DAMAGE_MATRIX[
               `${String(shell.getValue(ShellFaction, 'unitType'))}->${String(core.getValue(HitCore, 'unitType'))}`
-            ] ?? 0,
+            ] ?? 0;
+          this.hitDamages.push(
+            shell.getValue(ShellFaction, 'elite') === true
+              ? matrixDamage * ENDLESS.eliteDamageRatio
+              : matrixDamage,
           );
           break;
         }

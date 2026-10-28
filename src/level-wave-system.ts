@@ -548,9 +548,16 @@ export class LevelWaveSystem extends createSystem({
     const raw = units[units.length - pending];
     // Elite entries (endless DDT) carry the `elite:` prefix and resolve to
     // the named unit with a scale-and-health boost; the damage matrix rows
-    // of the stock unit apply unchanged.
+    // of the stock unit apply unchanged (the elite flag on the shell rides
+    // along at fire time instead). One line per elite landing — the field
+    // evidence a "wave 5 had no elite" report needs.
     const elite = raw.startsWith(ENDLESS.elitePrefix);
     const unitType = elite ? raw.slice(ENDLESS.elitePrefix.length) : raw;
+    if (elite) {
+      console.info(
+        `[ddt] spawning elite:${unitType} (wave ${this.waveIndex() + 1})`,
+      );
+    }
     return this.spawnUnitByType(unitType, elite) !== null;
   }
 
@@ -674,6 +681,7 @@ export class LevelWaveSystem extends createSystem({
       radius: COMBAT.attackerCoreRadius * (elite ? ENDLESS.eliteScale : 1),
       faction: def.faction,
       unitType,
+      elite,
     });
     if (def.armed) {
       entity.addComponent(PirateCannon, {

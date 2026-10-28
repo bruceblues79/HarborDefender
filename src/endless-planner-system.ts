@@ -35,10 +35,10 @@ import type { WaveSpec } from './level-config.js';
  *   among what remains affordable): budget = base growth × defender
  *   pressure × money grind. A richer wall and a fatter wallet both draw a
  *   heavier wave — 消磨玩家金币;
- * - every `eliteEvery` waves (never boss waves) one extra unit is appended
- *   as `elite:<unitType>`; the prefix is resolved at spawn time
- *   (LevelWaveSystem) into a scaled, double-health variant. Damage stays
- *   untouched everywhere — difficulty is composition only.
+ * - every `eliteEvery` waves one extra unit rides along as `elite:<unitType>`;
+ *   the prefix resolves at spawn time into a bigger, double-health variant
+ *   whose shells carry the elite flag (boosted damage). The stock unit's
+ *   matrix rows apply everywhere — difficulty rides composition + coefficients.
  */
 export class EndlessPlannerSystem extends createSystem({
   /** Exclusive command query: a runtime-mounted tag needs its own query —
@@ -56,7 +56,9 @@ export class EndlessPlannerSystem extends createSystem({
   private planNextWave(director: Entity): void {
     // Wave numbers are 1-based: the seed wave (index 0) is wave 1.
     const waveNumber = endlessLevel.waves.length + 1;
-    endlessLevel.waves.push(this.composeWave(waveNumber, director));
+    const wave = this.composeWave(waveNumber, director);
+    console.info(`[ddt] wave ${waveNumber}: ${wave.units.join(', ')}`);
+    endlessLevel.waves.push(wave);
     director.removeComponent(NextWaveCommand);
   }
 

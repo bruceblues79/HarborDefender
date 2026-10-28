@@ -460,14 +460,16 @@ export const ENDLESS = {
    */
   cost: { 'pirate-ship': 1, bombardier: 0.9, ornithopter: 0.6 },
   /**
-   * Elite rhythm (精英单体): every `eliteEvery` waves (never on a boss wave)
-   * one unit of the pool is appended as `elite:<unitType>` — spawn scales it
-   * by `eliteScale` and doubles its health pool; the damage matrix is NOT
-   * touched (elite rows read the stock unit's rows).
+   * Elite rhythm (精英单体): waveNumber/5 odd (5, 15, 25, …) rides one elite
+   * in with the generated wave — a pooled unit scaled by `eliteScale` with a
+   * doubled health pool and outgoing damage boosted by `eliteDamageRatio`.
+   * waveNumber/5 even (10, 20, 30, …) is a boss wave instead — one lone boss
+   * rolled from the pool, no escorts, phases of its own.
    */
   eliteEvery: 5,
   eliteScale: 1.3,
   eliteHealthRatio: 2,
+  eliteDamageRatio: 1.5,
   /** Boss rhythm: every `bossEvery` waves a lone boss, rolled from the pool. */
   bossEvery: 10,
   bossPool: ['boss_islewrath'],
