@@ -187,6 +187,15 @@ export const StoneTag = createComponent('StoneTag', {});
 export const TrajectoryPreview = createComponent('TrajectoryPreview', {});
 
 /**
+ * Explicit "this cannon is mid-drag" tag, written and cleared only by
+ * CannonAimSystem at its drag-session anchors (browser pointer anchoring /
+ * XR grab, and their releases). Unlike the transient `Pressed` hover tag —
+ * which InputSystem clears the moment the pointer slides off the mount —
+ * this tag lives for the whole gesture, matching the drag itself.
+ */
+export const AimDragging = createComponent('AimDragging', {});
+
+/**
  * Auto-fire ability of a cannon's muzzle: launch one pooled shell every
  * `interval` seconds. When the pool is empty the shot is skipped and retried
  * shortly, so a busy pool degrades to a slower fire rate, never a stall.
@@ -785,6 +794,7 @@ export default defineComponents([
   CannonFire,
   BallisticFlight,
   CannonAim,
+  AimDragging,
   TrajectoryPreview,
   SplashFade,
   HitCore,

@@ -12,11 +12,11 @@ import {
   InstancedMesh,
   MeshBasicMaterial,
   Object3D,
-  Pressed,
   Vector3,
 } from '@iwsdk/core';
 import type { Entity } from '@iwsdk/core';
 import {
+  AimDragging,
   CannonAim,
   CannonFire,
   Destroyed,
@@ -47,16 +47,19 @@ import {
  * Rendering is one InstancedMesh (TRAJECTORY_PREVIEW.maxDots capacity, one
  * draw call): per frame the system rewrites at most maxDots instance matrices
  * and the .count — zero allocation, matching the no-allocate-in-update rule.
- * The trigger reuses the aim system's own drag semantics (CannonAim + Pressed
- * with no new state), so the phase gating is inherited for free: outside the
- * running phase cannons cannot be dragged, so the guide never appears. When
- * two guns are somehow pressed at once (two XR hands), the first query entry
- * wins — one guide, deterministically.
+ * The trigger is CannonAimSystem's whole-gesture `AimDragging` tag — no new
+ * input bookkeeping here — so the phase gating is inherited for free: outside
+ * the running phase cannons cannot be dragged, so the guide never appears.
+ * When two guns are somehow dragged at once (two XR hands), the first query
+ * entry wins — one guide, deterministically.
  */
 export class TrajectoryPreviewSystem extends createSystem({
   guides: { required: [TrajectoryPreview] },
   guns: { required: [CannonAim], excluded: [Destroyed] },
-  aiming: { required: [CannonAim, Pressed], excluded: [Destroyed] },
+  // CannonAimSystem stamps AimDragging at its drag-session anchors, so the
+  // guide tracks the whole gesture — pointer sliding off the mount mid-drag
+  // (browser) or a wandering ray (XR) never drops it, same as the drag.
+  aiming: { required: [CannonAim, AimDragging], excluded: [Destroyed] },
   directors: { required: [LevelDirector] },
 }) {
   /** Muzzle object per gun entity index, resolved once on qualify. */

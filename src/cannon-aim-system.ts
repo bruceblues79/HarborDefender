@@ -14,7 +14,14 @@ import {
   VisibilityState,
 } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
-import { Destroyed, GameOver, GamePaused, LevelDirector, CannonAim } from './components.js';
+import {
+  AimDragging,
+  Destroyed,
+  GameOver,
+  GamePaused,
+  LevelDirector,
+  CannonAim,
+} from './components.js';
 import { COMBAT } from './level-config.js';
 
 const DEG2RAD = Math.PI / 180;
@@ -99,6 +106,8 @@ export class CannonAimSystem extends createSystem({
 
   // --- XR drag state: one active drag, anchored to one hand's wrist travel ---
   private xrDragCannon: number | null = null;
+  /** Same session as xrDragCannon, kept for tag teardown on release. */
+  private xrDragEntity: Entity | null = null;
   /** Ray space of the hand that started the drag; its release ends it. */
   private xrDragSpace: Object3D | null = null;
   private readonly xrHandStart = new Vector3();
@@ -123,6 +132,11 @@ export class CannonAimSystem extends createSystem({
       if (pivot) this.gunPivots.set(entity.index, pivot);
       this.attachZoneListeners(entity);
     });
+    // A unit leaving the registry (Destroyed, or swapped out by the build
+    // panel) must not carry a stale mid-drag tag into its next life.
+    this.queries.cannons.subscribe('disqualify', (entity) => {
+      if (entity.hasComponent(AimDragging)) entity.removeComponent(AimDragging);
+    });
     // Zone listeners live for the system's lifetime; one aggregate teardown
     // covers every attach (restoreCannons re-qualifies Destroyed units).
     this.cleanupFuncs.push(() => {
@@ -144,6 +158,7 @@ export class CannonAimSystem extends createSystem({
     this.pointers.delete(e.pointerId);
     if (this.dragPointerId === e.pointerId) {
       this.dragPointerId = null;
+      this.dragCannon?.removeComponent(AimDragging);
       this.dragCannon = null;
     }
   };
@@ -215,6 +230,9 @@ export class CannonAimSystem extends createSystem({
       const [id, pos] = [...this.pointers.entries()][0];
       this.dragPointerId = id;
       this.dragCannon = cannon;
+      // Whole-gesture marker: survives sliding off the mount (unlike the
+      // transient Pressed tag), cleared on pointerup / pointercancel.
+      cannon.addComponent(AimDragging);
       this.dragLast.x = pos.x;
       this.dragLast.y = pos.y;
       // The part under the press owns the axis; freeze its vertical sign.
@@ -254,6 +272,7 @@ export class CannonAimSystem extends createSystem({
       const cannon = space ? this.firstHoveredCannon() : undefined;
       if (!space || !cannon) return;
       this.xrDragCannon = cannon.index;
+      this.xrDragEntity = cannon;
       this.xrDragSpace = space;
       space.getWorldPosition(this.xrHandStart);
       this.xrAimStartYaw = Number(cannon.getValue(CannonAim, 'yawDeg'));
@@ -269,6 +288,8 @@ export class CannonAimSystem extends createSystem({
     // Continue with the anchoring hand only — releasing it is the sole exit,
     // so the barrel rotating away or the ray wandering never drops the drag.
     if (!this.handTriggerHeld(this.xrDragSpace)) {
+      this.xrDragEntity?.removeComponent(AimDragging);
+      this.xrDragEntity = null;
       this.xrDragCannon = null;
       this.xrDragSpace = null;
       return;
@@ -278,6 +299,8 @@ export class CannonAimSystem extends createSystem({
     const cannon = this.findCannonByIndex(dragIndex);
     if (!cannon) {
       // Knocked out mid-drag: nothing left to steer.
+      this.xrDragEntity?.removeComponent(AimDragging);
+      this.xrDragEntity = null;
       this.xrDragCannon = null;
       this.xrDragSpace = null;
       return;
