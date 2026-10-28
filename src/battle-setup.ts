@@ -580,6 +580,33 @@ export function restoreCannons(): void {
 }
 
 /**
+ * Re-crew the battery to the active level's initialUnits (level-switch):
+ * every occupant is restored first, then slots whose mounted unit differs
+ * from the level's wish are stripped and remounted. A null wish means an
+ * empty slot (the endless gate leaves the wing slots to the player). Level
+ * lists without initialUnits fall back to the slot defaults. Callers are the
+ * LevelWaveSystem's beginLevel / restartLevel.
+ */
+export function syncBatteryToLevel(world: World): void {
+  restoreCannons();
+  const initialUnits =
+    activeLevelList[0]?.initialUnits ??
+    DEFENSE_SLOTS.map((slot) => slot.unit);
+  for (
+    let slotIndex = 0;
+    slotIndex < DEFENSE_SLOTS.length;
+    slotIndex++
+  ) {
+    const wanted = initialUnits[slotIndex] ?? DEFENSE_SLOTS[slotIndex].unit;
+    const current = defenseEntities.find((entry) => entry.slot === slotIndex);
+    if (current && current.unit === wanted) continue;
+    if (current) removeDefenseUnit(world, slotIndex);
+    if (wanted) mountDefenseUnit(world, slotIndex, wanted);
+  }
+  resetCannonAim();
+}
+
+/**
  * Recall everything the last round left flying or blooming: airborne shells
  * back to the pool, hit flashes and splash ripples disposed. Shared by the
  * pause menu's MAIN / RESTART and the result panel's equivalents, so every

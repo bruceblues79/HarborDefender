@@ -13,6 +13,7 @@ import {
   GameOver,
   GamePaused,
   GunCycle,
+  HitCore,
   LevelDirector,
   LockTarget,
   ShellFaction,
@@ -52,6 +53,10 @@ export class GunCycleSystem extends createSystem({
   freeShells: {
     required: [ShellTag],
     excluded: [BallisticFlight, BoltTag, StoneTag],
+  },
+  freeStones: {
+    required: [ShellTag, StoneTag],
+    excluded: [BallisticFlight],
   },
   directors: { required: [LevelDirector] },
 }) {
@@ -155,10 +160,32 @@ export class GunCycleSystem extends createSystem({
    */
   private aimStep(gun: Entity, delta: number): number {
     const object = gun.object3D;
-    const pivot = object?.getObjectByName(String(gun.getValue(GunCycle, 'pivotName'))) ?? null;
-    // No resolvable yaw axis: nothing to animate, report "on target" so the
-    // cycle proceeds to the hold beat and the centre-launch fire path.
-    if (!pivot || !object) return 0;
+    if (!object) return 0;
+    const pivot =
+      object.getObjectByName(String(gun.getValue(GunCycle, 'pivotName'))) ??
+      null;
+    if (!pivot) {
+      // Pivotless gun (flyer units aim with the whole airframe): the hull
+      // itself steps its yaw onto the target at the shared turn speed —
+      // the attacker frame convention (hull yaw IS world yaw, the same
+      // split PirateFireSystem makes). The missing node IS the pivot
+      // answer: a missing pivot never blocks the cycle.
+      object.getWorldPosition(this.pivotPos);
+      const dx = Number(gun.getValue(LockTarget, 'targetX')) - this.pivotPos.x;
+      const dz = Number(gun.getValue(LockTarget, 'targetZ')) - this.pivotPos.z;
+      const worldYaw = Math.atan2(-dx, -dz);
+      const error = Math.atan2(
+        Math.sin(worldYaw - object.rotation.y),
+        Math.cos(worldYaw - object.rotation.y),
+      );
+      const step =
+        Number(gun.getValue(GunCycle, 'turnSpeedDeg')) * DEG2RAD * delta;
+      object.rotation.y =
+        Math.abs(error) <= step
+          ? worldYaw
+          : object.rotation.y + Math.sign(error) * step;
+      return Math.abs(error);
+    }
     pivot.getWorldPosition(this.pivotPos);
     const dx = Number(gun.getValue(LockTarget, 'targetX')) - this.pivotPos.x;
     const dz = Number(gun.getValue(LockTarget, 'targetZ')) - this.pivotPos.z;
@@ -189,13 +216,25 @@ export class GunCycleSystem extends createSystem({
    * Returns 'fired' or a one-letter failure reason ('m' no scene object,
    * 'e' pool empty, 't' intercept unsolvable).
    */
+  /** Same discipline as firstFreeShell, over the stone pool. */
+  private firstFreeStone(): Entity | undefined {
+    for (const stone of this.queries.freeStones.entities) {
+      // Backstop for same-frame claims made by another fire system.
+      if (stone.hasComponent(BallisticFlight)) continue;
+      return stone;
+    }
+    return undefined;
+  }
+
   private fire(gun: Entity): 'fired' | 'm' | 'e' | 't' {
     const object = gun.object3D;
     if (!object) return 'm';
     const launch =
       object.getObjectByName(String(gun.getValue(GunCycle, 'muzzleName'))) ??
       object;
-    const shell = this.firstFreeShell();
+    const shell = Boolean(gun.getValue(GunCycle, 'stone'))
+      ? this.firstFreeStone()
+      : this.firstFreeShell();
     const shellObject = shell?.object3D;
     if (!shell || !shellObject) return 'e';
 
@@ -221,6 +260,10 @@ export class GunCycleSystem extends createSystem({
     shell.addComponent(ShellFaction, {
       faction: 'attacker',
       unitType: String(gun.getValue(GunCycle, 'shellUnitType')),
+      // The gun core's elite flag rides the shell (endless DDT): the damage
+      // rows stay stock, ShellHitSystem applies the boost on top. Boss
+      // turret cores report elite:false, so nothing changes for them.
+      elite: gun.getValue(HitCore, 'elite') === true,
     });
     return 'fired';
   }

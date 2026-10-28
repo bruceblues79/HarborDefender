@@ -277,6 +277,10 @@ export const HitCore = createComponent('HitCore', {
    * 'hit_core' only reliably resolves on single-seat assets — the default).
    */
   nodeName: { type: 'String', default: 'hit_core' },
+  /** Endless elite variant marker (bigger pool, boosted outgoing damage). */
+  elite: { type: 'Boolean', default: false },
+  /** Kill-bounty tier (RewardTier) paid once when this core dies. */
+  reward: { type: 'String', default: 'none' },
 });
 
 /**
@@ -318,6 +322,8 @@ export const ShellFaction = createComponent('ShellFaction', {
   faction: { type: 'String', default: 'defender' },
   /** Attacker unit id for the DAMAGE_MATRIX lookup ('cannon', 'bombardier'…). */
   unitType: { type: 'String', default: '' },
+  /** Fired by an endless elite — damage is boosted by ENDLESS.eliteDamageRatio. */
+  elite: { type: 'Boolean', default: false },
 });
 
 /**
@@ -560,6 +566,8 @@ export const GunCycle = createComponent('GunCycle', {
    */
   pivotName: { type: 'String', default: 'gun_rotate' },
   muzzleName: { type: 'String', default: 'muzzle' },
+  /** Draw shells from the stone pool instead of the ball pool (ornithopter). */
+  stone: { type: 'Boolean', default: false },
 });
 
 /**
@@ -722,6 +730,34 @@ export const SummonCommand = createComponent('SummonCommand', {
   count: { type: 'Int32', default: 0 },
 });
 
+/**
+ * Explicit tag: the current run is the endless level (endless 模式标记).
+ * LevelWaveSystem adds it in beginLevel and removes it in resetToWelcome /
+ * restartLevel. EndlessPlannerSystem qualifies on it alongside
+ * NextWaveCommand; LevelWaveSystem's wave-gap / chief-down branches read it
+ * instead of declaring victory.
+ */
+export const EndlessMode = createComponent('EndlessMode', {});
+
+/**
+ * Thin command (薄命令) on the director: the current endless wave has
+ * cleared — plan the next one. LevelWaveSystem writes it when an endless
+ * wave-gap opens; EndlessPlannerSystem consumes it in the SAME frame
+ * (synchronous qualify): it samples the defender battery + wallet, composes
+ * one WaveSpec and appends it to endlessLevel.waves. The spawn pipeline
+ * stays single-truthed inside LevelWaveSystem.
+ */
+export const NextWaveCommand = createComponent('NextWaveCommand', {});
+
+/**
+ * Explicit tag: the endless intermission window (波间歇) is open — the
+ * GET READY panel shows while it sits on the director. LevelWaveSystem adds
+ * it when an endless wave gap begins and removes it in enterWave; the
+ * IntermissionPanelSystem qualifies/disqualifies on exactly that. Pure
+ * presentation: the player is never paused during the window.
+ */
+export const WaveIntermission = createComponent('WaveIntermission', {});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -769,4 +805,7 @@ export default defineComponents([
   Kamikaze,
   ChiefDown,
   SummonCommand,
+  EndlessMode,
+  NextWaveCommand,
+  WaveIntermission,
 ]);

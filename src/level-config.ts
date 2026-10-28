@@ -281,6 +281,33 @@ export const ECONOMY = {
 };
 
 /**
+ * Kill-bounty tiers (击杀奖励档位): the ONLY reward knobs. Spawn writes one
+ * tier onto each bounty-carrying HitCore; ShellHitSystem's kill site reads
+ * the tier and pays — no per-branch price logic anywhere. Defender cores
+ * default to None and never pay.
+ */
+export enum RewardTier {
+  /** Not a bounty carrier (defender cores, decor). */
+  None = 'none',
+  /** Stock attacker (pirate ship, bombardier, ornithopter, kamikaze). */
+  Stock = 'stock',
+  /** Endless elite variant. */
+  Elite = 'elite',
+  /** Islewrath gun turret / laser main gun. */
+  BossTurret = 'boss-turret',
+  /** Islewrath phase-two chief head. */
+  BossChief = 'boss-chief',
+}
+
+export const REWARD_TABLE: Record<RewardTier, number> = {
+  [RewardTier.None]: 0,
+  [RewardTier.Stock]: ECONOMY.killReward,
+  [RewardTier.Elite]: 1000,
+  [RewardTier.BossTurret]: 1200,
+  [RewardTier.BossChief]: 800,
+};
+
+/**
  * Anti-air ballista aim envelope: against flyers — default rests at the
  * mid-range 50° between the 25° floor and the 75° ceiling. The deep 25°
  * floor lets the bolts reach the ornithopter's middle-air band (y ≈ 2.3 at
@@ -398,8 +425,90 @@ export const designList: LevelSpec[] = [
 /** Authored campaign levels. Empty until the design list is promoted. */
 export const gameLevels: LevelSpec[] = [];
 
-/** The list the director runs. Flip to gameLevels to ship a campaign. */
-export const activeLevelList: LevelSpec[] = designList;
+/**
+ * Endless mode (动态难度 endless 关卡): three cannons and a 200 g purse, the
+ * first wave fixed at three pirate ships. Waves 2+ are NOT authored here —
+ * EndlessPlannerSystem appends one dynamically generated WaveSpec per
+ * intermission, so this file's single entry is only the seed. `waves` is the
+ * runtime truth of the endless run: waveIndex walks it forever.
+ */
+export const endlessLevel: LevelSpec = {
+  name: 'endless',
+  startMoney: 200,
+  // 守方 3 加农炮：省略 initialUnits，沿用 DEFENSE_SLOTS 默认（中央三炮，
+  // 两翼 x±1.2 空位留给玩家自建）。
+  waves: [{ units: ['pirate-ship', 'pirate-ship', 'pirate-ship'] }],
+};
+export const endlessList: LevelSpec[] = [endlessLevel];
+
+/** Crop the endless wave list back to its seed wave (begin / restart / MAIN). */
+export function resetEndlessWaves(): void {
+  endlessLevel.waves.length = 1;
+}
+
+/** The list the director runs. beginLevel activates the endless list;
+ *  designList stays available for designer-sandbox sessions on request. */
+export let activeLevelList: LevelSpec[] = endlessList;
+export function setActiveLevelList(list: LevelSpec[]): void {
+  activeLevelList = list;
+}
+
+/**
+ * Endless dynamic-difficulty tuning (DDT 发兵调参). The planner reads this
+ * block only — every knob a designer touches lives here.
+ */
+export const ENDLESS = {
+  /** Seconds the GET READY intermission panel shows (纯展示，非暂停). */
+  intermissionSec: 3,
+  /** Budget of wave 2; each later wave adds `budgetPerWave`. */
+  baseBudgetWave2: 2,
+  budgetPerWave: 0.75,
+  /**
+   * Defender pressure: the surviving battery's book value (unitValues ×
+   * alive count) over `pressureMoneyFull` interpolates the budget multiplier
+   * from `pressureMin` (empty wall) to `pressureMax` (full battery) — a
+   * stronger defence draws a stronger wave.
+   */
+  pressureMoneyFull: 600,
+  pressureMin: 0.7,
+  pressureMax: 1.15,
+  /**
+   * Money grind: the wallet adds money / `moneyDiv` to the budget multiplier
+   * (200 g ≈ +12.5%, 800 g hits the cap) — 存款越多，下一波越重.
+   */
+  moneyDiv: 1600,
+  moneyBonusMax: 0.5,
+  /** Hard unit cap per generated wave (overflow waits out the concurrency cap). */
+  maxUnitsPerWave: 8,
+  /**
+   * Purchase pool for a generated wave: unitType -> budget cost, equal-weight
+   * random picks among what the remaining budget affords. Keys are UNIT_TYPES
+   * ids — bosses and the kamikaze variant are deliberately absent.
+   */
+  cost: { 'pirate-ship': 1, bombardier: 0.9, ornithopter: 0.6 },
+  /**
+   * Special cadence (精英/boss 交替): every `specialEvery` waves the wave is
+   * special — waveNumber/4 odd (4, 12, 20, …) IS a lone-elite wave — one
+   * pooled unit down the centre line, scaled by `eliteScale`, no escorts.
+   * The pool stays normalised (100, no oversized health pools): the elite's
+   * toughness is a FIXED bite per landed hit — `eliteHitLifeFraction` of its
+   * own max life (0.02 → 50 hits from full), whatever fires at it — and its
+   * bite is `eliteDamageRatio` on outgoing shells. waveNumber/4 even (8, 16,
+   * 24, …) is a boss wave — one lone boss rolled from the pool, phases of
+   * its own.
+   */
+  specialEvery: 4,
+  eliteScale: 1.75,
+  /** Elite HitCore radius growth — linear with eliteScale, so the core
+   *  bubble hugs the hull at any size. */
+  eliteCoreScale: 1.75,
+  eliteHitLifeFraction: 0.02,
+  eliteDamageRatio: 1.5,
+  /** Boss pool: a boss wave rolls one at random. */
+  bossPool: ['boss_islewrath'],
+  /** Wave-list entry prefix marking an elite variant of the named unit. */
+  elitePrefix: 'elite:',
+};
 
 /**
  * Combat tuning: cannon fire, shell ballistics, splash ripples and aim drag.
@@ -459,7 +568,7 @@ export const COMBAT = {
    */
   aimPitchDefault: 22.5,
   /** Aim degrees per dragged pixel in the browser — retune by feel. */
-  aimDegreesPerPixel: 0.1,
+  aimDegreesPerPixel: 0.4,
   /**
    * Aim degrees per metre of wrist travel in XR — retune by feel on device.
    * 200 puts a full ±45° sweep at ~23 cm of hand travel; 1 cm ≈ 2°.
@@ -487,7 +596,7 @@ export const COMBAT = {
   /** Seconds between two shots from one pirate ship that is in fire range. */
   pirateFireInterval: 3.0,
   /** Seconds between two bolts from one sky ballista (anti-air mount). */
-  ballistaFireInterval: 1.5,
+  ballistaFireInterval: 1.0,
   /** Seconds between two bombs from one bombardier. */
   bombardierFireInterval: 2,
   /** Seconds between two stones from one ornithopter. */
@@ -629,8 +738,8 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   'pirate-ship->sky-ballista': 17.5,
   'bombardier->cannon': 10,
   'bombardier->sky-ballista': 12.5,
-  'ornithopter->cannon': 7.5,
-  'ornithopter->sky-ballista': 10,
+  'ornithopter->cannon': 6,
+  'ornithopter->sky-ballista': 8,
   // Boss Islewrath gun turrets (task 029). The `islewrath-turret` core
   // unitType is a damage-matrix key, deliberately distinct from the
   // UNIT_TYPES sheet key `boss_islewrath` (underscore) — never look rows up
@@ -650,8 +759,8 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   // its stones land through its own attacker rows (the stone shell carries
   // the shooter's unitType). Its 40%-of-max crash payload is NOT a matrix
   // row — KamikazeSystem writes it directly.
-  'ornithopter_kamikaze->cannon': 7.5,
-  'ornithopter_kamikaze->sky-ballista': 10,
+  'ornithopter_kamikaze->cannon': 6,
+  'ornithopter_kamikaze->sky-ballista': 8,
   'cannon->ornithopter_kamikaze': 25,
   'sky-ballista->ornithopter_kamikaze': 20,
 };

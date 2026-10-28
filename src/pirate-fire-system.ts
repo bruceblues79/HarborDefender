@@ -241,6 +241,9 @@ export class PirateFireSystem extends createSystem({
     shell.addComponent(ShellFaction, {
       faction: String(ship.getValue(UnitTag, 'faction')),
       unitType: String(ship.getValue(UnitTag, 'unitType')),
+      // The elite flag rides the shell, not the matrix key: the damage rows
+      // stay stock, ShellHitSystem applies ENDLESS.eliteDamageRatio on top.
+      elite: ship.getValue(HitCore, 'elite') === true,
     });
     return true;
   }
