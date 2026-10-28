@@ -156,9 +156,10 @@ export class ShellHitSystem extends createSystem({
           );
           // Damage is a matrix lookup, not a faction flat rate: the shell's
           // attacker unit type x the core's unit type (unknown pair -> 0).
-          // Two elite coefficients ride on top of the stock row (endless
-          // DDT), the matrix itself stays untouched: an elite-fired shell
-          // bites harder, and damage INTO an elite is mostly shrugged off.
+          // Elite modifiers (endless DDT), the matrix itself stays untouched:
+          // an elite-fired shell bites harder (multiplier on the stock row),
+          // while damage INTO an elite is a FIXED bite of the elite's own
+          // life — the attacker's stock damage never reaches the pool.
           let damage =
             DAMAGE_MATRIX[
               `${String(shell.getValue(ShellFaction, 'unitType'))}->${String(core.getValue(HitCore, 'unitType'))}`
@@ -167,7 +168,9 @@ export class ShellHitSystem extends createSystem({
             damage *= ENDLESS.eliteDamageRatio;
           }
           if (core.getValue(HitCore, 'elite') === true) {
-            damage *= ENDLESS.eliteDamageTakenRatio;
+            damage =
+              Number(core.getValue(Health, 'max')) *
+              ENDLESS.eliteHitLifeFraction;
           }
           this.hitDamages.push(damage);
           break;
@@ -282,8 +285,9 @@ export class ShellHitSystem extends createSystem({
     }
     if (String(core.getValue(HitCore, 'faction')) === 'attacker') {
       // Kill bounty: one unified price per attacker sunk, paid into the
-      // director's wallet — the same pool repairs and builds drain.
-      this.creditKillReward();
+      // director's wallet — the same pool repairs and builds drain. Elite
+      // variants pay their own (heftier) bounty.
+      this.creditKillReward(core.getValue(HitCore, 'elite') === true);
       if (at) {
         this.spawnDieBurst(
           at,
@@ -315,10 +319,14 @@ export class ShellHitSystem extends createSystem({
    * Pay the kill bounty into the director's wallet. Runs on the death frame
    * only (never per ship per frame); several kills in one sweep each pay.
    */
-  private creditKillReward(): void {
+  private creditKillReward(elite = false): void {
     for (const director of this.queries.directors.entities) {
       const money = Number(director.getValue(Wallet, 'money'));
-      director.setValue(Wallet, 'money', money + ECONOMY.killReward);
+      director.setValue(
+        Wallet,
+        'money',
+        money + (elite ? ENDLESS.eliteKillReward : ECONOMY.killReward),
+      );
       return;
     }
   }

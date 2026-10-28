@@ -463,14 +463,17 @@ export const ENDLESS = {
    * Elite rhythm (精英单体): waveNumber/5 odd (5, 15, 25, …) IS a lone-elite
    * wave — one pooled unit down the centre line, scaled by `eliteScale`,
    * no escorts. The pool stays normalised (100, no oversized health pools):
-   * the elite's toughness is `eliteDamageTakenRatio` on incoming damage and
-   * its bite is `eliteDamageRatio` on outgoing shells. waveNumber/5 even
+   * the elite's toughness is a FIXED bite per landed hit — `eliteHitLifeFraction`
+   * of its own max life (0.01 → 100 hits from full), whatever fires at it —
+   * and its bite is `eliteDamageRatio` on outgoing shells. waveNumber/5 even
    * (10, 20, 30, …) is a boss wave — one lone boss rolled from the pool,
    * phases of its own.
    */
   eliteEvery: 5,
   eliteScale: 2.5,
-  eliteDamageTakenRatio: 0.01,
+  eliteHitLifeFraction: 0.01,
+  /** Bounty for sinking an elite (stock attackers pay ECONOMY.killReward). */
+  eliteKillReward: 600,
   eliteDamageRatio: 1.5,
   /** Boss rhythm: every `bossEvery` waves a lone boss, rolled from the pool. */
   bossEvery: 10,
