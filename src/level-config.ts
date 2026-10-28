@@ -470,7 +470,7 @@ export const ENDLESS = {
    */
   eliteEvery: 5,
   eliteScale: 2.5,
-  eliteDamageTakenRatio: 0.3,
+  eliteDamageTakenRatio: 0.01,
   eliteDamageRatio: 1.5,
   /** Boss rhythm: every `bossEvery` waves a lone boss, rolled from the pool. */
   bossEvery: 10,
