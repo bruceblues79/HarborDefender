@@ -379,8 +379,8 @@ export const SPAWN_ROLL_TRIES = 6;
  * completion. A longer wave would simply queue: the director holds units until
  * slots free up, which is what keeps the water from flooding.
  *
- * Boss sandbox (task 028): the Islewrath comes down the centre line and the
- * battery starts fully crewed with deep pockets — a pure boss-fight stage.
+ * TEMP sandbox: one elite-config ornithopter for a field check (was the
+ * task-028 boss stage). Revert the wave to ['boss_islewrath'] after use.
  */
 export const designList: LevelSpec[] = [
   {
@@ -389,7 +389,7 @@ export const designList: LevelSpec[] = [
     initialUnits: ['cannon', 'cannon', 'cannon', 'cannon', 'cannon'],
     waves: [
       {
-        units: ['boss_islewrath'],
+        units: ['elite:ornithopter'],
       },
     ],
   },

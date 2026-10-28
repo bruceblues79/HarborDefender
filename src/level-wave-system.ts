@@ -47,8 +47,8 @@ import {
 import {
   activeLevelList,
   COMBAT,
+  designList,
   ENDLESS,
-  endlessList,
   ECONOMY,
   KAMIKAZE,
   OCEAN,
@@ -238,7 +238,9 @@ export class LevelWaveSystem extends createSystem({
    * is a deliberate request-level change, not a player-facing mode.
    */
   beginLevel(): void {
-    setActiveLevelList(endlessList);
+    // TEMP design-sandbox switch: run the design list (one elite ornithopter)
+    // instead of the endless list. Revert to endlessList after the check.
+    setActiveLevelList(designList);
     // Explicit "game running" tag: MenuSystem shows the call button on its
     // qualify and hides everything on its dismiss.
     this.director.addComponent(GameStarted);
@@ -249,7 +251,8 @@ export class LevelWaveSystem extends createSystem({
     this.director.removeComponent(NextWaveCommand);
     this.director.removeComponent(WaveIntermission);
     resetEndlessWaves();
-    this.director.addComponent(EndlessMode);
+    // TEMP sandbox run is not endless: skip the EndlessMode tag so the run
+    // ends in the normal victory path once the sandbox wave clears.
     this.director.setValue(Wallet, 'money', this.startMoney());
     syncBatteryToLevel(this.world);
     this.enterLevel(0);
