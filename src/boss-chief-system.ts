@@ -172,7 +172,9 @@ export class BossChiefSystem extends createSystem({
       faction: 'attacker',
       unitType: 'islewrath-chief',
       nodeName: 'hit_core',
-      reward: RewardTier.BossChief,
+      // The chief pays the stock (minion) tier — it follows ECONOMY.
+      // killReward like every ordinary attacker, no separate bounty class.
+      reward: RewardTier.Stock,
     });
     // Emerge: start sunk into the drum, integrate up to just proud of the
     // rim over riseSec. baseY snapshots the seat so the rise tick stays a

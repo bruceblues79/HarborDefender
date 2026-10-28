@@ -286,28 +286,36 @@ export const ECONOMY = {
 /**
  * Kill-bounty tiers (击杀奖励档位): the ONLY reward knobs. Spawn writes one
  * tier onto each bounty-carrying HitCore; ShellHitSystem's kill site reads
- * the tier and pays — no per-branch price logic anywhere. Defender cores
- * default to None and never pay.
+ * the tier and pays — no per-branch price logic anywhere (the one exception:
+ * BossTurret walks BOSS_TURRET_REWARD_LADDER at the kill site). Defender
+ * cores default to None and never pay.
  */
 export enum RewardTier {
   /** Not a bounty carrier (defender cores, decor). */
   None = 'none',
-  /** Stock attacker (pirate ship, bombardier, ornithopter, kamikaze). */
+  /** Stock attacker (pirate ship, bombardier, ornithopter, kamikaze, chief head). */
   Stock = 'stock',
   /** Endless elite variant. */
   Elite = 'elite',
-  /** Islewrath gun turret / laser main gun. */
+  /** Islewrath gun turret / laser main gun — paid off the destruction-order ladder. */
   BossTurret = 'boss-turret',
-  /** Islewrath phase-two chief head. */
-  BossChief = 'boss-chief',
 }
+
+/**
+ * Islewrath turret kill-bounty ladder (怒岛号五座炮塔递减): the 4 secondary
+ * guns + the laser main gun pay in destruction order — the first turret
+ * destroyed takes LADDER[0], every later kill steps down 200g, the last
+ * takes LADDER[4]. ShellHitSystem picks the step at the kill instant from
+ * how many turrets are still alive.
+ */
+export const BOSS_TURRET_REWARD_LADDER = [1200, 1000, 800, 600, 400];
 
 export const REWARD_TABLE: Record<RewardTier, number> = {
   [RewardTier.None]: 0,
   [RewardTier.Stock]: ECONOMY.killReward,
   [RewardTier.Elite]: 1000,
-  [RewardTier.BossTurret]: 1200,
-  [RewardTier.BossChief]: 800,
+  // Base (first-kill) step; the kill site walks the ladder, not this cell.
+  [RewardTier.BossTurret]: BOSS_TURRET_REWARD_LADDER[0],
 };
 
 /**
