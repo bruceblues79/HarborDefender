@@ -47,7 +47,6 @@ import {
 import {
   activeLevelList,
   COMBAT,
-  designList,
   ENDLESS,
   endlessList,
   ECONOMY,
@@ -233,13 +232,13 @@ export class LevelWaveSystem extends createSystem({
   }
 
   /**
-   * Hand control to the chosen level. Called after the START panel dismisses:
-   * 'design' runs the designer sandbox list, 'endless' runs the DDT-driven
-   * endless list. Switching levels also re-mounts the battery to the level's
-   * own initialUnits (the battlefield persists across MAIN round trips).
+   * Hand control to the endless level. Called after the START panel dismisses:
+   * the run always opens the DDT-driven endless list (three cannons, 200 g,
+   * generated waves). The design sandbox list stays parked — switching to it
+   * is a deliberate request-level change, not a player-facing mode.
    */
-  beginLevel(mode: 'design' | 'endless'): void {
-    setActiveLevelList(mode === 'endless' ? endlessList : designList);
+  beginLevel(): void {
+    setActiveLevelList(endlessList);
     // Explicit "game running" tag: MenuSystem shows the call button on its
     // qualify and hides everything on its dismiss.
     this.director.addComponent(GameStarted);
@@ -250,8 +249,7 @@ export class LevelWaveSystem extends createSystem({
     this.director.removeComponent(NextWaveCommand);
     this.director.removeComponent(WaveIntermission);
     resetEndlessWaves();
-    if (mode === 'endless') this.director.addComponent(EndlessMode);
-    else this.director.removeComponent(EndlessMode);
+    this.director.addComponent(EndlessMode);
     this.director.setValue(Wallet, 'money', this.startMoney());
     syncBatteryToLevel(this.world);
     this.enterLevel(0);

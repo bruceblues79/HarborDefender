@@ -419,8 +419,9 @@ export function resetEndlessWaves(): void {
   endlessLevel.waves.length = 1;
 }
 
-/** The list the director runs. Switched by LevelWaveSystem.beginLevel. */
-export let activeLevelList: LevelSpec[] = designList;
+/** The list the director runs. beginLevel activates the endless list;
+ *  designList stays available for designer-sandbox sessions on request. */
+export let activeLevelList: LevelSpec[] = endlessList;
 export function setActiveLevelList(list: LevelSpec[]): void {
   activeLevelList = list;
 }

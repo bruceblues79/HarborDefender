@@ -724,10 +724,10 @@ export const SummonCommand = createComponent('SummonCommand', {
 
 /**
  * Explicit tag: the current run is the endless level (endless 模式标记).
- * LevelWaveSystem adds it in beginLevel('endless') and removes it on
- * beginLevel('design') / resetToWelcome. EndlessPlannerSystem qualifies on
- * it alongside NextWaveCommand; LevelWaveSystem's wave-gap / chief-down
- * branches read it instead of declaring victory.
+ * LevelWaveSystem adds it in beginLevel and removes it in resetToWelcome /
+ * restartLevel. EndlessPlannerSystem qualifies on it alongside
+ * NextWaveCommand; LevelWaveSystem's wave-gap / chief-down branches read it
+ * instead of declaring victory.
  */
 export const EndlessMode = createComponent('EndlessMode', {});
 
