@@ -568,7 +568,7 @@ export const COMBAT = {
    */
   aimPitchDefault: 22.5,
   /** Aim degrees per dragged pixel in the browser — retune by feel. */
-  aimDegreesPerPixel: 0.1,
+  aimDegreesPerPixel: 0.4,
   /**
    * Aim degrees per metre of wrist travel in XR — retune by feel on device.
    * 200 puts a full ±45° sweep at ~23 cm of hand travel; 1 cm ≈ 2°.
