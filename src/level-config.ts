@@ -286,36 +286,35 @@ export const ECONOMY = {
 /**
  * Kill-bounty tiers (击杀奖励档位): the ONLY reward knobs. Spawn writes one
  * tier onto each bounty-carrying HitCore; ShellHitSystem's kill site reads
- * the tier and pays — no per-branch price logic anywhere (the one exception:
- * BossTurret walks BOSS_TURRET_REWARD_LADDER at the kill site). Defender
- * cores default to None and never pay.
+ * the tier and pays the flat REWARD_TABLE cell — no per-branch price logic
+ * anywhere. Defender cores default to None and never pay.
  */
 export enum RewardTier {
   /** Not a bounty carrier (defender cores, decor). */
   None = 'none',
-  /** Stock attacker (pirate ship, bombardier, ornithopter, kamikaze, chief head). */
+  /** Stock attacker (pirate ship, bombardier, ornithopter, kamikaze). */
   Stock = 'stock',
   /** Endless elite variant. */
   Elite = 'elite',
-  /** Islewrath gun turret / laser main gun — paid off the destruction-order ladder. */
+  /** Islewrath gun turret / laser main gun. */
   BossTurret = 'boss-turret',
+  /** Islewrath phase-two chief head (黑铁机械武士头). */
+  BossChief = 'boss-chief',
 }
 
 /**
- * Islewrath turret kill-bounty ladder (怒岛号五座炮塔递减): the 4 secondary
- * guns + the laser main gun pay in destruction order — the first turret
- * destroyed takes LADDER[0], every later kill steps down 200g, the last
- * takes LADDER[4]. ShellHitSystem picks the step at the kill instant from
- * how many turrets are still alive.
+ * Flat Islewrath bounty (怒岛号悬赏): every gun turret, the laser main gun
+ * and the phase-two chief head each pay this — no destruction-order ladder,
+ * no tier linkage to the stock economy.
  */
-export const BOSS_TURRET_REWARD_LADDER = [1200, 1000, 800, 600, 400];
+export const BOSS_BOUNTY = 800;
 
 export const REWARD_TABLE: Record<RewardTier, number> = {
   [RewardTier.None]: 0,
   [RewardTier.Stock]: ECONOMY.killReward,
   [RewardTier.Elite]: 1000,
-  // Base (first-kill) step; the kill site walks the ladder, not this cell.
-  [RewardTier.BossTurret]: BOSS_TURRET_REWARD_LADDER[0],
+  [RewardTier.BossTurret]: BOSS_BOUNTY,
+  [RewardTier.BossChief]: BOSS_BOUNTY,
 };
 
 /**
@@ -514,7 +513,7 @@ export const ENDLESS = {
    *  bubble hugs the hull at any size. */
   eliteCoreScale: 1.75,
   eliteHitLifeFraction: 0.02,
-  eliteDamageRatio: 1.5,
+  eliteDamageRatio: 4,
   /** Boss pool: a boss wave rolls one at random. */
   bossPool: ['boss_islewrath'],
   /** Wave-list entry prefix marking an elite variant of the named unit. */
@@ -916,7 +915,7 @@ export const BOSS = {
    * every gun in the game, boss included.
    */
   /** Hit-core radius (m) of a gun turret (baked hit_core helper). */
-  turretCoreRadius: 0.4,
+  turretCoreRadius: 0.35,
   /**
    * Turret death burst: scaled-down shatter of the shared debris pool.
    * turretBurstFloorY is a carrier-LOCAL rest height relative to the burst

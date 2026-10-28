@@ -34,7 +34,6 @@ import {
   DAMAGE_MATRIX,
   ENDLESS,
   OCEAN,
-  BOSS_TURRET_REWARD_LADDER,
   REWARD_TABLE,
   RewardTier,
 } from './level-config.js';
@@ -63,8 +62,6 @@ import {
 export class ShellHitSystem extends createSystem({
   shells: { required: [ShellTag, BallisticFlight, ShellFaction] },
   cores: { required: [HitCore, Health], excluded: [Destroyed] },
-  /** Live Islewrath turrets (4 guns + laser); the bounty ladder counts them. */
-  bossTurrets: { required: [BossTurret, HitCore] },
   freeFlashes: { required: [HitFlashTag], excluded: [HitFlash] },
   freeBursts: { required: [DieBurstTag], excluded: [DieBurst] },
   directors: { required: [LevelDirector] },
@@ -238,11 +235,11 @@ export class ShellHitSystem extends createSystem({
    * Kill a core whose pool is empty. Four paths:
    *
    * - the phase-two pirate chief head (IslewrathChief, task 031) pays the
-   *   stock (minion) tier, bursts at the citadel top (deck-bounce chunks, no
+   *   BossChief bounty, bursts at the citadel top (deck-bounce chunks, no
    *   sink ripple — it dies aboard), disposes, and raises the ChiefDown thin
    *   command: LevelWaveSystem then clears the field and wins the run.
-   * - a boss gun turret (BossTurret) pays its destruction-order ladder step
-   *   (BOSS_TURRET_REWARD_LADDER), bursts into a scaled-down chunk cloud on
+   * - a boss gun turret (BossTurret) pays the flat BOSS_BOUNTY, bursts into
+   *   a scaled-down chunk cloud on
    *   the deck (no sink ripple — it dies aboard), and is disposed so the
    *   turret mesh leaves the hull clone. Its ECS children (health bar) tear
    *   down via disqualify. No revival.
@@ -274,9 +271,9 @@ export class ShellHitSystem extends createSystem({
       return;
     }
     if (core.hasComponent(BossTurret)) {
-      // Kill bounty: the turret's destruction-order ladder step, paid into
-      // the director's wallet — each turret pays once on death.
-      this.creditKillReward(reward, core);
+      // Kill bounty: the turret's flat BOSS_BOUNTY, paid into the director's
+      // wallet — each turret pays once on death.
+      this.creditKillReward(reward);
       if (at) {
         this.spawnDieBurst(
           at,
@@ -325,28 +322,12 @@ export class ShellHitSystem extends createSystem({
   /**
    * Pay the dying core's reward-tier bounty into the director's wallet.
    * Runs on the death frame only (never per ship per frame); several kills
-   * in one sweep each pay. BossTurret is the one kill-time price: the five
-   * turrets (4 guns + laser) walk BOSS_TURRET_REWARD_LADDER in destruction
-   * order — `dying` carries the core being paid, and the count of turrets
-   * still alive EXCLUDING it picks the step. A same-sweep earlier kill has
-   * already disposed and disqualified itself, so the ordering is inherent.
+   * in one sweep each pay. One flat REWARD_TABLE read per tier — no
+   * destruction-order or economy-linked pricing.
    */
-  private creditKillReward(tier: RewardTier, dying?: Entity): void {
+  private creditKillReward(tier: RewardTier): void {
     if (tier === RewardTier.None) return;
-    let amount = REWARD_TABLE[tier];
-    if (tier === RewardTier.BossTurret) {
-      let aliveOthers = 0;
-      for (const turret of this.queries.bossTurrets.entities) {
-        if (turret.index !== dying?.index && !turret.hasComponent(Destroyed)) {
-          aliveOthers++;
-        }
-      }
-      const step = BOSS_TURRET_REWARD_LADDER.length - 1 - aliveOthers;
-      amount =
-        BOSS_TURRET_REWARD_LADDER[
-          Math.max(0, Math.min(BOSS_TURRET_REWARD_LADDER.length - 1, step))
-        ];
-    }
+    const amount = REWARD_TABLE[tier];
     for (const director of this.queries.directors.entities) {
       const money = Number(director.getValue(Wallet, 'money'));
       director.setValue(Wallet, 'money', money + amount);
