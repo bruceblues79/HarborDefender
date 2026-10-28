@@ -662,10 +662,11 @@ export class LevelWaveSystem extends createSystem({
     }
     // Hull hit points: the ship sinks once ShellHitSystem has charged
     // COMBAT.shellDamage per defender-shell hit into this pool. Normalised:
-    // every unit shares COMBAT.unitHealth (100) as its pool size — the elite
-    // variant doubles the pool (bar shows 200). barY comes off the unit
-    // sheet — every Health-carrying def pins its measured top.
-    const healthPool = COMBAT.unitHealth * (elite ? ENDLESS.eliteHealthRatio : 1);
+    // every unit shares COMBAT.unitHealth (100) as its pool size — elites
+    // included (归一化): their toughness is the damage-taken ratio, never a
+    // bigger pool. barY comes off the unit sheet — every Health-carrying def
+    // pins its measured top.
+    const healthPool = COMBAT.unitHealth;
     entity.addComponent(Health, {
       current: healthPool,
       max: healthPool,
