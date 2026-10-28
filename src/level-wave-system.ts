@@ -677,24 +677,49 @@ export class LevelWaveSystem extends createSystem({
       barY: def.barY,
     });
     // Combat: attacker hit core (defender shells are consumed inside it) and
-    // — for armed units — the deck-gun ability with the unit sheet's own
-    // fire interval (pirate ships 3 s, the bombardier 2 s, the ornithopter
-    // 1.2 s between shots) and its own fire line, the far edge of its berth
-    // band. `stone` reroutes the shots to the pooled-stone free query. The
-    // elite's core radius grows with its scale so the bigger hull reads.
+    // — for armed units — the deck-gun ability. `stone` reroutes the shots
+    // to the pooled-stone free query. The elite's core radius grows by
+    // eliteCoreScale — deliberately sub-linear vs the 2.5x hull so defender
+    // shells must reach the visible hull before being eaten.
     entity.addComponent(HitCore, {
-      radius: COMBAT.attackerCoreRadius * (elite ? ENDLESS.eliteScale : 1),
+      radius: COMBAT.attackerCoreRadius * (elite ? ENDLESS.eliteCoreScale : 1),
       faction: def.faction,
       unitType,
       elite,
       reward: elite ? RewardTier.Elite : RewardTier.Stock,
     });
     if (def.armed) {
-      entity.addComponent(PirateCannon, {
-        interval: def.fireInterval,
-        fireLineZ: def.stopZMin,
-        stone: def.stone,
-      });
+      if (elite) {
+        // Elites fight with the boss-turret rhythm (每炮相位状态机):
+        // park at the berth, swing onto the target at the shared turn
+        // speed, hold the aim beat, fire, jittered cooldown — and the
+        // per-shot LockTarget clear re-rolls a fresh random defender for
+        // every volley. The gun IS the unit: carrierIndex points at
+        // itself. pivotName 'cannon_mount' resolves for deck-gun ships;
+        // pivotless flyers fall back to whole-hull yaw in aimStep.
+        entity.addComponent(GunCycle, {
+          state: 'cooldown',
+          timer: 0,
+          fireInterval: def.fireInterval,
+          turnSpeedDeg: BOSS.turnSpeedDeg,
+          turnThresholdDeg: BOSS.turnThresholdDeg,
+          aimHoldSec: BOSS.aimHoldSec,
+          shellSpeed: COMBAT.pirateShellSpeed,
+          shellUnitType: unitType,
+          carrierIndex: entity.index,
+          requireStopped: true,
+          pivotName: 'cannon_mount',
+          muzzleName: 'muzzle',
+          stone: def.stone,
+        });
+        entity.addComponent(LockTarget);
+      } else {
+        entity.addComponent(PirateCannon, {
+          interval: def.fireInterval,
+          fireLineZ: def.stopZMin,
+          stone: def.stone,
+        });
+      }
     }
     // Kamikaze ability (task 031): the summoned ornithopter variant arms the
     // fuse-and-dive on top of the shared armed-flyer behaviour above. The

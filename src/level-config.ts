@@ -498,6 +498,12 @@ export const ENDLESS = {
    */
   eliteEvery: 5,
   eliteScale: 2.5,
+  /**
+   * Elite HitCore radius growth — deliberately sub-linear vs eliteScale
+   * (the 2.5x hull keeps a 1.5x core) so defender shells must reach the
+   * visible hull before the consumption bubble eats them.
+   */
+  eliteCoreScale: 1.5,
   eliteHitLifeFraction: 0.01,
   eliteDamageRatio: 1.5,
   /** Boss rhythm: every `bossEvery` waves a lone boss, rolled from the pool. */

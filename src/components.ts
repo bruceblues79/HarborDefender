@@ -566,6 +566,8 @@ export const GunCycle = createComponent('GunCycle', {
    */
   pivotName: { type: 'String', default: 'gun_rotate' },
   muzzleName: { type: 'String', default: 'muzzle' },
+  /** Draw shells from the stone pool instead of the ball pool (ornithopter). */
+  stone: { type: 'Boolean', default: false },
 });
 
 /**
