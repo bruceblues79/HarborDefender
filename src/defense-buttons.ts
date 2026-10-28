@@ -5,7 +5,13 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { BoxGeometry, Mesh, MeshBasicMaterial, Object3D } from '@iwsdk/core';
+import {
+  BoxGeometry,
+  Material,
+  Mesh,
+  MeshBasicMaterial,
+  Object3D,
+} from '@iwsdk/core';
 import { DEFENSE_BUTTONS } from './level-config.js';
 
 /**
@@ -19,10 +25,11 @@ import { DEFENSE_BUTTONS } from './level-config.js';
  * icons sit in the same material family as the wall, cannons and ballistas.
  *
  * State visuals stay runtime-side and cheap: DefenseButtonSystem shrinks
- * the open slot's build icon and breathes the repair icon — both pure
- * scale writes on the icon mesh; materials and the hit proxies never
- * change. The glyph needs no shadow participation — both shadow flags are
- * forced off below.
+ * the open slot's build icon, and shrinks + glows the repair icon of a
+ * repairing unit — scale writes on the icon mesh plus one emissive-intensity
+ * scalar on the icon's own material clone (cloned below so the glow hits one
+ * button, never the shared prototype); hit proxies never change. The glyph
+ * needs no shadow participation — both shadow flags are forced off below.
  *
  * The invisible hit proxy is a box that renders nothing (colorWrite off) yet
  * stays raycastable — object.visible is what raycasters key on, not material
@@ -59,11 +66,14 @@ export type ButtonKind = 'build' | 'repair';
 
 /**
  * One button rig: a clone of the icon's GLB prototype (the `button-icon`
- * mesh keeps its baked vertex colors; clones share geometry and material)
- * plus the invisible hit proxy, centred on its mount point facing +Z. The
- * caller creates the transform entity, adds RayInteractable + DefenseButton
- * and owns placement (battle-setup); DefenseButtonSystem resolves the icon
- * mesh by name for its per-frame state writes.
+ * mesh keeps its baked vertex colors; geometry stays shared) plus the
+ * invisible hit proxy, centred on its mount point facing +Z. The icon's
+ * material is cloned per rig — DefenseButtonSystem drives the repair glow
+ * through per-button emissiveIntensity, which must not touch the shared
+ * prototype material. The caller creates the transform entity, adds
+ * RayInteractable + DefenseButton and owns placement (battle-setup);
+ * DefenseButtonSystem resolves the icon mesh by name for its per-frame
+ * state writes.
  */
 export function createDefenseButtonRig(
   kind: ButtonKind,
@@ -77,6 +87,9 @@ export function createDefenseButtonRig(
       child.receiveShadow = false;
     }
   });
+
+  const icon = rig.getObjectByName('button-icon') as Mesh | null;
+  if (icon) icon.material = (icon.material as Material).clone();
 
   const proxy = new Mesh(PROXY_GEOMETRIES[kind], PROXY_MATERIAL);
   proxy.name = 'button-proxy';

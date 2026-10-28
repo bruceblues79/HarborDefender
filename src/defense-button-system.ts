@@ -5,7 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { createSystem, Mesh, Pressed } from '@iwsdk/core';
+import { createSystem, Mesh, MeshStandardMaterial, Pressed } from '@iwsdk/core';
 import type { Entity } from '@iwsdk/core';
 import {
   BuildOpen,
@@ -36,10 +36,11 @@ import { getDefenseSlotInfo } from './battle-setup.js';
  * opens, while paused or after an outcome the buttons are scenery.
  *
  * Visuals (single writer for every button icon): the open slot's build
- * icon holds a shrunk "open" pose (DEFENSE_BUTTONS.openScale) — pure scale,
- * materials never change; repair buttons breathe — the icon scales
- * sinusoidally — exactly while their unit carries Repairing. Ten scalar
- * writes per frame at most: negligible.
+ * icon holds a shrunk "open" pose (DEFENSE_BUTTONS.openScale) — pure scale;
+ * a repairing unit's repair icon holds the same shrunk pose plus a warm-gold
+ * emissive glow (colour baked into its own material clone at qualify, the
+ * update loop writes one intensity scalar). Materials and the hit proxies
+ * otherwise never change. Ten scalar writes per frame at most: negligible.
  */
 export class DefenseButtonSystem extends createSystem({
   buttons: { required: [DefenseButton] },
@@ -48,15 +49,21 @@ export class DefenseButtonSystem extends createSystem({
 }) {
   /** Button icon mesh per entity index, resolved once on qualify. */
   private readonly icons = new Map<number, Mesh>();
-  /** Seconds accumulated for the repair breathing phase. */
-  private breatheTime = 0;
 
   init(): void {
     this.queries.buttons.subscribe('qualify', (entity) => {
       const icon = entity.object3D?.getObjectByName('button-icon') as
         | Mesh
         | null;
-      if (icon) this.icons.set(entity.index, icon);
+      if (!icon) return;
+      this.icons.set(entity.index, icon);
+      // Repair glow: bake the warm-gold emissive colour once — the update
+      // loop only toggles the intensity scalar between 0 and repairGlow.
+      if (String(entity.getValue(DefenseButton, 'kind')) === 'repair') {
+        const mat = icon.material as MeshStandardMaterial;
+        mat.emissive.setHex(DEFENSE_BUTTONS.repairGlowColor);
+        mat.emissiveIntensity = 0;
+      }
     });
     this.queries.pressed.subscribe('qualify', (entity) => {
       this.onPressed(entity);
@@ -122,20 +129,13 @@ export class DefenseButtonSystem extends createSystem({
     }
   }
 
-  update(delta: number): void {
+  update(): void {
     const director = this.director();
     if (!director) return;
     const over = director.hasComponent(GameOver);
-    this.breatheTime += delta;
-    // Repair breathing is pure motion: the icon scales up sinusoidally up
-    // to breatheScale over its rest size; material colors never change.
-    const breathePulse =
-      1 +
-      DEFENSE_BUTTONS.breatheScale *
-        (0.5 + 0.5 * Math.sin(this.breatheTime * DEFENSE_BUTTONS.breatheSpeed));
     // The dock's slot while open (null when closed): that slot's build icon
     // holds the shrunk "open" pose. Scale writes are transform-only — the
-    // shared geometry/material and the enlarged hit proxies never change.
+    // shared geometry and the enlarged hit proxies never change.
     const openSlot = director.hasComponent(BuildOpen)
       ? Number(director.getValue(BuildOpen, 'slot'))
       : null;
@@ -150,12 +150,17 @@ export class DefenseButtonSystem extends createSystem({
         );
       } else {
         const info = getDefenseSlotInfo(slot);
-        const breathing =
+        const repairing =
           !over &&
           !!info &&
           !info.entity.hasComponent(Destroyed) &&
           info.entity.hasComponent(Repairing);
-        icon.scale.setScalar(breathing ? breathePulse : 1);
+        // Repair-active pose: the same shrunk scale as the build button's
+        // open dock plus the warm-gold glow — two scalar writes, no motion.
+        icon.scale.setScalar(repairing ? DEFENSE_BUTTONS.openScale : 1);
+        (icon.material as MeshStandardMaterial).emissiveIntensity = repairing
+          ? DEFENSE_BUTTONS.repairGlow
+          : 0;
       }
     }
   }

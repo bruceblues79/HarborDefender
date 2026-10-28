@@ -222,12 +222,15 @@ export const DEFENSE_BUTTONS = {
    */
   openScale: 0.75,
   /**
-   * Repair breathing: DefenseButtonSystem scales the icon up sinusoidally —
-   * peak extra scale breatheScale (0.22 = +22%) at breatheSpeed rad/s. The
-   * baked vertex colors never change; the motion is the whole effect.
+   * Repair-active pose: the wrench shrinks to openScale (the same shrunk
+   * pose as the build button's open dock) and glows — its own material
+   * clone raises emissiveIntensity to repairGlow in repairGlowColor (the
+   * GLB bakes black emissive, so the runtime owns the colour). Same visual
+   * language as the empty-slot pads' warm-gold emissive. Deactivating the
+   * repair restores scale 1 and intensity 0.
    */
-  breatheSpeed: 4.25,
-  breatheScale: 0.22,
+  repairGlowColor: 0xffc46a,
+  repairGlow: 0.6,
 };
 
 /**

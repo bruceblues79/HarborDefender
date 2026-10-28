@@ -485,9 +485,10 @@ export const BuildOpen = createComponent('BuildOpen', {
 /**
  * One world-space build/repair button on the wall's land face: a flat
  * low-poly icon extrusion with an invisible enlarged hit proxy. Defense-
- * ButtonSystem owns the visuals (repair breathes via icon scale, the open
- * slot's build icon shrinks via icon scale); the press itself is
- * InputSystem's `Pressed` tag (mouse / touch / XR ray share the path).
+ * ButtonSystem owns the visuals (the repairing unit's repair icon shrinks
+ * and glows, the open slot's build icon shrinks via icon scale); the press
+ * itself is InputSystem's `Pressed` tag (mouse / touch / XR ray share the
+ * path).
  */
 export const DefenseButton = createComponent('DefenseButton', {
   /** Index into DEFENSE_SLOTS this button serves. */

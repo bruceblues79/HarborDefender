@@ -121,7 +121,7 @@ World.create(
   world.registerSystem(RepairSystem, { priority: 12 });
   // Build/repair button commands: a sim-tier consumer of the transient
   // Pressed tags; it opens the build panel through the director's BuildOpen
-  // tag and keeps the button visuals (gray-out, breathing) current.
+  // tag and keeps the button visuals (shrunk pose, repair glow) current.
   world.registerSystem(DefenseButtonSystem, { priority: 16 });
   // Empty-slot pad breathing: the pure visual over the battery registry —
   // one shared-material emissiveIntensity write per frame, no phase gate.
