@@ -27,7 +27,11 @@ import {
   UnitTag,
   BossTurret,
 } from './components.js';
-import { BOSS_CHIEF, SPAWN_FADE_DURATION } from './level-config.js';
+import {
+  BOSS_CHIEF,
+  RewardTier,
+  SPAWN_FADE_DURATION,
+} from './level-config.js';
 
 /**
  * Phase-two chief head (海盗头领) — task 031. Once every boss turret is gone
@@ -168,6 +172,7 @@ export class BossChiefSystem extends createSystem({
       faction: 'attacker',
       unitType: 'islewrath-chief',
       nodeName: 'hit_core',
+      reward: RewardTier.BossChief,
     });
     // Emerge: start sunk into the drum, integrate up to just proud of the
     // rim over riseSec. baseY snapshots the seat so the rise tick stays a

@@ -56,6 +56,7 @@ import {
   BOSS,
   PACING,
   resetEndlessWaves,
+  RewardTier,
   setActiveLevelList,
   SPAWN_FADE_DURATION,
   SPAWN_ROLL_TRIES,
@@ -686,6 +687,7 @@ export class LevelWaveSystem extends createSystem({
       faction: def.faction,
       unitType,
       elite,
+      reward: elite ? RewardTier.Elite : RewardTier.Stock,
     });
     if (def.armed) {
       entity.addComponent(PirateCannon, {
@@ -781,6 +783,7 @@ export class LevelWaveSystem extends createSystem({
           faction: 'attacker',
           unitType: 'islewrath-turret',
           nodeName: spec.core,
+          reward: RewardTier.BossTurret,
         });
         continue;
       }
@@ -814,6 +817,7 @@ export class LevelWaveSystem extends createSystem({
         faction: 'attacker',
         unitType: 'islewrath-turret',
         nodeName: spec.core,
+        reward: RewardTier.BossTurret,
       });
     }
     // Chief-head mount seat (task 031): captured HERE at assembly, the only

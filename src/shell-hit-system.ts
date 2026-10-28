@@ -33,8 +33,9 @@ import {
   COMBAT,
   DAMAGE_MATRIX,
   ENDLESS,
-  ECONOMY,
   OCEAN,
+  REWARD_TABLE,
+  RewardTier,
 } from './level-config.js';
 
 /**
@@ -233,12 +234,12 @@ export class ShellHitSystem extends createSystem({
   /**
    * Kill a core whose pool is empty. Four paths:
    *
-   * - the phase-two pirate chief head (IslewrathChief, task 031) pays the
-   *   unified bounty, bursts at the citadel top (deck-bounce chunks, no sink
-   *   ripple — it dies aboard), disposes, and raises the ChiefDown thin
+   * - the phase-two pirate chief head (IslewrathChief, task 031) pays its
+   *   REWARD_TABLE tier, bursts at the citadel top (deck-bounce chunks, no
+   *   sink ripple — it dies aboard), disposes, and raises the ChiefDown thin
    *   command: LevelWaveSystem then clears the field and wins the run.
-   * - a boss gun turret (BossTurret) pays the unified bounty, bursts into a
-   *   scaled-down chunk cloud on the deck (no sink ripple — it dies aboard),
+   * - a boss gun turret (BossTurret) pays its REWARD_TABLE tier, bursts into
+   *   a scaled-down chunk cloud on the deck (no sink ripple — it dies aboard),
    *   and is disposed so the turret mesh leaves the hull clone. Its ECS
    *   children (health bar) tear down via disqualify. No revival.
    * - any other attacker bursts at the waves, pays, sinks (dispose + ripple).
@@ -246,8 +247,11 @@ export class ShellHitSystem extends createSystem({
    */
   private kill(core: Entity): void {
     const at = this.corePositions.get(core.index);
+    // One tier read per kill: the spawn site wrote the bounty class onto the
+    // core's HitCore; every paying branch below shares this single lookup.
+    const reward = String(core.getValue(HitCore, 'reward')) as RewardTier;
     if (core.hasComponent(IslewrathChief)) {
-      this.creditKillReward();
+      this.creditKillReward(reward);
       if (at) {
         this.spawnDieBurst(
           at,
@@ -266,9 +270,9 @@ export class ShellHitSystem extends createSystem({
       return;
     }
     if (core.hasComponent(BossTurret)) {
-      // Kill bounty: one unified price per attacker part destroyed, paid
-      // into the director's wallet — each turret pays once on death.
-      this.creditKillReward();
+      // Kill bounty: the part's own reward tier (REWARD_TABLE), paid into
+      // the director's wallet — each turret pays once on death.
+      this.creditKillReward(reward);
       if (at) {
         this.spawnDieBurst(
           at,
@@ -284,10 +288,9 @@ export class ShellHitSystem extends createSystem({
       return;
     }
     if (String(core.getValue(HitCore, 'faction')) === 'attacker') {
-      // Kill bounty: one unified price per attacker sunk, paid into the
-      // director's wallet — the same pool repairs and builds drain. Elite
-      // variants pay their own (heftier) bounty.
-      this.creditKillReward(core.getValue(HitCore, 'elite') === true);
+      // Kill bounty: the sunk attacker's reward tier (REWARD_TABLE), paid
+      // into the director's wallet — the same pool repairs and builds drain.
+      this.creditKillReward(reward);
       if (at) {
         this.spawnDieBurst(
           at,
@@ -316,17 +319,15 @@ export class ShellHitSystem extends createSystem({
   }
 
   /**
-   * Pay the kill bounty into the director's wallet. Runs on the death frame
-   * only (never per ship per frame); several kills in one sweep each pay.
+   * Pay the dying core's reward-tier bounty into the director's wallet.
+   * Runs on the death frame only (never per ship per frame); several kills
+   * in one sweep each pay.
    */
-  private creditKillReward(elite = false): void {
+  private creditKillReward(tier: RewardTier): void {
+    if (tier === RewardTier.None) return;
     for (const director of this.queries.directors.entities) {
       const money = Number(director.getValue(Wallet, 'money'));
-      director.setValue(
-        Wallet,
-        'money',
-        money + (elite ? ENDLESS.eliteKillReward : ECONOMY.killReward),
-      );
+      director.setValue(Wallet, 'money', money + REWARD_TABLE[tier]);
       return;
     }
   }

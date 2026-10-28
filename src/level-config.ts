@@ -281,6 +281,33 @@ export const ECONOMY = {
 };
 
 /**
+ * Kill-bounty tiers (击杀奖励档位): the ONLY reward knobs. Spawn writes one
+ * tier onto each bounty-carrying HitCore; ShellHitSystem's kill site reads
+ * the tier and pays — no per-branch price logic anywhere. Defender cores
+ * default to None and never pay.
+ */
+export enum RewardTier {
+  /** Not a bounty carrier (defender cores, decor). */
+  None = 'none',
+  /** Stock attacker (pirate ship, bombardier, ornithopter, kamikaze). */
+  Stock = 'stock',
+  /** Endless elite variant. */
+  Elite = 'elite',
+  /** Islewrath gun turret / laser main gun. */
+  BossTurret = 'boss-turret',
+  /** Islewrath phase-two chief head. */
+  BossChief = 'boss-chief',
+}
+
+export const REWARD_TABLE: Record<RewardTier, number> = {
+  [RewardTier.None]: 0,
+  [RewardTier.Stock]: ECONOMY.killReward,
+  [RewardTier.Elite]: 1000,
+  [RewardTier.BossTurret]: 2000,
+  [RewardTier.BossChief]: 800,
+};
+
+/**
  * Anti-air ballista aim envelope: against flyers — default rests at the
  * mid-range 50° between the 25° floor and the 75° ceiling. The deep 25°
  * floor lets the bolts reach the ornithopter's middle-air band (y ≈ 2.3 at
@@ -472,8 +499,6 @@ export const ENDLESS = {
   eliteEvery: 5,
   eliteScale: 2.5,
   eliteHitLifeFraction: 0.01,
-  /** Bounty for sinking an elite (stock attackers pay ECONOMY.killReward). */
-  eliteKillReward: 600,
   eliteDamageRatio: 1.5,
   /** Boss rhythm: every `bossEvery` waves a lone boss, rolled from the pool. */
   bossEvery: 10,

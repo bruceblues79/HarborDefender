@@ -279,6 +279,8 @@ export const HitCore = createComponent('HitCore', {
   nodeName: { type: 'String', default: 'hit_core' },
   /** Endless elite variant marker (bigger pool, boosted outgoing damage). */
   elite: { type: 'Boolean', default: false },
+  /** Kill-bounty tier (RewardTier) paid once when this core dies. */
+  reward: { type: 'String', default: 'none' },
 });
 
 /**
