@@ -897,7 +897,7 @@ export const BOSS = {
    * every gun in the game, boss included.
    */
   /** Hit-core radius (m) of a gun turret (baked hit_core helper). */
-  turretCoreRadius: 0.3,
+  turretCoreRadius: 0.4,
   /**
    * Turret death burst: scaled-down shatter of the shared debris pool.
    * turretBurstFloorY is a carrier-LOCAL rest height relative to the burst
