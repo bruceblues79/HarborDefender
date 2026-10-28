@@ -18,6 +18,9 @@ import {
 import { ENDLESS, ECONOMY, endlessLevel } from './level-config.js';
 import type { WaveSpec } from './level-config.js';
 
+/** Purchase pool: unitType -> budget cost, as entries for random picks. */
+const POOL: [string, number][] = Object.entries(ENDLESS.cost);
+
 /**
  * Endless dynamic-difficulty planner (DDT 发兵系统).
  *
@@ -35,10 +38,10 @@ import type { WaveSpec } from './level-config.js';
  *   among what remains affordable): budget = base growth × defender
  *   pressure × money grind. A richer wall and a fatter wallet both draw a
  *   heavier wave — 消磨玩家金币;
- * - every `eliteEvery` waves one extra unit rides along as `elite:<unitType>`;
- *   the prefix resolves at spawn time into a bigger, double-health variant
- *   whose shells carry the elite flag (boosted damage). The stock unit's
- *   matrix rows apply everywhere — difficulty rides composition + coefficients.
+ * - every `eliteEvery` waves the wave IS one lone elite (`elite:<unitType>`,
+ *   centre line, no escorts): a bigger, double-health variant whose shells
+ *   carry the elite flag (boosted damage). The stock unit's matrix rows
+ *   apply everywhere — difficulty rides composition + coefficients.
  */
 export class EndlessPlannerSystem extends createSystem({
   /** Exclusive command query: a runtime-mounted tag needs its own query —
@@ -70,6 +73,13 @@ export class EndlessPlannerSystem extends createSystem({
         ENDLESS.bossPool[Math.floor(Math.random() * ENDLESS.bossPool.length)];
       return { units: [boss] };
     }
+    // Elite waves stand alone too: waveNumber/5 odd sends ONE elite down the
+    // centre line, no escort composition — 单独精英 (matches the boss beat).
+    if (waveNumber % ENDLESS.eliteEvery === 0) {
+      const [type] =
+        POOL[Math.floor(Math.random() * POOL.length)];
+      return { units: [ENDLESS.elitePrefix + type] };
+    }
 
     // Budget: linear growth, scaled up by how strong the defence looks.
     const base =
@@ -78,21 +88,14 @@ export class EndlessPlannerSystem extends createSystem({
     const moneyFactor = 1 + Math.min(ENDLESS.moneyBonusMax, money / ENDLESS.moneyDiv);
     let budget = Math.max(1, base) * this.defenderPressure() * moneyFactor;
 
-    const pool = Object.entries(ENDLESS.cost);
     const units: string[] = [];
     while (units.length < ENDLESS.maxUnitsPerWave) {
-      const affordable = pool.filter(([, cost]) => cost <= budget);
+      const affordable = POOL.filter(([, cost]) => cost <= budget);
       if (affordable.length === 0) break;
       const [type, cost] =
         affordable[Math.floor(Math.random() * affordable.length)];
       units.push(type);
       budget -= cost;
-    }
-
-    // Elite beat: one extra unit rides along on its wave, always last out.
-    if (waveNumber % ENDLESS.eliteEvery === 0 && units.length > 0) {
-      const [type] = pool[Math.floor(Math.random() * pool.length)];
-      units.push(ENDLESS.elitePrefix + type);
     }
     return { units };
   }

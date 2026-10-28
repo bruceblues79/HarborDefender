@@ -460,11 +460,11 @@ export const ENDLESS = {
    */
   cost: { 'pirate-ship': 1, bombardier: 0.9, ornithopter: 0.6 },
   /**
-   * Elite rhythm (精英单体): waveNumber/5 odd (5, 15, 25, …) rides one elite
-   * in with the generated wave — a pooled unit scaled by `eliteScale` with a
-   * doubled health pool and outgoing damage boosted by `eliteDamageRatio`.
-   * waveNumber/5 even (10, 20, 30, …) is a boss wave instead — one lone boss
-   * rolled from the pool, no escorts, phases of its own.
+   * Elite rhythm (精英单体): waveNumber/5 odd (5, 15, 25, …) IS a lone-elite
+   * wave — one pooled unit down the centre line, scaled by `eliteScale` with
+   * a doubled health pool and outgoing damage boosted by `eliteDamageRatio`,
+   * no escorts. waveNumber/5 even (10, 20, 30, …) is a boss wave instead —
+   * one lone boss rolled from the pool, phases of its own.
    */
   eliteEvery: 5,
   eliteScale: 1.3,
