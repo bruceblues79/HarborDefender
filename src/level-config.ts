@@ -721,6 +721,25 @@ export const COMBAT = {
 };
 
 /**
+ * Aim-drag trajectory guide (TrajectoryPreviewSystem): a sparse row of small
+ * unlit cubes redrawn every frame while a defense unit is being dragged.
+ * Sampling mirrors the live flight exactly — launch vector from
+ * CannonFireSystem.fire, gravity and terminations from BallisticSystem — and
+ * because horizontal speed is constant (no drag), equal time steps land at
+ * equal horizontal gaps, so the dots read evenly spaced along any arc.
+ */
+export const TRAJECTORY_PREVIEW = {
+  /** Seconds between two guide dots — horizontal gap = shellSpeed_h × this. */
+  timeStep: 0.06,
+  /** InstancedMesh capacity; the longest lob stays well under this. */
+  maxDots: 48,
+  /** Cube edge (m) — a touch larger than a 0.0375 shell, reads as a marker. */
+  dotSize: 0.05,
+  /** Warm gold (sRGB hex) — the shared accent (defense pads / repair glow). */
+  color: 0xffc46a,
+};
+
+/**
  * Explicit defender health-bar heights (carrier-local y, baked margin
  * included): measured GLB subtree tops at the baked pose — cannon 0.186
  * (barrel level at rest), sky ballista 0.2874 — plus the shared defender

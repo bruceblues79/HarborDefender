@@ -41,6 +41,7 @@ import { ShipMovementSystem } from './ship-movement-system.js';
 import { SpawnFadeSystem } from './spawn-fade-system.js';
 import { SplashSystem } from './splash-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
+import { TrajectoryPreviewSystem } from './trajectory-preview-system.js';
 import { WingFlapSystem } from './wing-flap-system.js';
 import { installXRButton } from './xr-button.js';
 import { installHandPriorityArbitration } from './xr-hand-arbitration.js';
@@ -76,6 +77,9 @@ World.create(
   world.registerSystem(LevelWaveSystem, { priority: 5 });
   world.registerSystem(EndlessPlannerSystem, { priority: 6 });
   world.registerSystem(CannonAimSystem, { priority: 8 });
+  // Trajectory guide: one tier after the aim pass, so each frame's sampling
+  // reads the muzzle transform the drag just wrote.
+  world.registerSystem(TrajectoryPreviewSystem, { priority: 9 });
   world.registerSystem(ShipMovementSystem, { priority: 10 });
   // Rotor spin rides the simulation tier: same march cadence as movement,
   // frozen by the same pause/hold tags. Wing flap keeps the ornithopter's

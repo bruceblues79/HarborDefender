@@ -179,6 +179,14 @@ export const BoltTag = createComponent('BoltTag', {});
 export const StoneTag = createComponent('StoneTag', {});
 
 /**
+ * Singleton tag on the trajectory-guide entity owned by
+ * TrajectoryPreviewSystem: an InstancedMesh of sparse unlit cubes redrawn
+ * every frame while a defense unit is being aim-dragged. Pure visual —
+ * no RayInteractable, no state fields.
+ */
+export const TrajectoryPreview = createComponent('TrajectoryPreview', {});
+
+/**
  * Auto-fire ability of a cannon's muzzle: launch one pooled shell every
  * `interval` seconds. When the pool is empty the shot is skipped and retried
  * shortly, so a busy pool degrades to a slower fire rate, never a stall.
@@ -777,6 +785,7 @@ export default defineComponents([
   CannonFire,
   BallisticFlight,
   CannonAim,
+  TrajectoryPreview,
   SplashFade,
   HitCore,
   Health,
