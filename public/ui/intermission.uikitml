@@ -4,16 +4,14 @@
   geometry as the result panel (150 x 100 UIKit units = 1.5 m x 1 m at scale
   1, stock glass over #ffffffaa) so the two read as one presentation language,
   but with NO buttons — the window is pure display, the player is never
-  paused, and the wave starts on its own. The title (next wave number) and
-  colour are set at runtime; the subtitle is the fixed GET READY copy. No CSS
-  comments inside the style block.
+  paused, and the wave starts on its own. The title (next wave number) is set
+  at runtime; below it a grow-1 middle band centres the GET READY copy in the
+  space under the title (垂直居中). No CSS comments inside the style block.
 -->
 <style>
   .inter-root {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    align-items: center;
     width: 150;
     height: 100;
     border-radius: 6;
@@ -34,10 +32,19 @@
     color: #1e6f34;
   }
 
+  .inter-middle {
+    display: flex;
+    flex-grow: 1;
+    flex-basis: 0;
+    align-items: center;
+    justify-content: center;
+    background-color: #00000000;
+  }
+
   .inter-subtitle {
     display: flex;
-    width: 112;
-    font-size: 5;
+    width: 130;
+    font-size: 7;
     text-align: center;
     color: #26262b;
   }
@@ -45,5 +52,7 @@
 
 <Panel class="inter-root">
   <span id="inter-title" class="inter-title">WAVE 2</span>
-  <span id="inter-subtitle" class="inter-subtitle">GET READY FOR NEXT WAVE</span>
+  <div class="inter-middle">
+    <span id="inter-subtitle" class="inter-subtitle">GET READY FOR NEXT WAVE</span>
+  </div>
 </Panel>

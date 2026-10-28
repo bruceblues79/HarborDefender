@@ -63,6 +63,10 @@ export class IntermissionPanelSystem extends createSystem({
       .then((panel) => {
         panel.position.set(PANEL_POSITION.x, PANEL_POSITION.y, PANEL_POSITION.z);
         panel.scale.setScalar(PANEL_HIDDEN_SCALE);
+        // Loaded panels default to visible; park BEFORE mounting or the
+        // un-laid-out markup flashes for a frame (intermission-panel loading
+        // habit: visible=false first, mount second).
+        panel.visible = false;
 
         const entity = this.world.createTransformEntity(panel);
         entity.addComponent(RayInteractable);
@@ -74,8 +78,10 @@ export class IntermissionPanelSystem extends createSystem({
 
         this.panel = panel;
         this.panelEntity = entity;
-        // The gate may have landed while the panel was still loading; if the
-        // tag is already gone again (a fast wave), stay hidden.
+        // The gate may have closed while the panel was still loading (the
+        // shortest window can beat a cold network): land in the state the
+        // gate is in RIGHT NOW, so a missed disqualify can never leave the
+        // panel stuck on screen.
         if (this.queries.gates.entities.size > 0) this.apply();
       })
       .catch((err: unknown) =>
@@ -101,12 +107,20 @@ export class IntermissionPanelSystem extends createSystem({
     this.phase = 'appearing';
   }
 
-  /** Intermission closed (enterWave): park the panel back in hiding. */
+  /**
+   * Intermission closed (enterWave): park the panel back in hiding. No
+   * phase guard — a disqualify may legitimately arrive while the panel is
+   * still loading (the shortest window vs a cold network); parking the
+   * not-yet-applied state here is exactly what keeps the panel from
+   * appearing after its window is already gone. Without an entity yet there
+   * is nothing to park — the load callback re-reads the gate and lands
+   * hidden on its own.
+   */
   private hide(): void {
-    if (this.phase === 'idle') return;
+    if (!this.panelEntity) return;
     if (this.panel) this.panel.visible = false;
-    this.panelEntity?.setValue(PanelScaleAnim, 'currentScale', PANEL_HIDDEN_SCALE);
-    this.panelEntity?.setValue(PanelScaleAnim, 'targetScale', PANEL_HIDDEN_SCALE);
+    this.panelEntity.setValue(PanelScaleAnim, 'currentScale', PANEL_HIDDEN_SCALE);
+    this.panelEntity.setValue(PanelScaleAnim, 'targetScale', PANEL_HIDDEN_SCALE);
     this.phase = 'idle';
   }
 
