@@ -491,20 +491,17 @@ export const ENDLESS = {
    * wave — one pooled unit down the centre line, scaled by `eliteScale`,
    * no escorts. The pool stays normalised (100, no oversized health pools):
    * the elite's toughness is a FIXED bite per landed hit — `eliteHitLifeFraction`
-   * of its own max life (0.01 → 100 hits from full), whatever fires at it —
+   * of its own max life (0.02 → 50 hits from full), whatever fires at it —
    * and its bite is `eliteDamageRatio` on outgoing shells. waveNumber/5 even
    * (10, 20, 30, …) is a boss wave — one lone boss rolled from the pool,
    * phases of its own.
    */
   eliteEvery: 5,
-  eliteScale: 2.5,
-  /**
-   * Elite HitCore radius growth — deliberately sub-linear vs eliteScale
-   * (the 2.5x hull keeps a 1.5x core) so defender shells must reach the
-   * visible hull before the consumption bubble eats them.
-   */
-  eliteCoreScale: 1.5,
-  eliteHitLifeFraction: 0.01,
+  eliteScale: 1.75,
+  /** Elite HitCore radius growth — linear with eliteScale, so the core
+   *  bubble hugs the hull at any size. */
+  eliteCoreScale: 1.75,
+  eliteHitLifeFraction: 0.02,
   eliteDamageRatio: 1.5,
   /** Boss rhythm: every `bossEvery` waves a lone boss, rolled from the pool. */
   bossEvery: 10,

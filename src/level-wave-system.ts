@@ -618,6 +618,8 @@ export class LevelWaveSystem extends createSystem({
     // spawn frame while SpawnFadeSystem materialises the hull in parallel.
     // cruiseY rides along so ShipMovementSystem holds this unit's own
     // altitude instead of a shared waterline constant.
+    // The elite's wake churns at hull scale — ripples read with the hull.
+    const wakeScale = elite ? ENDLESS.eliteScale : 1;
     entity.addComponent(ShipMovement, {
       pattern: def.movement,
       spawnX: laneX,
@@ -625,14 +627,15 @@ export class LevelWaveSystem extends createSystem({
       targetZ: target.z,
       cruiseY: def.cruiseY,
       // Per-hull wake radius: oversized hulls (the boss) churn ship-scaled
-      // ripples; everyone else rides the shared WAKE_RADIUS default.
-      wakeRadius: def.wakeRadius ?? WAKE_RADIUS,
+      // ripples, elites scale the sheet value by their hull factor; everyone
+      // else rides the shared WAKE_RADIUS default.
+      wakeRadius: (def.wakeRadius ?? WAKE_RADIUS) * wakeScale,
     });
     entity.addComponent(SpawnFade, { duration: SPAWN_FADE_DURATION });
     // Water contact is a unit-sheet fact: ships churn a wake, the airborne
     // bombardier never touches the surface and gets none.
     if (def.wake) {
-      const wakeRadius = def.wakeRadius ?? WAKE_RADIUS;
+      const wakeRadius = (def.wakeRadius ?? WAKE_RADIUS) * wakeScale;
       entity.addComponent(WakeSource, {
         strength: 0,
         // Under way (or held up) from frame one, so the wake aims at the
@@ -676,8 +679,7 @@ export class LevelWaveSystem extends createSystem({
     // Combat: attacker hit core (defender shells are consumed inside it) and
     // — for armed units — the deck-gun ability. `stone` reroutes the shots
     // to the pooled-stone free query. The elite's core radius grows by
-    // eliteCoreScale — deliberately sub-linear vs the 2.5x hull so defender
-    // shells must reach the visible hull before being eaten.
+    // eliteCoreScale — linear with the hull, so the bubble hugs the hull.
     entity.addComponent(HitCore, {
       radius: COMBAT.attackerCoreRadius * (elite ? ENDLESS.eliteCoreScale : 1),
       faction: def.faction,
