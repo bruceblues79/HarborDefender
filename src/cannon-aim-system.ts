@@ -421,10 +421,14 @@ export class CannonAimSystem extends createSystem({
   }
 
   private setAim(cannon: Entity, yawDeg: number, pitchDeg: number): void {
+    // Traverse limits live on the entity like the elevation limits: cannons
+    // keep the stock ±45° via the component default, the sky ballista
+    // overrides with its own wider sweep.
+    const yawRange = Number(cannon.getValue(CannonAim, 'yawRangeDeg'));
     cannon.setValue(
       CannonAim,
       'yawDeg',
-      clamp(yawDeg, -COMBAT.aimYawRange, COMBAT.aimYawRange),
+      clamp(yawDeg, -yawRange, yawRange),
     );
     // Elevation limits live on the entity: cannons get the stock 0-45 envelope
     // via component defaults, the sky ballista overrides with its own.

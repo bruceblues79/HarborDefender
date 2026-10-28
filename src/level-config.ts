@@ -319,13 +319,15 @@ export const REWARD_TABLE: Record<RewardTier, number> = {
 
 /**
  * Anti-air ballista aim envelope: against flyers — default rests at the
- * mid-range 50° between the 25° floor and the 75° ceiling. The deep 25°
+ * mid-range 50° between the 20° floor and the 75° ceiling. The deep 20°
  * floor lets the bolts reach the ornithopter's middle-air band (y ≈ 2.3 at
- * z -4.4..-2.8) instead of only the higher bombardier plane.
+ * z -4.4..-2.8) instead of only the higher bombardier plane, and the ±60°
+ * traverse out-sweeps the stock cannon's ±45° so the mount covers the flanks.
  */
 export const SKY_BALLISTA = {
+  yawRange: 60,
   pitchDefault: 50,
-  pitchMin: 25,
+  pitchMin: 20,
   pitchMax: 75,
 };
 
@@ -720,12 +722,12 @@ export const COMBAT = {
 };
 
 /**
- * Aim-drag trajectory guide (TrajectoryPreviewSystem): a sparse row of small
- * unlit cubes redrawn every frame while a defense unit is being dragged.
- * Sampling mirrors the live flight exactly — launch vector from
- * CannonFireSystem.fire, gravity and terminations from BallisticSystem — and
- * because horizontal speed is constant (no drag), equal time steps land at
- * equal horizontal gaps, so the dots read evenly spaced along any arc.
+ * Aim-drag trajectory guide (TrajectoryPreviewSystem), redrawn every frame
+ * while a defense unit is being dragged. Sampling mirrors the live flight
+ * exactly — launch vector from CannonFireSystem.fire, gravity and
+ * terminations from BallisticSystem. Two render modes share the sampler:
+ * parabolic shots draw the sparse dot row; straight bolts (gravityScale 0)
+ * draw one continuous crossed-ribbon line.
  */
 export const TRAJECTORY_PREVIEW = {
   /** Seconds between two guide dots — horizontal gap = shellSpeed_h × this. */
@@ -736,6 +738,20 @@ export const TRAJECTORY_PREVIEW = {
   dotSize: 0.04,
   /** Warm gold (sRGB hex) — the shared accent (defense pads / repair glow). */
   color: 0xffc46a,
+  /**
+   * Straight-bolt ribbon: total width (m) of each of the two thin quads
+   * crossing at 90° (cross plates), so the guide keeps its width from every
+   * viewing angle — a single flat ribbon collapses edge-on.
+   */
+  lineWidth: 0.02,
+  /**
+   * Ribbon alpha at the muzzle end. The gradient bakes into the vertex
+   * colours and stretches with the line, so it stays normalized over any
+   * reach: near-invisible at the gun, brightest at the bolt's death point.
+   */
+  lineAlphaNear: 0.1,
+  /** Ribbon alpha at the far end — mirrors the aim far end. */
+  lineAlphaFar: 0.8,
 };
 
 /**
@@ -823,8 +839,8 @@ export const FLYER_Y =
 
 /**
  * The bombardier's berth band, now designer data instead of a bolt-line
- * derivation: with the ballista's depression floor opened to 25° the derived
- * far edge (≈ -4.62) would reach deep into the ornithopter's own band, so
+ * derivation: with the ballista's depression floor opened to 20° the derived
+ * far edge (≈ -5.65) would reach deep into the ornithopter's own band, so
  * the flyer keeps its tuned explicit range — far out at -2.6, snug against
  * the wall at -1.23 (the old 75° crossing). MIN < MAX keeps the ship
  * constants' reading — MIN far out, MAX against the wall.
@@ -838,7 +854,7 @@ export const FLYER_STOP_Z_MAX = -1.23;
  * launched from y 0.941 crosses y 2.3 on its descent between z ≈ -3.0 and
  * -5.0, so a flyer berthed in the band's core [-4.4, -3.0] stays in the
  * 45° envelope's kill corridor, while the forward extension [-3.0, -2.8]
- * sits this side of it — still well inside cannon range. The 25° ballista
+ * sits this side of it — still well inside cannon range. The 20° ballista
  * bolt line from its muzzle (y 1.134, z -0.916) crosses the band's core
  * height range [1.8, 2.8] throughout, so the anti-air mount covers it too.
  */

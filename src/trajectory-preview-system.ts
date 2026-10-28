@@ -7,9 +7,13 @@
 
 import {
   BoxGeometry,
+  BufferAttribute,
+  BufferGeometry,
   createSystem,
+  DoubleSide,
   DynamicDrawUsage,
   InstancedMesh,
+  Mesh,
   MeshBasicMaterial,
   Object3D,
   Vector3,
@@ -32,9 +36,22 @@ import {
   TRAJECTORY_PREVIEW,
 } from './level-config.js';
 
+/** Guard against dividing by ~0 when solving the bolt's death point. */
+const BOLT_LINE_EPS = 1e-6;
+
 /**
- * Aim-drag trajectory guide: while a defense unit is being dragged, a sparse
- * row of small unlit cubes traces the shot its muzzle would launch right now.
+ * Aim-drag trajectory guide: while a defense unit is being dragged, a guide
+ * traces the shot its muzzle would launch right now. Two render modes share
+ * one sampler, picked per dragged gun by its CannonFire.gravityScale:
+ *
+ * - Parabolic shots (gravityScale > 0, the cannons) keep the sparse row of
+ *   small unlit cubes.
+ * - Straight bolts (gravityScale 0, the sky ballista) draw one continuous
+ *   crossed-ribbon line — two thin quads crossing at 90°, so the guide keeps
+ *   its width from every viewing angle (a single flat ribbon collapses
+ *   edge-on). Its alpha gradient is baked into the vertex colours and
+ *   brightens toward the far end: alphaNear at the muzzle, alphaFar (the aim
+ *   far end) at the bolt's death point.
  *
  * The sampling is the closed form of the live flight, not a re-simulation —
  * launch vector copied from CannonFireSystem.fire (muzzle world -Z scaled by
@@ -42,16 +59,19 @@ import {
  * terminations BallisticSystem enforces (water splash, straight-bolt reclaim
  * ceiling, ocean far-edge backstop). Horizontal speed is constant mid-flight,
  * so equal time steps land at equal horizontal gaps: the dots read evenly
- * spaced on any arc without any arc-length math.
+ * spaced on any arc without any arc-length math. The straight line solves its
+ * termination boundary exactly instead of marching — a continuous ribbon
+ * would make a one-step overshoot visible.
  *
- * Rendering is one InstancedMesh (TRAJECTORY_PREVIEW.maxDots capacity, one
- * draw call): per frame the system rewrites at most maxDots instance matrices
- * and the .count — zero allocation, matching the no-allocate-in-update rule.
- * The trigger is CannonAimSystem's whole-gesture `AimDragging` tag — no new
- * input bookkeeping here — so the phase gating is inherited for free: outside
- * the running phase cannons cannot be dragged, so the guide never appears.
- * When two guns are somehow dragged at once (two XR hands), the first query
- * entry wins — one guide, deterministically.
+ * Rendering is two always-alive meshes, one visible at a time: the dot row is
+ * one InstancedMesh (per frame at most maxDots instance matrices + .count),
+ * the ribbon is one Mesh whose transform alone redraws it (the vertex-alpha
+ * gradient stretches with it) — zero allocation, matching the
+ * no-allocate-in-update rule. The trigger is CannonAimSystem's whole-gesture
+ * `AimDragging` tag — no new input bookkeeping here — so the phase gating is
+ * inherited for free: outside the running phase cannons cannot be dragged,
+ * so the guide never appears. When two guns are somehow dragged at once (two
+ * XR hands), the first query entry wins — one guide, deterministically.
  */
 export class TrajectoryPreviewSystem extends createSystem({
   guides: { required: [TrajectoryPreview] },
@@ -64,11 +84,16 @@ export class TrajectoryPreviewSystem extends createSystem({
 }) {
   /** Muzzle object per gun entity index, resolved once on qualify. */
   private readonly muzzles = new Map<number, Object3D>();
+  /** Dot-row guide for parabolic shots. */
   private mesh: InstancedMesh | null = null;
+  /** Crossed-ribbon guide for straight bolts. */
+  private lineMesh: Mesh | null = null;
   /** Scratch transform for composing instance matrices; never allocated. */
   private readonly dummy = new Object3D();
   private readonly muzzlePos = new Vector3();
   private readonly muzzleDir = new Vector3();
+  /** Local +Z of the ribbon geometry — setFromUnitVectors' from-vector. */
+  private readonly unitZ = new Vector3(0, 0, 1);
 
   init(): void {
     const geometry = new BoxGeometry(
@@ -90,6 +115,21 @@ export class TrajectoryPreviewSystem extends createSystem({
     this.mesh = mesh;
     this.world.createTransformEntity(mesh).addComponent(TrajectoryPreview);
 
+    const lineGeometry = this.buildBoltLineGeometry();
+    const lineMaterial = new MeshBasicMaterial({
+      color: TRAJECTORY_PREVIEW.color,
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      side: DoubleSide,
+      toneMapped: false,
+    });
+    const lineMesh = new Mesh(lineGeometry, lineMaterial);
+    lineMesh.frustumCulled = false;
+    lineMesh.visible = false;
+    this.lineMesh = lineMesh;
+    this.world.createTransformEntity(lineMesh).addComponent(TrajectoryPreview);
+
     this.queries.guns.subscribe('qualify', (entity) => {
       const muzzle = entity.object3D?.getObjectByName('muzzle');
       if (muzzle) this.muzzles.set(entity.index, muzzle);
@@ -109,7 +149,7 @@ export class TrajectoryPreviewSystem extends createSystem({
       break;
     }
     const muzzle = dragged ? this.muzzles.get(dragged.index) : undefined;
-    if (!dragged || !muzzle || !this.mesh) {
+    if (!dragged || !muzzle || !this.mesh || !this.lineMesh) {
       this.hide();
       return;
     }
@@ -122,9 +162,20 @@ export class TrajectoryPreviewSystem extends createSystem({
     const vx = this.muzzleDir.x * speed;
     const vy = this.muzzleDir.y * speed;
     const vz = this.muzzleDir.z * speed;
-    const g =
-      COMBAT.gravity * Number(dragged.getValue(CannonFire, 'gravityScale'));
+    const gravityScale = Number(
+      dragged.getValue(CannonFire, 'gravityScale'),
+    );
     const splashY = OCEAN.surfaceY - COMBAT.splashMargin;
+
+    // Straight bolts (gravityScale 0 — the sky ballista) draw the continuous
+    // fade ribbon; every other shot keeps the sparse dot row.
+    if (gravityScale === 0) {
+      if (this.mesh.visible) this.mesh.visible = false;
+      this.showBoltLine(vy, vz, splashY, speed);
+      return;
+    }
+    if (this.lineMesh.visible) this.lineMesh.visible = false;
+    const g = COMBAT.gravity * gravityScale;
     const dt = TRAJECTORY_PREVIEW.timeStep;
 
     let count = 0;
@@ -151,9 +202,90 @@ export class TrajectoryPreviewSystem extends createSystem({
     this.mesh.visible = count > 0;
   }
 
+  /**
+   * Straight-bolt guide: one continuous crossed ribbon from the muzzle to the
+   * bolt's exact death point. tEnd is the closed form of BallisticSystem's
+   * terminations — the earliest of the reclaim ceiling (bolt climbing),
+   * splash-down (descending) and the ocean far-edge backstop; sign guards
+   * keep the solve total for degenerate aim directions. The ribbon geometry
+   * runs 0→1 along local +Z, so positioning at the muzzle, rotating +Z onto
+   * the launch direction and scaling z by the flight length redraws the whole
+   * guide — the baked vertex-alpha gradient stretches with it and stays
+   * normalized (alphaNear at the muzzle, alphaFar at the death point).
+   */
+  private showBoltLine(
+    vy: number,
+    vz: number,
+    splashY: number,
+    speed: number,
+  ): void {
+    if (!this.lineMesh) return;
+    let tEnd = Infinity;
+    if (vy > BOLT_LINE_EPS) {
+      tEnd = Math.min(tEnd, (COMBAT.boltReclaimY - this.muzzlePos.y) / vy);
+    } else if (vy < -BOLT_LINE_EPS) {
+      tEnd = Math.min(tEnd, (splashY - this.muzzlePos.y) / vy);
+    }
+    if (vz < -BOLT_LINE_EPS) {
+      tEnd = Math.min(tEnd, (OCEAN_FAR_Z - this.muzzlePos.z) / vz);
+    }
+    if (!Number.isFinite(tEnd) || tEnd <= 0) {
+      this.lineMesh.visible = false;
+      return;
+    }
+    this.lineMesh.position.copy(this.muzzlePos);
+    this.lineMesh.quaternion.setFromUnitVectors(this.unitZ, this.muzzleDir);
+    this.lineMesh.scale.set(1, 1, tEnd * speed);
+    this.lineMesh.visible = true;
+  }
+
+  /**
+   * Two unit-length ribbons crossing at 90°, both running 0→1 along local
+   * +Z with the shared gold colour and the baked alpha gradient (alphaNear
+   * at the z=0 muzzle end, alphaFar at the z=1 tip). Width is baked in —
+   * the update only ever scales z.
+   */
+  private buildBoltLineGeometry(): BufferGeometry {
+    const half = TRAJECTORY_PREVIEW.lineWidth / 2;
+    const alphas = [
+      TRAJECTORY_PREVIEW.lineAlphaNear,
+      TRAJECTORY_PREVIEW.lineAlphaNear,
+      TRAJECTORY_PREVIEW.lineAlphaFar,
+      TRAJECTORY_PREVIEW.lineAlphaFar,
+      TRAJECTORY_PREVIEW.lineAlphaNear,
+      TRAJECTORY_PREVIEW.lineAlphaNear,
+      TRAJECTORY_PREVIEW.lineAlphaFar,
+      TRAJECTORY_PREVIEW.lineAlphaFar,
+    ];
+    const geometry = new BufferGeometry();
+    geometry.setAttribute(
+      'position',
+      new BufferAttribute(
+        new Float32Array([
+          // Horizontal ribbon (x spans the width, y = 0).
+          -half, 0, 0, half, 0, 0, half, 0, 1, -half, 0, 1,
+          // Vertical ribbon (y spans the width, x = 0).
+          0, -half, 0, 0, half, 0, 0, half, 1, 0, -half, 1,
+        ]),
+        3,
+      ),
+    );
+    const colors = new Float32Array(8 * 4);
+    for (let v = 0; v < 8; v++) {
+      colors[v * 4] = 1;
+      colors[v * 4 + 1] = 1;
+      colors[v * 4 + 2] = 1;
+      colors[v * 4 + 3] = alphas[v];
+    }
+    geometry.setAttribute('color', new BufferAttribute(colors, 4));
+    geometry.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
+    return geometry;
+  }
+
   /** Drop the guide when no gun is being dragged (or while paused / over). */
   private hide(): void {
     if (this.mesh?.visible) this.mesh.visible = false;
+    if (this.lineMesh?.visible) this.lineMesh.visible = false;
   }
 
   /** True while the pause-menu tag sits on the director entity. */
