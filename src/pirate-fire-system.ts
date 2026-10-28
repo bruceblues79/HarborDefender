@@ -38,7 +38,9 @@ import { solveIntercept } from './shell-launch.js';
  *    snapshots its world position as the target — mounted defenders never
  *    move; a locked target
  *    that gets knocked out is re-acquired the same way on the next frame, and
- *    with no survivor the unit holds fire until the defeat outcome lands;
+ *    with no survivor the unit holds fire until the defeat outcome lands. An
+ *    ELITE additionally drops its lock after every shot (boss-turret style)
+ *    and re-rolls a random defender for the next volley;
  * 2. yaws onto the target: units with a cannon_mount pivot (ships) swing the
  *    whole deck gun — carriage plus barrel — and keep the hull heading; the
  *    pivotless flyers (bombardier, ornithopter) yaw the entire hull, which
@@ -134,7 +136,18 @@ export class PirateFireSystem extends createSystem({
       let cooldown = Number(ship.getValue(PirateCannon, 'cooldown')) - delta;
       if (cooldown <= 0) {
         // Pool empty: retry shortly instead of banking negative time.
-        cooldown = this.fire(ship) ? this.rollInterval(ship) : 0.1;
+        if (this.fire(ship)) {
+          cooldown = this.rollInterval(ship);
+          // Elite re-roll (boss-turret style): the lock drops after every
+          // shot, so the next volley re-rolls a random defender and the
+          // barrage spreads across the whole battery. Stock attackers keep
+          // their lock until the target dies.
+          if (ship.getValue(HitCore, 'elite') === true) {
+            ship.setValue(PirateCannon, 'hasTarget', false);
+          }
+        } else {
+          cooldown = 0.1;
+        }
       }
       ship.setValue(PirateCannon, 'cooldown', cooldown);
     }
