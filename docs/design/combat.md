@@ -16,7 +16,7 @@
 |:--------:|:----------------:|:-------------:|
 | ship     | 15%              | 17.5%         |
 | bombardier | 10%            | 12.5%           |
-| ornithopter(扑翼机) | 7.5%   | 10%             |
+| ornithopter(扑翼机) | 6%     | 8%              |
 | islewrath-turret(怒岛炮塔) | 20% | 20%          |
 
 ### defender-to-pirate（守方 → 海盗）

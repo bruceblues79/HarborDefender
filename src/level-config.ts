@@ -738,8 +738,8 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   'pirate-ship->sky-ballista': 17.5,
   'bombardier->cannon': 10,
   'bombardier->sky-ballista': 12.5,
-  'ornithopter->cannon': 7.5,
-  'ornithopter->sky-ballista': 10,
+  'ornithopter->cannon': 6,
+  'ornithopter->sky-ballista': 8,
   // Boss Islewrath gun turrets (task 029). The `islewrath-turret` core
   // unitType is a damage-matrix key, deliberately distinct from the
   // UNIT_TYPES sheet key `boss_islewrath` (underscore) — never look rows up
@@ -759,8 +759,8 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   // its stones land through its own attacker rows (the stone shell carries
   // the shooter's unitType). Its 40%-of-max crash payload is NOT a matrix
   // row — KamikazeSystem writes it directly.
-  'ornithopter_kamikaze->cannon': 7.5,
-  'ornithopter_kamikaze->sky-ballista': 10,
+  'ornithopter_kamikaze->cannon': 6,
+  'ornithopter_kamikaze->sky-ballista': 8,
   'cannon->ornithopter_kamikaze': 25,
   'sky-ballista->ornithopter_kamikaze': 20,
 };
