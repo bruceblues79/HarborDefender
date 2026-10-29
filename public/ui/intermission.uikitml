@@ -25,6 +25,8 @@
 
   .inter-title {
     display: flex;
+    flex-direction: row;
+    justify-content: center;
     width: 112;
     font-size: 12;
     font-weight: 700;
