@@ -28,7 +28,6 @@ import {
   Health,
   HitCore,
   IslewrathChief,
-  Kamikaze,
   LaserCycle,
   LevelDirector,
   LockTarget,
@@ -37,7 +36,6 @@ import {
   PropellerSpin,
   ShipMovement,
   SpawnFade,
-  SummonCommand,
   UnitTag,
   WakeSource,
   Wallet,
@@ -47,10 +45,9 @@ import {
 import {
   activeLevelList,
   COMBAT,
+  designList,
   ENDLESS,
-  endlessList,
   ECONOMY,
-  KAMIKAZE,
   OCEAN,
   OCEAN_FAR_Z,
   BOSS,
@@ -233,24 +230,24 @@ export class LevelWaveSystem extends createSystem({
   }
 
   /**
-   * Hand control to the endless level. Called after the START panel dismisses:
-   * the run always opens the DDT-driven endless list (three cannons, 200 g,
-   * generated waves). The design sandbox list stays parked — switching to it
-   * is a deliberate request-level change, not a player-facing mode.
+   * Hand control to the level. Sandbox request (task 03): the run opens the
+   * DESIGN list — the boss stage (Islewrath down the centre line, fully
+   * crewed battery, 9999 g) — so the chief death light is testable end to
+   * end. The endless mode stays parked while the sandbox request stands:
+   * switching back is `setActiveLevelList(endlessList)` + `EndlessMode` +
+   * `resetEndlessWaves()` right here (the resetToWelcome / restart paths
+   * already keep the endless wave list trimmed).
    */
   beginLevel(): void {
-    setActiveLevelList(endlessList);
+    setActiveLevelList(designList);
     // Explicit "game running" tag: MenuSystem shows the call button on its
     // qualify and hides everything on its dismiss.
     this.director.addComponent(GameStarted);
     this.director.removeComponent(GameOver);
-    // Stale boss-phase and endless-phase state must never leak into a run.
+    // Stale boss-phase state must never leak into a run.
     this.director.removeComponent(ChiefDown);
-    this.director.removeComponent(SummonCommand);
     this.director.removeComponent(NextWaveCommand);
     this.director.removeComponent(WaveIntermission);
-    resetEndlessWaves();
-    this.director.addComponent(EndlessMode);
     this.director.setValue(Wallet, 'money', this.startMoney());
     syncBatteryToLevel(this.world);
     this.enterLevel(0);
@@ -266,7 +263,6 @@ export class LevelWaveSystem extends createSystem({
     this.director.removeComponent(GameOver);
     this.director.removeComponent(BuildOpen);
     this.director.removeComponent(ChiefDown);
-    this.director.removeComponent(SummonCommand);
     this.director.removeComponent(EndlessMode);
     this.director.removeComponent(NextWaveCommand);
     this.director.removeComponent(WaveIntermission);
@@ -292,7 +288,6 @@ export class LevelWaveSystem extends createSystem({
     this.director.removeComponent(GameOver);
     this.director.removeComponent(BuildOpen);
     this.director.removeComponent(ChiefDown);
-    this.director.removeComponent(SummonCommand);
     this.director.removeComponent(NextWaveCommand);
     this.director.removeComponent(WaveIntermission);
     resetEndlessWaves();
@@ -341,11 +336,9 @@ export class LevelWaveSystem extends createSystem({
 
   update(delta: number): void {
     if (this.paused()) return;
-    // Thin commands from the boss phase (task 031) run ahead of the wave
-    // state machine: a chief kill ends the run immediately, and summon
-    // batches ride the same spawn pipeline as wave dispatch.
+    // Thin command from the boss phase (task 031) runs ahead of the wave
+    // state machine: a chief kill ends the run immediately.
     if (this.consumeChiefDown()) return;
-    this.consumeSummons();
     const phase = this.director.getValue(
       LevelDirector,
       'phase',
@@ -404,36 +397,10 @@ export class LevelWaveSystem extends createSystem({
   private consumeChiefDown(): boolean {
     if (!this.director.hasComponent(ChiefDown)) return false;
     this.director.removeComponent(ChiefDown);
-    this.director.removeComponent(SummonCommand);
     this.disposeAttackers();
     if (this.isEndless()) this.advanceAfterWave();
     else this.declareCleared();
     return true;
-  }
-
-  /**
-   * Summon-batch thin command (task 031): spawn the requested kamikaze
-   * ornithopters through the shared spawn pipeline. The command survives
-   * until every unit has left — a prototype still loading (null) does not
-   * consume the count, so the batch finishes on the following frames.
-   * Commands are ignored once an outcome is recorded (the field is already
-   * being torn down).
-   */
-  private consumeSummons(): void {
-    if (!this.director.hasComponent(SummonCommand)) return;
-    if (this.director.hasComponent(GameOver)) {
-      this.director.removeComponent(SummonCommand);
-      return;
-    }
-    let count = Number(this.director.getValue(SummonCommand, 'count'));
-    while (count > 0 && this.spawnUnitByType('ornithopter_kamikaze')) {
-      count -= 1;
-    }
-    if (count <= 0) {
-      this.director.removeComponent(SummonCommand);
-    } else {
-      this.director.setValue(SummonCommand, 'count', count);
-    }
   }
 
   /** World x a ship may emerge at: anywhere across the ocean minus edge margin. */
@@ -581,16 +548,12 @@ export class LevelWaveSystem extends createSystem({
 
     // Spawn point: best-candidate x on the far edge (spread away from active
     // attackers). A single-unit wave just comes down the centre line — no
-    // need to randomise when there is nothing to avoid — but summoned
-    // kamikaze flyers (task 031) always spread: their "wave" is the boss's
-    // single-unit sheet, so the centre-line rule would stack every batch at
-    // x = 0. The stop target is the unit sheet's fixed point when it carries
-    // one (the boss's straight centre-line run), else the berth cascade —
-    // resolved before anything is committed.
+    // need to randomise when there is nothing to avoid. The stop target is
+    // the unit sheet's fixed point when it carries one (the boss's straight
+    // centre-line run), else the berth cascade — resolved before anything is
+    // committed.
     const laneX =
-      !def.kamikaze && this.currentWaveUnits().length === 1
-        ? 0
-        : this.pickSpawnX();
+      this.currentWaveUnits().length === 1 ? 0 : this.pickSpawnX();
     const target = def.fixedTarget ?? this.pickTarget(def);
     // Altitude is the unit sheet's cruiseY — ships float at the waterline,
     // the bombardier holds FLYER_Y. Everything downstream reads the same
@@ -719,12 +682,6 @@ export class LevelWaveSystem extends createSystem({
           stone: def.stone,
         });
       }
-    }
-    // Kamikaze ability (task 031): the summoned ornithopter variant arms the
-    // fuse-and-dive on top of the shared armed-flyer behaviour above. The
-    // fuse only ticks once the flyer has stopped, and starts fully wound.
-    if (def.kamikaze) {
-      entity.addComponent(Kamikaze, { timer: KAMIKAZE.waitSec });
     }
     return entity;
   }

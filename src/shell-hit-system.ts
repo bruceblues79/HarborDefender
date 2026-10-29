@@ -203,8 +203,8 @@ export class ShellHitSystem extends createSystem({
     }
 
     // Death sweep: any live core whose pool has run dry dies here — whatever
-    // wrote the last points (a shell above, the boss laser, a kamikaze
-    // payload), the death path stays single-truthed in this system. Runs
+    // wrote the last points (a shell above, the boss laser, the chief death
+    // light), the death path stays single-truthed in this system. Runs
     // after the shell resolution so a same-frame shell kill is not doubled.
     // The victims are snapshotted first: kill() disposes entities, which
     // mutates the live query array mid-iteration. The position-cache guard
@@ -222,7 +222,7 @@ export class ShellHitSystem extends createSystem({
   /**
    * Charge one hit of damage. The pool is the single truth: reaching zero
    * funnels into `kill`, exactly like any other lethal write (boss laser,
-   * kamikaze payload) picked up by the death sweep.
+   * chief death light) picked up by the death sweep.
    */
   private applyDamage(core: Entity, damage: number): void {
     const hp = Number(core.getValue(Health, 'current')) - damage;

@@ -79,12 +79,6 @@ export interface UnitTypeDef {
    * has no bounding-box fallback. Boss hulls carry no Health and skip it.
    */
   barY?: number;
-  /**
-   * Kamikaze ability (task 031): the summoned ornithopter variant. Flight
-   * and attack are the shared armed-flyer behaviour; KamikazeSystem adds
-   * the timed crash into a surviving defender once the unit has stopped.
-   */
-  kamikaze?: boolean;
 }
 
 /**
@@ -292,7 +286,7 @@ export const ECONOMY = {
 export enum RewardTier {
   /** Not a bounty carrier (defender cores, decor). */
   None = 'none',
-  /** Stock attacker (pirate ship, bombardier, ornithopter, kamikaze). */
+  /** Stock attacker (pirate ship, bombardier, ornithopter). */
   Stock = 'stock',
   /** Endless elite variant. */
   Elite = 'elite',
@@ -495,7 +489,7 @@ export const ENDLESS = {
   /**
    * Purchase pool for a generated wave: unitType -> budget cost, equal-weight
    * random picks among what the remaining budget affords. Keys are UNIT_TYPES
-   * ids — bosses and the kamikaze variant are deliberately absent.
+   * ids — the boss is deliberately absent.
    */
   cost: { 'pirate-ship': 1, bombardier: 0.9, ornithopter: 0.6 },
   /**
@@ -793,23 +787,16 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   // by the sheet key.
   'islewrath-turret->cannon': 20,
   'islewrath-turret->sky-ballista': 20,
-  // Boss Islewrath turret incoming rows (task 028/031): a city cannon shell
-  // chips a flat 2% of the turret's 100-point pool, a sky-ballista bolt 1%.
-  'cannon->islewrath-turret': 2,
-  'sky-ballista->islewrath-turret': 1,
+  // TEMP(task-03 design sandbox): turret incoming damage raised to 100% —
+  // ANY single defender hit (shell or bolt) instantly destroys a turret.
+  // RESTORE before leaving the sandbox: cannon 2, sky-ballista 1 (task
+  // 028/031 stock values — a chip of the turret's 100-point pool).
+  'cannon->islewrath-turret': 100,
+  'sky-ballista->islewrath-turret': 100,
   // Pirate chief head (task 031): every defender hit — shell or bolt —
   // chips a flat 2% of its 100-point pool.
   'cannon->islewrath-chief': 2,
   'sky-ballista->islewrath-chief': 2,
-  // Kamikaze ornithopter (task 031): identical combat values to the plain
-  // ornithopter on BOTH directions — it takes the same incoming rows and
-  // its stones land through its own attacker rows (the stone shell carries
-  // the shooter's unitType). Its 40%-of-max crash payload is NOT a matrix
-  // row — KamikazeSystem writes it directly.
-  'ornithopter_kamikaze->cannon': 6,
-  'ornithopter_kamikaze->sky-ballista': 8,
-  'cannon->ornithopter_kamikaze': 25,
-  'sky-ballista->ornithopter_kamikaze': 20,
 };
 
 /**
@@ -879,8 +866,8 @@ export const ORNITHOPTER = {
  * slot. Task 030 arms the laser main cannon: aim -> charge -> beam -> pause,
  * locking a defense-slot direction at aim convergence (a target dying during
  * charge/fire never re-aims). Task 031 adds the phase-two chief head: once
- * every turret is gone, the chief rises at the laser pivot and summons
- * kamikaze ornithopters.
+ * every turret is gone, the chief rises at the laser pivot and attacks the
+ * wall with the chief death light (see DEATH_LIGHT).
  */
 export const BOSS = {
   /** Straight-run berth point: centre line, one unit nearer the wall than
@@ -984,8 +971,10 @@ export const BOSS = {
 
 /**
  * Phase-two pirate chief (task 031). The head rises where the laser citadel
- * stood, never attacks, chips 2% per defender hit (DAMAGE_MATRIX rows), and
- * paces the kamikaze summons.
+ * stood; it takes 2% per defender hit (DAMAGE_MATRIX rows) and attacks the
+ * defence itself through the chief death light (DEATH_LIGHT below) — the
+ * ChiefDeathLightSystem owns that state machine, BossChiefSystem only mounts
+ * the head and runs its rise.
  */
 export const BOSS_CHIEF = {
   /** Seconds between all turrets dying and the rise starting (0.5 s). */
@@ -1004,11 +993,6 @@ export const BOSS_CHIEF = {
   health: COMBAT.unitHealth,
   /** Hit-core radius (m) of the head (baked hit_core helper). */
   coreRadius: 0.3,
-  /** Seconds between two summon batches — the first fires the instant the
-   *  rise completes, then every interval after. */
-  summonInterval: 30,
-  /** Kamikaze ornithopters per summon batch. */
-  summonBatch: 3,
   /** Death-burst size ratio over the shared debris pool (turret-scale, smaller). */
   burstRatio: 0.3,
   /** Carrier-LOCAL rest height of the burst chunks (deck bounce, like turrets). */
@@ -1016,23 +1000,58 @@ export const BOSS_CHIEF = {
 };
 
 /**
- * Kamikaze ornithopter (task 031). Identical flight and stone attack to the
- * plain ornithopter; once it has stopped it starts a fuse, then dives into
- * one surviving defender. The target is snapshotted at dive start and never
- * re-acquired — a target that dies mid-dive still eats the crash at its last
- * position (the ornithopter shatters on the wall). The crash deducts
- * `damageRatio` of the victim's max Health and destroys the flyer with no
- * kill bounty (self-destruction must not pay the player).
+ * Chief death light (铁头死光, task 03) — the phase-two chief head's own
+ * attack, run entirely by ChiefDeathLightSystem. The head never rotates for
+ * it except the sweep's own yaw. Two attacks off one beat clock:
+ *
+ * - LIGHTNING (死光闪电): every `intervalSec` after the rise completes (the
+ *   first beat fires at once), a jagged bolt snaps instantly between the
+ *   chief's hit core and one random surviving defender core, deducting
+ *   `damageRatio` of the victim's MAX Health. The bolt shows for
+ *   `boltLifeSec` (pure fx — ChiefDeathLightFxSystem), no growth animation.
+ * - SWEEP (死光扫射): every `sweepEveryBeats`-th beat (intervalSec x 4 = 12 s
+ *   after the rise) replaces the lightning: the head yaws to one end of the
+ *   wall, holds `aimHoldSec`, the red beam forms over `formSec` (no charge
+ *   up), then sweeps across ALL five defense slots over `sweepSec` — a yaw
+ *   arc tracking a point level with the mounted units' core centres (flat,
+ *   barely dipping — the beam grazes the rampart line without digging into
+ *   the wall). Every live defender core the beam crosses loses
+ *   `sweepDamageRatio` of its MAX Health, once per unit per sweep. The beat
+ *   count restarts when the sweep ends: the next lightning comes
+ *   `intervalSec` after the sweep finishes.
  */
-export const KAMIKAZE = {
-  /** Fuse seconds after the flyer has stopped (12 s). */
-  waitSec: 12,
-  /** Straight-line dive speed (m/s). */
-  diveSpeed: 2.0,
-  /** Fraction of the victim's max Health deducted on impact. */
-  damageRatio: 0.4,
-  /** Distance (m) under which the flyer counts as crashed into the target. */
-  arriveRadius: 0.15,
+export const DEATH_LIGHT = {
+  /** Seconds between two beats (lightning tempo). */
+  intervalSec: 3,
+  /** Fraction of the victim's MAX Health a lightning bolt deducts. */
+  damageRatio: 0.75,
+  /** Seconds the bolt visual stays up (instant on, instant off). */
+  boltLifeSec: 0.2,
+  /** The beat that fires the sweep instead of a lightning (1-based). */
+  sweepEveryBeats: 4,
+  /** Head yaw speed while swinging onto the sweep's start end (deg/s). */
+  aimTurnSpeedDeg: 120,
+  /** Hold at the start end between aim convergence and the beam form (s). */
+  aimHoldSec: 0.5,
+  /** Seconds the sweep beam takes to form (width scale-in, no charge). */
+  formSec: 0.1,
+  /** Seconds the wall-to-wall sweep takes. */
+  sweepSec: 1,
+  /** Fraction of MAX Health a defender loses when the sweep crosses it. */
+  sweepDamageRatio: 0.5,
+  /** Damage-corridor half-width (m) around the sweeping beam's centre line. */
+  sweepDamageRadius: 0.3,
+  /**
+   * Sweep aim line: the beam tracks a point on the wall's SEA face level
+   * with the mounted units' core centres — flat, barely dipping, so the
+   * graze never digs into the wall masonry — while its x walks the slot row
+   * past both end slots (x ±1.2 plus a margin).
+   */
+  sweepAimY: 1.05,
+  sweepSpanX: 1.35,
+  /** Beam reach multiplier over the origin-to-aim distance (blows past the
+   *  wall face like the boss laser's own boost). */
+  beamLengthBoost: 1.2,
 };
 
 /**
@@ -1118,26 +1137,5 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     stopZMax: BOSS.targetZ,
     boss: true,
     fixedTarget: { x: BOSS.targetX, z: BOSS.targetZ },
-  },
-  'ornithopter_kamikaze': {
-    // The summoned kamikaze variant (task 031): same glTF prototype, flight
-    // envelope and stone attack as the plain ornithopter — the sheet only
-    // flips the `kamikaze` ability on. Summoned by the phase-two chief head,
-    // never part of a wave sheet.
-    assetId: 'ornithopter',
-    scale: ORNITHOPTER.scale,
-    barY: 0.165 + COMBAT.healthBarMarginY,
-    movement: 'default-ship',
-    faction: 'attacker',
-    cruiseY: ORNITHOPTER.y,
-    armed: true,
-    fireInterval: COMBAT.ornithopterFireInterval,
-    rotor: false,
-    flap: true,
-    stone: true,
-    wake: false,
-    stopZMin: ORNITHOPTER.stopZMin,
-    stopZMax: ORNITHOPTER.stopZMax,
-    kamikaze: true,
   },
 };

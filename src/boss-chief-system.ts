@@ -12,10 +12,10 @@ import type {
   MeshStandardMaterial,
 } from '@iwsdk/core';
 import {
+  ChiefDeathLight,
   ChiefMount,
   ChiefPending,
   ChiefRise,
-  ChiefSummon,
   GameOver,
   GamePaused,
   Health,
@@ -23,7 +23,6 @@ import {
   IslewrathChief,
   LevelDirector,
   SpawnFade,
-  SummonCommand,
   UnitTag,
   BossTurret,
 } from './components.js';
@@ -37,19 +36,16 @@ import {
  * Phase-two chief head (海盗头领) — task 031. Once every boss turret is gone
  * (the BossTurret query runs empty while the hull still floats) the pirate
  * warlord's head rises at the laser citadel: a Health + HitCore child entity
- * every defender shell can hit (matrix rows chip 2% per strike), but with NO
- * attack ability of its own — it only paces the kamikaze summons.
+ * every defender shell can hit (matrix rows chip 2% per strike). The head's
+ * own attack — the chief death light (lightning beats + the wall sweep) — is
+ * NOT here: ChiefDeathLightSystem owns it, attached when the rise completes.
  *
  * Responsibilities stay small (TESS):
  * - the phase-two trigger, the 0.5 s beat, and the one-shot head mount
  *   (construction);
  * - the emerge rise animation (ChiefRise, pause-frozen scalar integration):
  *   the head starts sunk INSIDE the citadel drum and rises just proud of the
- *   rim — visually connected to the ship, never floating free;
- * - the summon clock: ChiefSummon only attaches when the rise completes
- *   (timer 0 → first batch fires at once), each elapse raises the
- *   SummonCommand thin command that LevelWaveSystem — the single spawn
- *   truth — consumes.
+ *   rim — visually connected to the ship, never floating free.
  *
  * Death is NOT here: ShellHitSystem's kill() owns it (bounty, burst,
  * dispose, ChiefDown command).
@@ -60,7 +56,6 @@ export class BossChiefSystem extends createSystem({
   chiefs: { required: [IslewrathChief] },
   pending: { required: [UnitTag, ChiefPending] },
   rising: { required: [IslewrathChief, ChiefRise] },
-  summoners: { required: [IslewrathChief, ChiefSummon] },
   directors: { required: [LevelDirector] },
 }) {
   /** pirate-chief prototype loaded once in init; null until it arrives. */
@@ -80,7 +75,6 @@ export class BossChiefSystem extends createSystem({
     if (this.paused() || this.over() || !this.gameRunning()) return;
     this.tickPending(delta);
     this.tickRise(delta);
-    this.tickSummons(delta);
     this.tryMountChief();
   }
 
@@ -107,8 +101,8 @@ export class BossChiefSystem extends createSystem({
 
   /**
    * Phase-two trigger: the boss hull is still on the water, every BossTurret
-   * part entity is gone, and no chief exists yet. Runs after the rise/summon
-   * ticks so a freshly mounted head never doubles.
+   * part entity is gone, and no chief exists yet. Runs after the rise tick
+   * so a freshly mounted head never doubles.
    */
   private tryMountChief(): void {
     if (this.chiefPrototype === null) return;
@@ -137,8 +131,8 @@ export class BossChiefSystem extends createSystem({
    * it SUNK into the citadel drum (mount seat minus riseSink), and hand it
    * its Health pool (bar pinned to the baked `hp_blood` crown mount) and hit
    * core (defender shells resolve against it through the shared
-   * ShellHitSystem). No summon clock yet — ChiefSummon only attaches when
-   * the rise completes, so the first batch leaves after the emerge.
+   * ShellHitSystem). No attack clock yet — ChiefDeathLight only attaches
+   * when the rise completes, so the first beat fires after the emerge.
    *
    * The seat comes from the ChiefMount component, captured while the boss
    * turrets were assembled. It CANNOT be re-derived at phase-two time: the
@@ -190,8 +184,9 @@ export class BossChiefSystem extends createSystem({
 
   /**
    * Pause-frozen scalar rise: y eases from seat-riseSink (sunk inside the
-   * drum) to seat+riseY (just proud of the rim). On completion the summon
-   * clock attaches at timer 0 — the first batch fires on the next tick.
+   * drum) to seat+riseY (just proud of the rim). On completion the death
+   * light attaches at beatTimer 0 — the first lightning fires on the next
+   * tick, and ChiefDeathLightSystem owns everything after.
    */
   private tickRise(delta: number): void {
     for (const chief of this.queries.rising.entities) {
@@ -208,33 +203,9 @@ export class BossChiefSystem extends createSystem({
         baseY - BOSS_CHIEF.riseSink + (BOSS_CHIEF.riseSink + BOSS_CHIEF.riseY) * eased;
       if (elapsed >= duration) {
         chief.removeComponent(ChiefRise);
-        chief.addComponent(ChiefSummon, { timer: 0 });
+        chief.addComponent(ChiefDeathLight, { timer: 0, beatCount: 0 });
       } else {
         chief.setValue(ChiefRise, 'elapsed', elapsed);
-      }
-    }
-  }
-
-  /**
-   * Summon clock: each head's countdown elapses into a SummonCommand thin
-   * command on the director (LevelWaveSystem spawns through its single
-   * pipeline). Timer 0 at mount fires the first batch immediately.
-   */
-  private tickSummons(delta: number): void {
-    for (const chief of this.queries.summoners.entities) {
-      const timer = Number(chief.getValue(ChiefSummon, 'timer')) - delta;
-      if (timer > 0) {
-        chief.setValue(ChiefSummon, 'timer', timer);
-        continue;
-      }
-      chief.setValue(ChiefSummon, 'timer', BOSS_CHIEF.summonInterval);
-      for (const director of this.queries.directors.entities) {
-        // A batch still in flight keeps its remaining count; the clock
-        // reset above paces the NEXT batch.
-        if (!director.hasComponent(SummonCommand)) {
-          director.addComponent(SummonCommand, { count: BOSS_CHIEF.summonBatch });
-        }
-        break;
       }
     }
   }
