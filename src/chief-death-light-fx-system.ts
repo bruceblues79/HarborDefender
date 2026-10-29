@@ -28,8 +28,10 @@ import { DEATH_LIGHT } from './level-config.js';
 import { rawSrgbColor } from './hit-flash-system.js';
 
 /** Lightning bolt: segment count and the peak lateral noise (m). */
-const BOLT_SEGMENTS = 12;
-const BOLT_JITTER = 0.09;
+const BOLT_SEGMENTS = 16;
+const BOLT_JITTER = 0.11;
+/** Segment length padding (x) so joints stay covered at any offset. */
+const BOLT_JOINT_OVERLAP = 1.12;
 /** Beam widths (m): red cross-slice glow, near-white hot core inside. */
 const BOLT_GLOW_WIDTH = 0.065;
 const BOLT_CORE_WIDTH = 0.024;
@@ -53,17 +55,25 @@ interface ChiefDeathLightFxRig {
   /** Sweep beam: two cross-slices of glow + core quads. */
   sweepGlows: Mesh[];
   sweepCores: Mesh[];
+  /**
+   * Continuous-bolt jitter state: lateral (perpA, perpB) offset per shared
+   * joint node ((K+1) nodes, both end nodes pinned at zero), re-rolled
+   * every frame for the fast writhing.
+   */
+  boltNodeOffsets: Float32Array;
 }
 
 /**
  * Visual rig for the chief death light (铁头死光) — a pure derived view of
  * the `ChiefDeathLight` state, never a writer of it:
  *
- * - lightning bolt: a segmented strip between the FROZEN bolt endpoints —
- *   cross-slice long quads (two orthogonal planes per segment) with fresh
- *   per-frame lateral noise; the noise envelope pins both endpoints so the
-   * bolt always connects chief and victim. No growth: it snaps on with the
- *   component and vanishes when boltTimer runs out.
+ * - lightning bolt: a CONTINUOUS polyline between the FROZEN bolt
+ *   endpoints — neighbouring segments share their joint node (a cross-slice
+ *   quad pair per span), so the bolt reads as one connected ribbon. The
+ *   joint offsets re-roll every frame (fast writhing); the zero-offset end
+ *   nodes pin both endpoints, so the bolt always connects chief and victim.
+ *   No growth: it snaps on with the component and vanishes when boltTimer
+ *   runs out.
  * - sweep beam: the same red cross-slice, unsegmented, stretched along the
  *   sweeping axis — the beam tracks the lerped wall-face aim the attack
  *   system derives from the frozen endpoints, so the fx never reads the
@@ -93,6 +103,10 @@ export class ChiefDeathLightFxSystem extends createSystem({
   private readonly perpA = new Vector3();
   private readonly perpB = new Vector3();
   private readonly center = new Vector3();
+  /** Continuous-bolt walk: segment start node, end node, span direction. */
+  private readonly nodeA = new Vector3();
+  private readonly nodeB = new Vector3();
+  private readonly segDir = new Vector3();
   private readonly aimA = new Vector3();
   private readonly aimB = new Vector3();
   private readonly aim = new Vector3();
@@ -172,7 +186,16 @@ export class ChiefDeathLightFxSystem extends createSystem({
     // Root-level world-space entity — the frozen component fields are world
     // coordinates; nothing parents the fx to the (yawing) head.
     this.world.createTransformEntity(group);
-    return { group, boltGroup, sweepGroup, boltGlows, boltCores, sweepGlows, sweepCores };
+    return {
+      group,
+      boltGroup,
+      sweepGroup,
+      boltGlows,
+      boltCores,
+      sweepGlows,
+      sweepCores,
+      boltNodeOffsets: new Float32Array((BOLT_SEGMENTS + 1) * 2),
+    };
   }
 
   update(delta: number): void {
@@ -217,10 +240,12 @@ export class ChiefDeathLightFxSystem extends createSystem({
   }
 
   /**
-   * Lightning layout: K segments between the frozen endpoints, each a
-   * cross-slice quad pair (glow + hot core) offset laterally by fresh noise
-   * every frame. The sin envelope pins both endpoints — the bolt always
-   * CONNECTS chief and victim no matter how the middle writhes.
+   * Lightning layout: a CONTINUOUS polyline between the frozen endpoints.
+   * (K+1) shared joint nodes carry the lateral offsets — re-rolled every
+   * frame for the fast writhing, both end nodes pinned at zero — and each
+   * cross-slice quad pair spans node i -> node i+1, so the bolt reads as
+   * one connected ribbon, never disjointed chunks. The 12% length padding
+   * keeps every joint covered while the spans swing.
    */
   private layoutBolt(rig: ChiefDeathLightFxRig, chief: Entity): void {
     this.origin.set(
@@ -242,27 +267,40 @@ export class ChiefDeathLightFxSystem extends createSystem({
     if (this.perpA.lengthSq() < 1e-6) this.perpA.set(1, 0, 0);
     this.perpA.normalize();
     this.perpB.copy(this.dir).cross(this.perpA).normalize();
-    this.qAlign.setFromUnitVectors(this.UP, this.dir);
 
+    // Fast writhing: the shared node offsets re-roll every frame.
+    const nodes = rig.boltNodeOffsets;
+    for (let i = 0; i <= BOLT_SEGMENTS; i++) {
+      // sin envelope: zero at both end nodes, peak mid-bolt.
+      const env = Math.sin(Math.PI * (i / BOLT_SEGMENTS));
+      nodes[i * 2] = (Math.random() * 2 - 1) * BOLT_JITTER * env;
+      nodes[i * 2 + 1] = (Math.random() * 2 - 1) * BOLT_JITTER * 0.6 * env;
+    }
+
+    // Walk the polyline: segment i spans node i -> node i+1.
+    this.nodeA.copy(this.origin);
     for (let i = 0; i < BOLT_SEGMENTS; i++) {
-      const t0 = i / BOLT_SEGMENTS;
-      const t1 = (i + 1) / BOLT_SEGMENTS;
-      const tm = (t0 + t1) / 2;
-      const segLen = length * (t1 - t0);
-      // Noise envelope: zero at both ends, peak mid-bolt.
-      const env = Math.sin(Math.PI * tm);
-      this.center
+      this.nodeB
         .copy(this.origin)
-        .addScaledVector(this.dir, length * tm)
-        .addScaledVector(this.perpA, (Math.random() * 2 - 1) * BOLT_JITTER * env)
-        .addScaledVector(this.perpB, (Math.random() * 2 - 1) * BOLT_JITTER * 0.6 * env);
+        .addScaledVector(this.dir, length * ((i + 1) / BOLT_SEGMENTS))
+        .addScaledVector(this.perpA, rig.boltNodeOffsets[(i + 1) * 2])
+        .addScaledVector(this.perpB, rig.boltNodeOffsets[(i + 1) * 2 + 1]);
+      this.center.copy(this.nodeA).add(this.nodeB).multiplyScalar(0.5);
+      this.segDir.copy(this.nodeB).sub(this.nodeA);
+      const segLen = this.segDir.length();
+      if (segLen < 1e-6) {
+        this.nodeA.copy(this.nodeB);
+        continue;
+      }
+      this.segDir.divideScalar(segLen);
+      this.qAlign.setFromUnitVectors(this.UP, this.segDir);
       for (let slice = 0; slice < 2; slice++) {
         const index = i * 2 + slice;
         const glow = rig.boltGlows[index];
         const core = rig.boltCores[index];
         glow.position.copy(this.center);
         core.position.copy(this.center);
-        // Slice B spins the quad 90 degrees around the bolt axis.
+        // Slice B spins the quad 90 degrees around the span axis.
         glow.quaternion.copy(this.qAlign);
         core.quaternion.copy(this.qAlign);
         if (slice === 1) {
@@ -270,9 +308,10 @@ export class ChiefDeathLightFxSystem extends createSystem({
           glow.quaternion.multiply(this.qSpin);
           core.quaternion.multiply(this.qSpin);
         }
-        glow.scale.set(BOLT_GLOW_WIDTH, segLen, 1);
-        core.scale.set(BOLT_CORE_WIDTH, segLen, 1);
+        glow.scale.set(BOLT_GLOW_WIDTH, segLen * BOLT_JOINT_OVERLAP, 1);
+        core.scale.set(BOLT_CORE_WIDTH, segLen * BOLT_JOINT_OVERLAP, 1);
       }
+      this.nodeA.copy(this.nodeB);
     }
   }
 
