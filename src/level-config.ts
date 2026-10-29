@@ -787,12 +787,10 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   // by the sheet key.
   'islewrath-turret->cannon': 20,
   'islewrath-turret->sky-ballista': 20,
-  // TEMP(task-03 design sandbox): turret incoming damage raised to 100% —
-  // ANY single defender hit (shell or bolt) instantly destroys a turret.
-  // RESTORE before leaving the sandbox: cannon 2, sky-ballista 1 (task
-  // 028/031 stock values — a chip of the turret's 100-point pool).
-  'cannon->islewrath-turret': 100,
-  'sky-ballista->islewrath-turret': 100,
+  // Boss Islewrath turret incoming rows (task 028/031): a city cannon shell
+  // chips a flat 2% of the turret's 100-point pool, a sky-ballista bolt 1%.
+  'cannon->islewrath-turret': 2,
+  'sky-ballista->islewrath-turret': 1,
   // Pirate chief head (task 031): every defender hit — shell or bolt —
   // chips a flat 2% of its 100-point pool.
   'cannon->islewrath-chief': 2,

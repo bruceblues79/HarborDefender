@@ -45,9 +45,9 @@ import {
 import {
   activeLevelList,
   COMBAT,
-  designList,
   ENDLESS,
   ECONOMY,
+  endlessList,
   OCEAN,
   OCEAN_FAR_Z,
   BOSS,
@@ -230,24 +230,23 @@ export class LevelWaveSystem extends createSystem({
   }
 
   /**
-   * Hand control to the level. Sandbox request (task 03): the run opens the
-   * DESIGN list — the boss stage (Islewrath down the centre line, fully
-   * crewed battery, 9999 g) — so the chief death light is testable end to
-   * end. The endless mode stays parked while the sandbox request stands:
-   * switching back is `setActiveLevelList(endlessList)` + `EndlessMode` +
-   * `resetEndlessWaves()` right here (the resetToWelcome / restart paths
-   * already keep the endless wave list trimmed).
+   * Hand control to the endless level. Called after the START panel dismisses:
+   * the run always opens the DDT-driven endless list (three cannons, 200 g,
+   * generated waves). The design sandbox list stays parked — switching to it
+   * is a deliberate request-level change, not a player-facing mode.
    */
   beginLevel(): void {
-    setActiveLevelList(designList);
+    setActiveLevelList(endlessList);
     // Explicit "game running" tag: MenuSystem shows the call button on its
     // qualify and hides everything on its dismiss.
     this.director.addComponent(GameStarted);
     this.director.removeComponent(GameOver);
-    // Stale boss-phase state must never leak into a run.
+    // Stale boss-phase and endless-phase state must never leak into a run.
     this.director.removeComponent(ChiefDown);
     this.director.removeComponent(NextWaveCommand);
     this.director.removeComponent(WaveIntermission);
+    resetEndlessWaves();
+    this.director.addComponent(EndlessMode);
     this.director.setValue(Wallet, 'money', this.startMoney());
     syncBatteryToLevel(this.world);
     this.enterLevel(0);
