@@ -321,11 +321,11 @@ export const REWARD_TABLE: Record<RewardTier, number> = {
  * Anti-air ballista aim envelope: against flyers — default rests at the
  * mid-range 50° between the 20° floor and the 75° ceiling. The deep 20°
  * floor lets the bolts reach the ornithopter's middle-air band (y ≈ 2.3 at
- * z -4.4..-2.8) instead of only the higher bombardier plane, and the ±60°
+ * z -4.4..-2.8) instead of only the higher bombardier plane, and the ±85°
  * traverse out-sweeps the stock cannon's ±45° so the mount covers the flanks.
  */
 export const SKY_BALLISTA = {
-  yawRange: 60,
+  yawRange: 85,
   pitchDefault: 50,
   pitchMin: 20,
   pitchMax: 75,
