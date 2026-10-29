@@ -133,7 +133,7 @@ export const PACING = {
 
 /**
  * Ocean body footprint in world space. Kept in step with the ocean GLB
- * placement in battle-setup.ts (10 m body centred at z = -6, lifted 0.55).
+ * placement in battle-setup.ts (10 m body centred at z = -6.5, lifted 0.55).
  */
 export const OCEAN = {
   /** Body width along x (m). */
@@ -141,7 +141,7 @@ export const OCEAN = {
   /** Body length along z (m). */
   length: 10,
   /** Body centre z (m). */
-  centerZ: -6,
+  centerZ: -6.5,
   /** Top-surface y (m): 0.55 lift + half of the 0.25 m thickness. */
   surfaceY: 0.675,
 };
@@ -153,9 +153,9 @@ export const OCEAN_FAR_Z: number = OCEAN.centerZ - OCEAN.length / 2;
  * Harbor wall placement — kept in step with `harbor-wall.glb` (a
  * 3.4 × 0.5 × 0.4 m block) and its transform in battle-setup.ts. The block is
  * only 0.4 m deep in z and straddles the water's edge: its seaward face sits
- * exactly on the ocean's near edge (z = -1), so beyond it there is only wall.
+ * exactly on the ocean's near edge (z = -1.5), so beyond it there is only wall.
  */
-export const WALL_CENTER_Z = -0.8;
+export const WALL_CENTER_Z = -1.3;
 export const WALL_DEPTH_Z = 0.4;
 export const WALL_SEA_FACE_Z: number = WALL_CENTER_Z - WALL_DEPTH_Z / 2;
 /** Land-side face; past it the wall no longer holds burst chunks up. */
@@ -203,8 +203,8 @@ export const PLACEABLE_UNITS: DefenseUnitId[] = ['cannon', 'sky-ballista'];
 export const DEFENSE_BUTTONS = {
   /** Button centre height — a small lift above the wall's land face (y 0.8). */
   y: 0.65,
-  /** Button centre z — a hand's width off the wall's land face (z -0.6). */
-  z: -0.48,
+  /** Button centre z — a hand's width off the wall's land face (z -1.1). */
+  z: -0.98,
   /** Half-gap between the build and repair buttons around the slot centre. */
   spacingX: 0.115,
   /**
@@ -551,9 +551,9 @@ export const COMBAT = {
   /** Gravity (m/s^2) for the parabolic flight. */
   gravity: 9.8,
   /**
-   * Muzzle speed (m/s). Tuned so a flat shot (0°) reaches z ≈ -2.4 — just
-   * past the dock line — and the maximum pitch (45°) lands at z ≈ -6.9:
-   *   launch at 45° ≈ (x, 0.941, -0.941) — the muzzle swings up on its pivot;
+   * Muzzle speed (m/s). Tuned so a flat shot (0°) reaches z ≈ -2.9 — just
+   * past the dock line — and the maximum pitch (45°) lands at z ≈ -7.4:
+   *   launch at 45° ≈ (x, 0.941, -1.441) — the muzzle swings up on its pivot;
    *   splash y = surfaceY - splashMargin ≈ 0.625, travel Δz ≈ 5.96
    *   s = v/√2;  s·[s + √(s² + 2g·0.316)] / g = 5.96  ->  v ≈ 7.45
    * A slow, lobbed cannonball arc (~26% of the original 29 m/s).
@@ -737,7 +737,7 @@ export const TRAJECTORY_PREVIEW = {
   /** Cube edge (m) at the tail (full size) — under half a core radius. */
   dotSize: 0.04,
   /** Muzzle-end dot edge scale (× dotSize); grows linearly to 1 at the tail. */
-  dotScaleNear: 0.1,
+  dotScaleNear: 0.2,
   /** Warm gold (sRGB hex) — the shared accent (defense pads / repair glow). */
   color: 0xffc46a,
   /**
@@ -842,30 +842,30 @@ export const FLYER_Y =
 /**
  * The bombardier's berth band, now designer data instead of a bolt-line
  * derivation: with the ballista's depression floor opened to 20° the derived
- * far edge (≈ -5.65) would reach deep into the ornithopter's own band, so
- * the flyer keeps its tuned explicit range — far out at -2.6, snug against
- * the wall at -1.23 (the old 75° crossing). MIN < MAX keeps the ship
+ * far edge (≈ -6.15) would reach deep into the ornithopter's own band, so
+ * the flyer keeps its tuned explicit range — far out at -3.1, snug against
+ * the wall at -1.73 (the old 75° crossing). MIN < MAX keeps the ship
  * constants' reading — MIN far out, MAX against the wall.
  */
-export const FLYER_STOP_Z_MIN = -2.6;
-export const FLYER_STOP_Z_MAX = -1.23;
+export const FLYER_STOP_Z_MIN = -3.1;
+export const FLYER_STOP_Z_MAX = -1.73;
 
 /**
  * Ornithopter flight envelope. The middle-air band sits below the
  * bombardier's cruise plane but inside the city cannons' reach: a 45° shell
- * launched from y 0.941 crosses y 2.3 on its descent between z ≈ -3.0 and
- * -5.0, so a flyer berthed in the band's core [-4.4, -3.0] stays in the
- * 45° envelope's kill corridor, while the forward extension [-3.0, -2.8]
+ * launched from y 0.941 crosses y 2.3 on its descent between z ≈ -3.5 and
+ * -5.5, so a flyer berthed in the band's core [-4.9, -3.5] stays in the
+ * 45° envelope's kill corridor, while the forward extension [-3.5, -3.3]
  * sits this side of it — still well inside cannon range. The 20° ballista
- * bolt line from its muzzle (y 1.134, z -0.916) crosses the band's core
+ * bolt line from its muzzle (y 1.134, z -1.416) crosses the band's core
  * height range [1.8, 2.8] throughout, so the anti-air mount covers it too.
  */
 export const ORNITHOPTER = {
   /** Cruise altitude (m) — the unit's object-origin height. */
   y: 2.3,
-  /** Berth band: far out at -4.4, nearest at -2.8. */
-  stopZMin: -4.4,
-  stopZMax: -2.8,
+  /** Berth band: far out at -4.9, nearest at -3.3. */
+  stopZMin: -4.9,
+  stopZMax: -3.3,
   /** Uniform model scale — 0.9 reads 10% smaller next to the bombardier. */
   scale: 0.9,
   /** Wing flap frequency (rad/s) and swing amplitude (rad). */
