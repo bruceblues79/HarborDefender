@@ -132,7 +132,7 @@ export class ShipMovementSystem extends createSystem({
       if (other.getValue(UnitTag, 'unitType') !== unitType) continue;
       // Airborne units never queue: they march above the water where hulls
       // cannot collide, and the corridor yield would only deadlock crossing
-      // routes (two simultaneous kamikaze flyers blocking each other forever).
+      // routes (two simultaneous flyers blocking each other forever).
       // WakeSource presence is the unit-sheet water-contact fact — flyers
       // carry none (same unitType ⇒ same wake-ness, so one check covers both).
       if (!other.hasComponent(WakeSource)) continue;

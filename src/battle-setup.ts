@@ -30,7 +30,7 @@ import {
   OceanTag,
   Repairing,
 } from './components.js';
-import { COMBAT, BALLISTA_MUZZLE_LOCAL_Y, BALLISTA_MUZZLE_LOCAL_Z, activeLevelList, DEFENSE_BUTTONS, DEFENSE_PAD, DEFENSE_SLOTS, DEFENDER_BAR_Y, SKY_BALLISTA } from './level-config.js';
+import { COMBAT, BALLISTA_MUZZLE_LOCAL_Y, BALLISTA_MUZZLE_LOCAL_Z, activeLevelList, DEFENSE_BUTTONS, DEFENSE_PAD, DEFENSE_SLOTS, DEFENDER_BAR_Y, OCEAN, SKY_BALLISTA, WALL_CENTER_Z } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
 import { createDefenseButtonRig } from './defense-buttons.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
@@ -133,7 +133,7 @@ function mountDefenseUnit(
   const prototype = unitId === 'cannon' ? cannonPrototype : ballistaPrototype;
   if (!prototype) throw new Error(`battle-setup: unit "${unitId}" not loaded`);
   const unit = prototype.clone(true);
-  unit.position.set(slot.x, 0.8 + DEFENSE_PAD.height, -0.8);
+  unit.position.set(slot.x, 0.8 + DEFENSE_PAD.height, WALL_CENTER_Z);
   // Runtime-instantiated GLB meshes keep three.js defaults
   // (both false); scene-JSON assets get these via content flags.
   unit.traverse((child: Object3D) => {
@@ -144,8 +144,8 @@ function mountDefenseUnit(
   });
   const unitEntity = world.createTransformEntity(unit);
   // RayInteractable makes the unit pressable (mouse / touch / XR ray);
-  // CannonAim hands it to the shared aim system, with per-entity pitch
-  // limits so the ballista's high-elevation envelope rides the same
+  // CannonAim hands it to the shared aim system, with per-entity yaw and
+  // pitch limits so each mount's traverse/elevation envelope rides the same
   // component.
   unitEntity.addComponent(RayInteractable);
   if (unitId === 'cannon') {
@@ -178,6 +178,7 @@ function mountDefenseUnit(
     // same HitCore/Health pool as a cannon so ships and bombardiers can
     // knock it out (17.5% / 15% per hit) and the defeat check counts it.
     unitEntity.addComponent(CannonAim, {
+      yawRangeDeg: SKY_BALLISTA.yawRange,
       pitchDeg: SKY_BALLISTA.pitchDefault,
       pitchMinDeg: SKY_BALLISTA.pitchMin,
       pitchMaxDeg: SKY_BALLISTA.pitchMax,
@@ -404,16 +405,16 @@ export function startBattle(world: World): void {
             }
           });
 
-          // Ocean extended to 10 m: near edge stays at z = -1 (against the
-          // wall), centre shifts back from -4 to -6.
-          oceanObject.position.set(0, 0.55, -6);
+          // Ocean extended to 10 m: the near edge sits against the wall's
+          // sea face, the centre rides OCEAN.centerZ.
+          oceanObject.position.set(0, 0.55, OCEAN.centerZ);
           world.createTransformEntity(oceanObject).addComponent(OceanTag);
           battlefieldObjects.push(oceanObject);
 
           // Place harbor wall at the ocean body's maxZ edge
           const wallObject = wallGltf.scene;
           bakeWallFaceMottle(wallObject);
-          wallObject.position.set(0, 0.55, -0.8);
+          wallObject.position.set(0, 0.55, WALL_CENTER_Z);
           // Runtime-instantiated GLB meshes keep three.js defaults
           // (both false); scene-JSON assets get these via content flags.
           wallObject.traverse((child: Object3D) => {
@@ -464,7 +465,7 @@ export function startBattle(world: World): void {
             slotIndex++
           ) {
             const pad = padPrototype.clone(true);
-            pad.position.set(DEFENSE_SLOTS[slotIndex].x, 0.8, -0.8);
+            pad.position.set(DEFENSE_SLOTS[slotIndex].x, 0.8, WALL_CENTER_Z);
             pad.traverse((child: Object3D) => {
               if ((child as Mesh).isMesh) {
                 child.castShadow = true;

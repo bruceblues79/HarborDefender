@@ -2422,8 +2422,8 @@ const CHIEF_PATCH_COLOR = 0x14161a;
 
 /**
  * Head of the pirate warlord that rises from the boss's laser citadel once
- * every turret is gone (task 031). It never attacks — it only exists to be
- * shot at and to summon kamikaze ornithopters.
+ * every turret is gone (task 031). It exists to be shot at — and, from task
+ * 03 on, to attack the wall itself with the chief death light.
  *
  * Design (v0.1.218 rework): an ANGULAR mechanical head in a samurai-kabuto
  * style — blocky plates instead of a sphere, a flared lamellar skirt

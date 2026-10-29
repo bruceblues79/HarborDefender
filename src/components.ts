@@ -179,6 +179,23 @@ export const BoltTag = createComponent('BoltTag', {});
 export const StoneTag = createComponent('StoneTag', {});
 
 /**
+ * Singleton tag on the trajectory-guide entity owned by
+ * TrajectoryPreviewSystem: an InstancedMesh of sparse unlit cubes redrawn
+ * every frame while a defense unit is being aim-dragged. Pure visual —
+ * no RayInteractable, no state fields.
+ */
+export const TrajectoryPreview = createComponent('TrajectoryPreview', {});
+
+/**
+ * Explicit "this cannon is mid-drag" tag, written and cleared only by
+ * CannonAimSystem at its drag-session anchors (browser pointer anchoring /
+ * XR grab, and their releases). Unlike the transient `Pressed` hover tag —
+ * which InputSystem clears the moment the pointer slides off the mount —
+ * this tag lives for the whole gesture, matching the drag itself.
+ */
+export const AimDragging = createComponent('AimDragging', {});
+
+/**
  * Auto-fire ability of a cannon's muzzle: launch one pooled shell every
  * `interval` seconds. When the pool is empty the shot is skipped and retried
  * shortly, so a busy pool degrades to a slower fire rate, never a stall.
@@ -223,13 +240,16 @@ export const BallisticFlight = createComponent('BallisticFlight', {
  * Cannon aim state — the single truth for traverse and elevation.
  * CannonAimSystem writes it from drag input (browser drag / XR pinch-drag via
  * the native `Pressed` tag) and applies it every frame: yaw on the cannon
- * root, pitch on the gun_rotate pivot. Pitch limits are per-entity scalars so
- * a sky ballista (fixed high elevation) can share the component with cannons;
- * the defaults reproduce the stock cannon envelope.
+ * root, pitch on the gun_rotate pivot. Yaw and pitch limits are per-entity
+ * scalars so mounts with different envelopes (the sky ballista's wide
+ * traverse and high elevation) can share the component with cannons; the
+ * defaults reproduce the stock cannon envelope.
  */
 export const CannonAim = createComponent('CannonAim', {
-  /** Whole-cannon traverse, degrees, clamped ±COMBAT.aimYawRange. */
+  /** Whole-cannon traverse, degrees, clamped ±yawRangeDeg. */
   yawDeg: { type: 'Float32', default: 0 },
+  /** Per-entity traverse half-range (deg) — stock cannon: COMBAT.aimYawRange. */
+  yawRangeDeg: { type: 'Float32', default: COMBAT.aimYawRange },
   /** Barrel elevation, degrees, clamped [pitchMinDeg, pitchMaxDeg]. */
   pitchDeg: { type: 'Float32', default: COMBAT.aimPitchDefault },
   /** Per-entity elevation floor (deg) — stock cannon: COMBAT.aimPitchMin. */
@@ -277,8 +297,6 @@ export const HitCore = createComponent('HitCore', {
    * 'hit_core' only reliably resolves on single-seat assets — the default).
    */
   nodeName: { type: 'String', default: 'hit_core' },
-  /** Endless elite variant marker (bigger pool, boosted outgoing damage). */
-  elite: { type: 'Boolean', default: false },
   /** Kill-bounty tier (RewardTier) paid once when this core dies. */
   reward: { type: 'String', default: 'none' },
 });
@@ -322,8 +340,6 @@ export const ShellFaction = createComponent('ShellFaction', {
   faction: { type: 'String', default: 'defender' },
   /** Attacker unit id for the DAMAGE_MATRIX lookup ('cannon', 'bombardier'…). */
   unitType: { type: 'String', default: '' },
-  /** Fired by an endless elite — damage is boosted by ENDLESS.eliteDamageRatio. */
-  elite: { type: 'Boolean', default: false },
 });
 
 /**
@@ -485,9 +501,10 @@ export const BuildOpen = createComponent('BuildOpen', {
 /**
  * One world-space build/repair button on the wall's land face: a flat
  * low-poly icon extrusion with an invisible enlarged hit proxy. Defense-
- * ButtonSystem owns the visuals (repair breathes via icon scale, the open
- * slot's build icon shrinks via icon scale); the press itself is
- * InputSystem's `Pressed` tag (mouse / touch / XR ray share the path).
+ * ButtonSystem owns the visuals (the repairing unit's repair icon shrinks
+ * and glows, the open slot's build icon shrinks via icon scale); the press
+ * itself is InputSystem's `Pressed` tag (mouse / touch / XR ray share the
+ * path).
  */
 export const DefenseButton = createComponent('DefenseButton', {
   /** Index into DEFENSE_SLOTS this button serves. */
@@ -658,16 +675,6 @@ export const ChiefPending = createComponent('ChiefPending', {
 export const IslewrathChief = createComponent('IslewrathChief', {});
 
 /**
- * Chief-head summon pacing (召唤节拍). One countdown to the next kamikaze
- * batch; BossChiefSystem is the only writer. timer 0 at mount = the first
- * batch leaves immediately ("出现后开始召唤").
- */
-export const ChiefSummon = createComponent('ChiefSummon', {
-  /** Seconds until the next summon batch fires. */
-  timer: { type: 'Float32', default: 0 },
-});
-
-/**
  * Chief-head emerge animation (升场状态). One-shot: BossChiefSystem
  * integrates the head's local y from the mount point up to mount + riseY
  * over `duration`, then removes the component (head sits at its rest pose).
@@ -686,27 +693,54 @@ export const ChiefRise = createComponent('ChiefRise', {
 });
 
 /**
- * Kamikaze ability state (玉碎状态机) on the summoned ornithopter variant.
- * Flight and the stone attack stay in the shared armed-flyer systems; this
- * component only runs the fuse-and-dive: after the carrier's ShipMovement
- * state reaches 'stopped', wait waitSec, snapshot one surviving defender
- * core, then dive at it. The snapshot is never re-acquired — a victim that
- * dies mid-dive still eats the crash at its last position. KamikazeSystem
- * is the only writer; the crash itself deducts the victim's Health directly
- * and death stays single-truthed (victim via the death sweep, flyer self-
- * destructs without a bounty).
+ * Chief death light (铁头死光) attack state on the phase-two chief head.
+ * Attached when the rise completes; ChiefDeathLightSystem is the only
+ * writer, ChiefDeathLightFxSystem is a pure derived view (renders from the
+ * frozen fields below, never the scene graph). Pacing and damage ratios
+ * live in DEATH_LIGHT (level-config).
+ *
+ * Beat clock (state 'idle'): every DEATH_LIGHT.intervalSec a beat fires —
+ * a lightning bolt, or on the sweepEveryBeats-th beat the sweep. One truth
+ * per attack, frozen when it starts:
+ *
+ * - bolt (死光闪电): instant segment between the chief's hit core and one
+ *   random surviving defender core; `boltTimer` counts the visual's life
+ *   down while the state stays 'idle'. The 20%-of-max damage is written at
+ *   fire time; death stays in ShellHitSystem's sweep.
+ * - sweep (死光扫射): the state machine `aiming -> hold -> forming ->
+ *   sweeping` walks the head's yaw to one end of the wall, holds, forms the
+ *   beam, then sweeps across the slot row. `origin` freezes the chief's hit
+ *   core position; `aimA`/`aimB` are the two wall-face endpoints the beam
+ *   tracks between (world space). Each live defender core the sweeping
+ *   corridor crosses loses 50% of its max Health, once per sweep.
  */
-export const Kamikaze = createComponent('Kamikaze', {
-  /** 'waiting' (fuse, only ticks once stopped) | 'diving'. */
-  state: { type: 'String', default: 'waiting' },
-  /** Fuse countdown while waiting (seconds). */
+export const ChiefDeathLight = createComponent('ChiefDeathLight', {
+  /** 'idle' | 'aiming' | 'hold' | 'forming' | 'sweeping'. */
+  state: { type: 'String', default: 'idle' },
+  /** Countdown of the current phase (beat gap / hold / form / sweep), s. */
   timer: { type: 'Float32', default: 0 },
-  /** Core index of the dive target (snapshot; -1 while waiting). */
-  targetCoreIndex: { type: 'Int32', default: -1 },
-  /** World-space dive endpoint snapshot (the target core's position). */
-  targetX: { type: 'Float32', default: 0 },
-  targetY: { type: 'Float32', default: 0 },
-  targetZ: { type: 'Float32', default: 0 },
+  /** Lightnings fired since the last sweep; the sweep replaces beat 8. */
+  beatCount: { type: 'Int32', default: 0 },
+  /** Frozen lightning endpoints (world): chief hit core -> victim core. */
+  boltOriginX: { type: 'Float32', default: 0 },
+  boltOriginY: { type: 'Float32', default: 0 },
+  boltOriginZ: { type: 'Float32', default: 0 },
+  boltTargetX: { type: 'Float32', default: 0 },
+  boltTargetY: { type: 'Float32', default: 0 },
+  boltTargetZ: { type: 'Float32', default: 0 },
+  /** Remaining bolt-visual life (s); 0 = no bolt showing. */
+  boltTimer: { type: 'Float32', default: 0 },
+  /** Frozen sweep beam origin: the chief's hit-core world position. */
+  originX: { type: 'Float32', default: 0 },
+  originY: { type: 'Float32', default: 0 },
+  originZ: { type: 'Float32', default: 0 },
+  /** Frozen sweep aim endpoints (world, on the wall's sea face). */
+  aimAX: { type: 'Float32', default: 0 },
+  aimAY: { type: 'Float32', default: 0 },
+  aimAZ: { type: 'Float32', default: 0 },
+  aimBX: { type: 'Float32', default: 0 },
+  aimBY: { type: 'Float32', default: 0 },
+  aimBZ: { type: 'Float32', default: 0 },
 });
 
 /**
@@ -717,18 +751,6 @@ export const Kamikaze = createComponent('Kamikaze', {
  * director entity like BuildOpen.
  */
 export const ChiefDown = createComponent('ChiefDown', {});
-
-/**
- * Thin command (薄命令) on the director: spawn one batch of kamikaze
- * ornithopters. BossChiefSystem writes it when the chief's summon timer
- * elapses; LevelWaveSystem consumes it (removes the tag, runs its shared
- * spawnUnitByType pipeline `count` times). Kept as a command so the spawn
- * pipeline stays single-truthed inside LevelWaveSystem.
- */
-export const SummonCommand = createComponent('SummonCommand', {
-  /** How many units this batch spawns. */
-  count: { type: 'Int32', default: 0 },
-});
 
 /**
  * Explicit tag: the current run is the endless level (endless 模式标记).
@@ -776,6 +798,8 @@ export default defineComponents([
   CannonFire,
   BallisticFlight,
   CannonAim,
+  AimDragging,
+  TrajectoryPreview,
   SplashFade,
   HitCore,
   Health,
@@ -800,11 +824,9 @@ export default defineComponents([
   ChiefMount,
   ChiefPending,
   IslewrathChief,
-  ChiefSummon,
   ChiefRise,
-  Kamikaze,
+  ChiefDeathLight,
   ChiefDown,
-  SummonCommand,
   EndlessMode,
   NextWaveCommand,
   WaveIntermission,

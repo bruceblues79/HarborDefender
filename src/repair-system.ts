@@ -70,7 +70,7 @@ export class RepairSystem extends createSystem({
       const cost = ECONOMY.repairCostPerSecond * delta;
       if (money < cost) {
         // Out of money: stop here — the state peels for everyone and the
-        // buttons' breathing dies with the tags.
+        // buttons' shrunk pose and glow die with the tags.
         entity.removeComponent(Repairing);
         continue;
       }

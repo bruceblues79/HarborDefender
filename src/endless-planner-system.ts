@@ -33,16 +33,14 @@ const POOL: [string, number][] = Object.entries(ENDLESS.cost);
  * LevelWaveSystem's shared pipeline.
  *
  * Composition (all knobs in ENDLESS):
- * - every `specialEvery` waves the wave is special — `waveNumber/specialEvery`
- *   odd sends ONE lone elite (`elite:<unitType>`, centre line, no escorts),
- *   even sends ONE lone boss rolled from `bossPool` — no escort;
+ * - every `bossEvery` waves the wave IS a boss wave — one lone boss rolled
+ *   from `bossPool`, no escorts;
  * - otherwise a budget buys units from the `cost` pool (equal-weight picks
  *   among what remains affordable): budget = base growth × defender
  *   pressure × money grind. A richer wall and a fatter wallet both draw a
  *   heavier wave — 消磨玩家金币;
- * - the lone elite is a bigger, double-health variant whose shells carry
- *   the elite flag (boosted damage). The stock unit's matrix rows apply
- *   everywhere — difficulty rides composition + coefficients.
+ * - difficulty rides composition only: units are stock, the damage matrix
+ *   rows apply unchanged everywhere.
  */
 export class EndlessPlannerSystem extends createSystem({
   /** Exclusive command query: a runtime-mounted tag needs its own query —
@@ -68,19 +66,9 @@ export class EndlessPlannerSystem extends createSystem({
 
   /** Build the WaveSpec for the given 1-based wave number. */
   private composeWave(waveNumber: number, director: Entity): WaveSpec {
-    // Special cadence: every `specialEvery` waves the wave IS special —
-    // waveNumber/4 odd sends ONE lone elite down the centre line, even sends
-    // ONE lone boss — both stand alone, no escort composition.
-    if (waveNumber % ENDLESS.specialEvery === 0) {
-      const cadence = waveNumber / ENDLESS.specialEvery;
-      // Elite beat (单数): one pooled unit, scaled by `eliteScale`, no escorts
-      // — 单独精英 (matches the boss beat).
-      if (cadence % 2 === 1) {
-        const [type] =
-          POOL[Math.floor(Math.random() * POOL.length)];
-        return { units: [ENDLESS.elitePrefix + type] };
-      }
-      // Boss beat (双数): one lone boss rolled from the pool.
+    // Boss cadence: every `bossEvery` waves the wave IS a boss wave — one
+    // lone boss rolled from the pool, no escort composition.
+    if (waveNumber % ENDLESS.bossEvery === 0) {
       const boss =
         ENDLESS.bossPool[Math.floor(Math.random() * ENDLESS.bossPool.length)];
       return { units: [boss] };

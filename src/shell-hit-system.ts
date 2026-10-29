@@ -32,7 +32,6 @@ import {
   BOSS_CHIEF,
   COMBAT,
   DAMAGE_MATRIX,
-  ENDLESS,
   OCEAN,
   REWARD_TABLE,
   RewardTier,
@@ -157,22 +156,10 @@ export class ShellHitSystem extends createSystem({
           );
           // Damage is a matrix lookup, not a faction flat rate: the shell's
           // attacker unit type x the core's unit type (unknown pair -> 0).
-          // Elite modifiers (endless DDT), the matrix itself stays untouched:
-          // an elite-fired shell bites harder (multiplier on the stock row),
-          // while damage INTO an elite is a FIXED bite of the elite's own
-          // life — the attacker's stock damage never reaches the pool.
           let damage =
             DAMAGE_MATRIX[
               `${String(shell.getValue(ShellFaction, 'unitType'))}->${String(core.getValue(HitCore, 'unitType'))}`
             ] ?? 0;
-          if (shell.getValue(ShellFaction, 'elite') === true) {
-            damage *= ENDLESS.eliteDamageRatio;
-          }
-          if (core.getValue(HitCore, 'elite') === true) {
-            damage =
-              Number(core.getValue(Health, 'max')) *
-              ENDLESS.eliteHitLifeFraction;
-          }
           this.hitDamages.push(damage);
           break;
         }
@@ -203,8 +190,8 @@ export class ShellHitSystem extends createSystem({
     }
 
     // Death sweep: any live core whose pool has run dry dies here — whatever
-    // wrote the last points (a shell above, the boss laser, a kamikaze
-    // payload), the death path stays single-truthed in this system. Runs
+    // wrote the last points (a shell above, the boss laser, the chief death
+    // light), the death path stays single-truthed in this system. Runs
     // after the shell resolution so a same-frame shell kill is not doubled.
     // The victims are snapshotted first: kill() disposes entities, which
     // mutates the live query array mid-iteration. The position-cache guard
@@ -222,7 +209,7 @@ export class ShellHitSystem extends createSystem({
   /**
    * Charge one hit of damage. The pool is the single truth: reaching zero
    * funnels into `kill`, exactly like any other lethal write (boss laser,
-   * kamikaze payload) picked up by the death sweep.
+   * chief death light) picked up by the death sweep.
    */
   private applyDamage(core: Entity, damage: number): void {
     const hp = Number(core.getValue(Health, 'current')) - damage;
@@ -234,14 +221,15 @@ export class ShellHitSystem extends createSystem({
   /**
    * Kill a core whose pool is empty. Four paths:
    *
-   * - the phase-two pirate chief head (IslewrathChief, task 031) pays its
-   *   REWARD_TABLE tier, bursts at the citadel top (deck-bounce chunks, no
+   * - the phase-two pirate chief head (IslewrathChief, task 031) pays the
+   *   BossChief bounty, bursts at the citadel top (deck-bounce chunks, no
    *   sink ripple — it dies aboard), disposes, and raises the ChiefDown thin
    *   command: LevelWaveSystem then clears the field and wins the run.
-   * - a boss gun turret (BossTurret) pays its REWARD_TABLE tier, bursts into
-   *   a scaled-down chunk cloud on the deck (no sink ripple — it dies aboard),
-   *   and is disposed so the turret mesh leaves the hull clone. Its ECS
-   *   children (health bar) tear down via disqualify. No revival.
+   * - a boss gun turret (BossTurret) pays the flat BOSS_BOUNTY, bursts into
+   *   a scaled-down chunk cloud on
+   *   the deck (no sink ripple — it dies aboard), and is disposed so the
+   *   turret mesh leaves the hull clone. Its ECS children (health bar) tear
+   *   down via disqualify. No revival.
    * - any other attacker bursts at the waves, pays, sinks (dispose + ripple).
    * - a defender cannon is tagged Destroyed and hidden.
    */
@@ -270,8 +258,8 @@ export class ShellHitSystem extends createSystem({
       return;
     }
     if (core.hasComponent(BossTurret)) {
-      // Kill bounty: the part's own reward tier (REWARD_TABLE), paid into
-      // the director's wallet — each turret pays once on death.
+      // Kill bounty: the turret's flat BOSS_BOUNTY, paid into the director's
+      // wallet — each turret pays once on death.
       this.creditKillReward(reward);
       if (at) {
         this.spawnDieBurst(
@@ -321,13 +309,15 @@ export class ShellHitSystem extends createSystem({
   /**
    * Pay the dying core's reward-tier bounty into the director's wallet.
    * Runs on the death frame only (never per ship per frame); several kills
-   * in one sweep each pay.
+   * in one sweep each pay. One flat REWARD_TABLE read per tier — no
+   * destruction-order or economy-linked pricing.
    */
   private creditKillReward(tier: RewardTier): void {
     if (tier === RewardTier.None) return;
+    const amount = REWARD_TABLE[tier];
     for (const director of this.queries.directors.entities) {
       const money = Number(director.getValue(Wallet, 'money'));
-      director.setValue(Wallet, 'money', money + REWARD_TABLE[tier]);
+      director.setValue(Wallet, 'money', money + amount);
       return;
     }
   }
