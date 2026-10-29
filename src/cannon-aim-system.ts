@@ -274,6 +274,9 @@ export class CannonAimSystem extends createSystem({
       this.xrDragCannon = cannon.index;
       this.xrDragEntity = cannon;
       this.xrDragSpace = space;
+      // Whole-gesture marker, mirroring the browser anchor: the trajectory
+      // guide tracks the tag, not the private drag state.
+      cannon.addComponent(AimDragging);
       space.getWorldPosition(this.xrHandStart);
       this.xrAimStartYaw = Number(cannon.getValue(CannonAim, 'yawDeg'));
       this.xrAimStartPitch = Number(cannon.getValue(CannonAim, 'pitchDeg'));
