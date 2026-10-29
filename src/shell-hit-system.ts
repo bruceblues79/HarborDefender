@@ -32,7 +32,6 @@ import {
   BOSS_CHIEF,
   COMBAT,
   DAMAGE_MATRIX,
-  ENDLESS,
   OCEAN,
   REWARD_TABLE,
   RewardTier,
@@ -157,22 +156,10 @@ export class ShellHitSystem extends createSystem({
           );
           // Damage is a matrix lookup, not a faction flat rate: the shell's
           // attacker unit type x the core's unit type (unknown pair -> 0).
-          // Elite modifiers (endless DDT), the matrix itself stays untouched:
-          // an elite-fired shell bites harder (multiplier on the stock row),
-          // while damage INTO an elite is a FIXED bite of the elite's own
-          // life — the attacker's stock damage never reaches the pool.
           let damage =
             DAMAGE_MATRIX[
               `${String(shell.getValue(ShellFaction, 'unitType'))}->${String(core.getValue(HitCore, 'unitType'))}`
             ] ?? 0;
-          if (shell.getValue(ShellFaction, 'elite') === true) {
-            damage *= ENDLESS.eliteDamageRatio;
-          }
-          if (core.getValue(HitCore, 'elite') === true) {
-            damage =
-              Number(core.getValue(Health, 'max')) *
-              ENDLESS.eliteHitLifeFraction;
-          }
           this.hitDamages.push(damage);
           break;
         }

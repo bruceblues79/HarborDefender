@@ -297,8 +297,6 @@ export const HitCore = createComponent('HitCore', {
    * 'hit_core' only reliably resolves on single-seat assets — the default).
    */
   nodeName: { type: 'String', default: 'hit_core' },
-  /** Endless elite variant marker (bigger pool, boosted outgoing damage). */
-  elite: { type: 'Boolean', default: false },
   /** Kill-bounty tier (RewardTier) paid once when this core dies. */
   reward: { type: 'String', default: 'none' },
 });
@@ -342,8 +340,6 @@ export const ShellFaction = createComponent('ShellFaction', {
   faction: { type: 'String', default: 'defender' },
   /** Attacker unit id for the DAMAGE_MATRIX lookup ('cannon', 'bombardier'…). */
   unitType: { type: 'String', default: '' },
-  /** Fired by an endless elite — damage is boosted by ENDLESS.eliteDamageRatio. */
-  elite: { type: 'Boolean', default: false },
 });
 
 /**

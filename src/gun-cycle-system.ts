@@ -13,7 +13,6 @@ import {
   GameOver,
   GamePaused,
   GunCycle,
-  HitCore,
   LevelDirector,
   LockTarget,
   ShellFaction,
@@ -260,10 +259,6 @@ export class GunCycleSystem extends createSystem({
     shell.addComponent(ShellFaction, {
       faction: 'attacker',
       unitType: String(gun.getValue(GunCycle, 'shellUnitType')),
-      // The gun core's elite flag rides the shell (endless DDT): the damage
-      // rows stay stock, ShellHitSystem applies the boost on top. Boss
-      // turret cores report elite:false, so nothing changes for them.
-      elite: gun.getValue(HitCore, 'elite') === true,
     });
     return 'fired';
   }

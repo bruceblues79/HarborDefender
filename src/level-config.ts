@@ -288,8 +288,6 @@ export enum RewardTier {
   None = 'none',
   /** Stock attacker (pirate ship, bombardier, ornithopter). */
   Stock = 'stock',
-  /** Endless elite variant. */
-  Elite = 'elite',
   /** Islewrath gun turret / laser main gun. */
   BossTurret = 'boss-turret',
   /** Islewrath phase-two chief head (黑铁机械武士头). */
@@ -306,7 +304,6 @@ export const BOSS_BOUNTY = 800;
 export const REWARD_TABLE: Record<RewardTier, number> = {
   [RewardTier.None]: 0,
   [RewardTier.Stock]: ECONOMY.killReward,
-  [RewardTier.Elite]: 1000,
   [RewardTier.BossTurret]: BOSS_BOUNTY,
   [RewardTier.BossChief]: BOSS_BOUNTY,
 };
@@ -493,27 +490,13 @@ export const ENDLESS = {
    */
   cost: { 'pirate-ship': 1, bombardier: 0.9, ornithopter: 0.6 },
   /**
-   * Special cadence (精英/boss 交替): every `specialEvery` waves the wave is
-   * special — waveNumber/4 odd (4, 12, 20, …) IS a lone-elite wave — one
-   * pooled unit down the centre line, scaled by `eliteScale`, no escorts.
-   * The pool stays normalised (100, no oversized health pools): the elite's
-   * toughness is a FIXED bite per landed hit — `eliteHitLifeFraction` of its
-   * own max life (0.02 → 50 hits from full), whatever fires at it — and its
-   * bite is `eliteDamageRatio` on outgoing shells. waveNumber/4 even (8, 16,
-   * 24, …) is a boss wave — one lone boss rolled from the pool, phases of
-   * its own.
+   * Boss cadence (6 波一 boss): every `bossEvery` waves IS a boss wave —
+   * one lone boss rolled from `bossPool`, no escorts, phases of its own.
+   * All other waves are budget-bought compositions.
    */
-  specialEvery: 4,
-  eliteScale: 1.75,
-  /** Elite HitCore radius growth — linear with eliteScale, so the core
-   *  bubble hugs the hull at any size. */
-  eliteCoreScale: 1.75,
-  eliteHitLifeFraction: 0.02,
-  eliteDamageRatio: 4,
+  bossEvery: 6,
   /** Boss pool: a boss wave rolls one at random. */
   bossPool: ['boss_islewrath'],
-  /** Wave-list entry prefix marking an elite variant of the named unit. */
-  elitePrefix: 'elite:',
 };
 
 /**

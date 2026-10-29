@@ -1,8 +1,8 @@
 # 战斗数值设计
 
 > 本目录存放设计侧文档（数值表、关卡设计等），供远程查阅与调整。
-> **可执行真值在 `src/level-config.ts`**：`COMBAT` 是游戏实际读取的常量。
-> 两者必须同步修改——改表必改码，改码必改表。
+> **可执行真值在 `src/level-config.ts`**：`COMBAT` / `ENDLESS` / `ECONOMY`
+> 是游戏实际读取的常量。两者必须同步修改——改表必改码，改码必改表。
 
 ## 伤害
 
@@ -74,7 +74,41 @@ Boss（怒岛号）五座炮塔均参战可击破：四门火炮塔 + 激光主�
 
 | 单位 | 常量 | 值 |
 |---|---|---|
-| 海盗船 | `UnitTypeDef.stopZMin`（停泊带远端） | -1.75 |
-| 投弹飞行器 | `UnitTypeDef.stopZMin` | -2.6 |
-| 机械扑翼机 | `UnitTypeDef.stopZMin` | -4.4 |
-| 怒岛号 | `BOSS.targetZ`（中线定点停泊） | -5 |
+| 海盗船 | `SHIP_STOP_Z_MIN / SHIP_STOP_Z_MAX`（停泊带，远端..近墙端） | -6.5 .. -3.3 |
+| 投弹飞行器 | `FLYER_STOP_Z_MIN / FLYER_STOP_Z_MAX` | -3.1 .. -1.73 |
+| 机械扑翼机 | `ORNITHOPTER.stopZMin / stopZMax` | -4.9 .. -3.3 |
+| 怒岛号 | `BOSS.targetZ`（中线定点停泊） | -5.5 |
+
+推导：`SHIP_STOP_Z_MIN = OCEAN.centerZ = -6.5`；`SHIP_STOP_Z_MAX =
+WALL_SEA_FACE_Z(-1.5) − SHIP_HALF_LENGTH(0.6) − SHIP_STOP_MARGIN(1.2) = -3.3`。
+
+## Endless（动态难度）
+
+无尽模式种子波（wave 1）固定为三艘海盗船；wave 2 起由
+`EndlessPlannerSystem` 按 `ENDLESS` 旋钮动态生成，`endlessLevel.waves`
+就是本场 run 的运行时真值。
+
+**Boss 节奏**：每 `bossEvery`（6）波是一个 boss 波——单个 boss 从
+`bossPool` 随机（当前仅怒岛号），无护卫。其余全部为预算构成波。
+
+**预算构成**（wave 2 起）：
+
+```
+budget = (baseBudgetWave2 + (wave − 2) × budgetPerWave)
+         × 压力系数 × 存款系数
+```
+
+| 旋钮 | 值 | 说明 |
+|---|---|---|
+| `baseBudgetWave2` / `budgetPerWave` | 2 / 0.75 | 预算基线与线性增长 |
+| `pressureMin` / `pressureMax` | 0.7 / 1.15 | 存活城防账面价值在 `pressureMoneyFull`(600g) 内插值——墙越空波越轻 |
+| `moneyDiv` / `moneyBonusMax` | 1600 / 0.5 | 每 1600g 存款 +12.5%，800g 封顶——存款越多波越重 |
+| `maxUnitsPerWave` | 8 | 每波单位数硬上限，超预算浪费 |
+| `cost` | 船 1 / 投弹 0.9 / 扑翼 0.6 | 预算购买价格，等权随机抽取买得起的 |
+
+**经济**（`ECONOMY`）：开局 200g；击杀赏金走 `REWARD_TABLE` 档位——
+普通单位 200g（`killReward`），怒岛炮塔 / 激光主炮 / 头领各 800g
+（`BOSS_BOUNTY`）。修理 10 hp/s、花费 8g/s；换购折扣 0.3（存活单位按
+账面价值 30% 抵扣）；书面价值加农炮 / 防空弩各 200g。
+
+原精英（elite）轮机制已废弃并移除——特殊波只剩 boss。

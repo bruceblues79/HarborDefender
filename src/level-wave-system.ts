@@ -513,28 +513,15 @@ export class LevelWaveSystem extends createSystem({
   private spawnUnit(pending: number): boolean {
     const units = this.currentWaveUnits();
     const raw = units[units.length - pending];
-    // Elite entries (endless DDT) carry the `elite:` prefix and resolve to
-    // the named unit with a scale-and-health boost; the damage matrix rows
-    // of the stock unit apply unchanged (the elite flag on the shell rides
-    // along at fire time instead). One line per elite landing — the field
-    // evidence a "wave 5 had no elite" report needs.
-    const elite = raw.startsWith(ENDLESS.elitePrefix);
-    const unitType = elite ? raw.slice(ENDLESS.elitePrefix.length) : raw;
-    if (elite) {
-      console.info(
-        `[ddt] spawning elite:${unitType} (wave ${this.waveIndex() + 1})`,
-      );
-    }
-    return this.spawnUnitByType(unitType, elite) !== null;
+    return this.spawnUnitByType(raw) !== null;
   }
 
   /**
    * Spawn one unit of the given type — the single spawn truth of the wave
    * dispatch. Returns the new entity, or null while the prototype is still
-   * loading (the caller retries next frame). `elite` scales the clone up and
-   * doubles its health pool; nothing else about the unit changes.
+   * loading (the caller retries next frame).
    */
-  spawnUnitByType(unitType: string, elite = false): Entity | null {
+  spawnUnitByType(unitType: string): Entity | null {
     const def = UNIT_TYPES[unitType];
     if (!def) {
       console.error(`LevelWaveSystem: unknown unit type "${unitType}"`);
@@ -564,9 +551,8 @@ export class LevelWaveSystem extends createSystem({
       -(target.z - SPAWN_Z),
     );
     // Unit-sheet model scale: the clone shrinks uniformly, so every child
-    // (embedded muzzle, hit_core) rides along in the right place. Elite
-    // variants multiply the sheet scale (endless DDT).
-    object.scale.setScalar(def.scale * (elite ? ENDLESS.eliteScale : 1));
+    // (embedded muzzle, hit_core) rides along in the right place.
+    object.scale.setScalar(def.scale);
 
     // Instancing setup for the fade: hull materials are shared across clones,
     // so each ship gets its own clones starting fully transparent. Driving that
@@ -580,8 +566,6 @@ export class LevelWaveSystem extends createSystem({
     // spawn frame while SpawnFadeSystem materialises the hull in parallel.
     // cruiseY rides along so ShipMovementSystem holds this unit's own
     // altitude instead of a shared waterline constant.
-    // The elite's wake churns at hull scale — ripples read with the hull.
-    const wakeScale = elite ? ENDLESS.eliteScale : 1;
     entity.addComponent(ShipMovement, {
       pattern: def.movement,
       spawnX: laneX,
@@ -589,15 +573,14 @@ export class LevelWaveSystem extends createSystem({
       targetZ: target.z,
       cruiseY: def.cruiseY,
       // Per-hull wake radius: oversized hulls (the boss) churn ship-scaled
-      // ripples, elites scale the sheet value by their hull factor; everyone
-      // else rides the shared WAKE_RADIUS default.
-      wakeRadius: (def.wakeRadius ?? WAKE_RADIUS) * wakeScale,
+      // ripples, everyone else rides the shared WAKE_RADIUS default.
+      wakeRadius: def.wakeRadius ?? WAKE_RADIUS,
     });
     entity.addComponent(SpawnFade, { duration: SPAWN_FADE_DURATION });
     // Water contact is a unit-sheet fact: ships churn a wake, the airborne
     // bombardier never touches the surface and gets none.
     if (def.wake) {
-      const wakeRadius = (def.wakeRadius ?? WAKE_RADIUS) * wakeScale;
+      const wakeRadius = def.wakeRadius ?? WAKE_RADIUS;
       entity.addComponent(WakeSource, {
         strength: 0,
         // Under way (or held up) from frame one, so the wake aims at the
@@ -628,9 +611,8 @@ export class LevelWaveSystem extends createSystem({
     }
     // Hull hit points: the ship sinks once ShellHitSystem has charged
     // COMBAT.shellDamage per defender-shell hit into this pool. Normalised:
-    // every unit shares COMBAT.unitHealth (100) as its pool size — elites
-    // included (归一化): their toughness is the damage-taken ratio, never a
-    // bigger pool. barY comes off the unit sheet — every Health-carrying def
+    // every unit shares COMBAT.unitHealth (100) as its pool size (归一化).
+    // barY comes off the unit sheet — every Health-carrying def
     // pins its measured top.
     const healthPool = COMBAT.unitHealth;
     entity.addComponent(Health, {
@@ -640,47 +622,19 @@ export class LevelWaveSystem extends createSystem({
     });
     // Combat: attacker hit core (defender shells are consumed inside it) and
     // — for armed units — the deck-gun ability. `stone` reroutes the shots
-    // to the pooled-stone free query. The elite's core radius grows by
-    // eliteCoreScale — linear with the hull, so the bubble hugs the hull.
+    // to the pooled-stone free query.
     entity.addComponent(HitCore, {
-      radius: COMBAT.attackerCoreRadius * (elite ? ENDLESS.eliteCoreScale : 1),
+      radius: COMBAT.attackerCoreRadius,
       faction: def.faction,
       unitType,
-      elite,
-      reward: elite ? RewardTier.Elite : RewardTier.Stock,
+      reward: RewardTier.Stock,
     });
     if (def.armed) {
-      if (elite) {
-        // Elites fight with the boss-turret rhythm (每炮相位状态机):
-        // park at the berth, swing onto the target at the shared turn
-        // speed, hold the aim beat, fire, jittered cooldown — and the
-        // per-shot LockTarget clear re-rolls a fresh random defender for
-        // every volley. The gun IS the unit: carrierIndex points at
-        // itself. pivotName 'cannon_mount' resolves for deck-gun ships;
-        // pivotless flyers fall back to whole-hull yaw in aimStep.
-        entity.addComponent(GunCycle, {
-          state: 'cooldown',
-          timer: 0,
-          fireInterval: def.fireInterval,
-          turnSpeedDeg: BOSS.turnSpeedDeg,
-          turnThresholdDeg: BOSS.turnThresholdDeg,
-          aimHoldSec: BOSS.aimHoldSec,
-          shellSpeed: COMBAT.pirateShellSpeed,
-          shellUnitType: unitType,
-          carrierIndex: entity.index,
-          requireStopped: true,
-          pivotName: 'cannon_mount',
-          muzzleName: 'muzzle',
-          stone: def.stone,
-        });
-        entity.addComponent(LockTarget);
-      } else {
-        entity.addComponent(PirateCannon, {
-          interval: def.fireInterval,
-          fireLineZ: def.stopZMin,
-          stone: def.stone,
-        });
-      }
+      entity.addComponent(PirateCannon, {
+        interval: def.fireInterval,
+        fireLineZ: def.stopZMin,
+        stone: def.stone,
+      });
     }
     return entity;
   }
