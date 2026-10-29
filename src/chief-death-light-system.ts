@@ -14,10 +14,12 @@ import {
   GamePaused,
   Health,
   HitCore,
+  HitFlash,
+  HitFlashTag,
   IslewrathChief,
   LevelDirector,
 } from './components.js';
-import { DEATH_LIGHT, WALL_SEA_FACE_Z } from './level-config.js';
+import { COMBAT, DEATH_LIGHT, WALL_SEA_FACE_Z } from './level-config.js';
 
 const DEG2RAD = Math.PI / 180;
 /** Yaw error under this (rad) snaps the aim and opens the hold beat. */
@@ -54,6 +56,8 @@ const AIM_SNAP_RAD = 1.5 * DEG2RAD;
 export class ChiefDeathLightSystem extends createSystem({
   chiefs: { required: [IslewrathChief, ChiefDeathLight] },
   cores: { required: [HitCore, Health], excluded: [Destroyed] },
+  /** The shared hit-bloom pool — same pool ShellHitSystem draws from. */
+  freeFlashes: { required: [HitFlashTag], excluded: [HitFlash] },
   directors: { required: [LevelDirector] },
 }) {
   /** Chief hit-core world position scratch (bolt origin / sweep origin). */
@@ -70,9 +74,12 @@ export class ChiefDeathLightSystem extends createSystem({
   private readonly closest = new Vector3();
   /** Defender cores already hit by the current sweep (once per unit). */
   private readonly claimed = new Set<number>();
+  /** Hit-bloom pool entities claimed this frame (query refreshes next frame). */
+  private readonly claimedFlashes = new Set<number>();
 
   update(delta: number): void {
     if (this.paused() || this.over() || !this.gameRunning()) return;
+    this.claimedFlashes.clear();
     for (const chief of this.queries.chiefs.entities) {
       // Bolt life burns down no matter which state the head is in — the
       // flash is fire-and-forget, the beat clock never waits for it.
@@ -156,6 +163,9 @@ export class ChiefDeathLightSystem extends createSystem({
       const hp =
         Number(core.getValue(Health, 'current')) - max * DEATH_LIGHT.damageRatio;
       core.setValue(Health, 'current', Math.max(0, hp));
+      // Hit bloom at the victim's centre — the same pool/look a defender
+      // shell strike uses (defender-size peak).
+      this.spawnHitFlash(this.corePos, 1);
       return;
     }
   }
@@ -299,6 +309,8 @@ export class ChiefDeathLightSystem extends createSystem({
         Number(core.getValue(Health, 'current')) -
         max * DEATH_LIGHT.sweepDamageRatio;
       core.setValue(Health, 'current', Math.max(0, hp));
+      // Same hit bloom as the lightning: the sweep bite reads on the field.
+      this.spawnHitFlash(this.corePos, 1);
     }
   }
 
@@ -313,6 +325,33 @@ export class ChiefDeathLightSystem extends createSystem({
     if (!node) return false;
     node.getWorldPosition(this.origin);
     return true;
+  }
+
+  /**
+   * Claim a free pooled hit bloom and land its starting state at the struck
+   * core's centre — identical to ShellHitSystem's spawn (same shared pool,
+   * same visual): position, start scale, visible, then the HitFlash tag
+   * that hands animation to HitFlashSystem. Pool empty: skip silently — a
+   * busy battle loses the odd bloom, never a hit.
+   */
+  private spawnHitFlash(position: Vector3, peakScale: number): void {
+    for (const flash of this.queries.freeFlashes.entities) {
+      if (this.claimedFlashes.has(flash.index)) continue;
+      // Live guard: another spawn this frame may have claimed it already,
+      // since the free-flash query only refreshes next frame.
+      if (flash.hasComponent(HitFlash)) continue;
+      this.claimedFlashes.add(flash.index);
+      const object = flash.object3D;
+      if (!object) return;
+      object.position.copy(position);
+      object.scale.setScalar(COMBAT.hitFlashStartScale * peakScale);
+      object.visible = true;
+      flash.addComponent(HitFlash, {
+        duration: COMBAT.hitFlashDuration,
+        peakScale,
+      });
+      return;
+    }
   }
 
   /** True once the START hand-off has moved the director past waiting-start. */
