@@ -45,7 +45,10 @@ const BOLT_LINE_EPS = 1e-6;
  * one sampler, picked per dragged gun by its CannonFire.gravityScale:
  *
  * - Parabolic shots (gravityScale > 0, the cannons) keep the sparse row of
- *   small unlit cubes.
+ *   small unlit cubes, tapered by instance scale alone — near-invisible at
+ *   the muzzle (dotScaleNear × dotSize), full size at the water end. No
+ *   alpha, no fade: the gradient lives in the same matrices already
+ *   rewritten every frame, so it costs nothing beyond the dots themselves.
  * - Straight bolts (gravityScale 0, the sky ballista) draw one continuous
  *   crossed-ribbon line — two thin quads crossing at 90°, so the guide keeps
  *   its width from every viewing angle (a single flat ribbon collapses
@@ -92,6 +95,10 @@ export class TrajectoryPreviewSystem extends createSystem({
   private readonly dummy = new Object3D();
   private readonly muzzlePos = new Vector3();
   private readonly muzzleDir = new Vector3();
+  /** Preallocated dot sample store (xyz per dot) bridging the two passes. */
+  private readonly dotPositions = new Float32Array(
+    TRAJECTORY_PREVIEW.maxDots * 3,
+  );
   /** Local +Z of the ribbon geometry — setFromUnitVectors' from-vector. */
   private readonly unitZ = new Vector3(0, 0, 1);
 
@@ -179,23 +186,40 @@ export class TrajectoryPreviewSystem extends createSystem({
     const dt = TRAJECTORY_PREVIEW.timeStep;
 
     let count = 0;
-    // i starts at 1: the first dot sits one step out of the muzzle, not
-    // inside the barrel. Terminations mirror BallisticSystem exactly —
-    // shells end at the water, straight bolts at the reclaim ceiling, and
-    // the far-edge backstop covers both.
+    // Pass one samples the flight into dotPositions. i starts at 1: the first
+    // dot sits one step out of the muzzle, not inside the barrel.
+    // Terminations mirror BallisticSystem exactly — shells end at the water,
+    // straight bolts at the reclaim ceiling, and the far-edge backstop
+    // covers both.
     for (let i = 1; count < TRAJECTORY_PREVIEW.maxDots; i++) {
       const t = i * dt;
       const y = this.muzzlePos.y + vy * t - 0.5 * g * t * t;
       if (y <= splashY || y >= COMBAT.boltReclaimY) break;
       if (this.muzzlePos.z + vz * t <= OCEAN_FAR_Z) break;
-      this.dummy.position.set(
-        this.muzzlePos.x + vx * t,
-        y,
-        this.muzzlePos.z + vz * t,
-      );
-      this.dummy.updateMatrix();
-      this.mesh.setMatrixAt(count, this.dummy.matrix);
+      const o = count * 3;
+      this.dotPositions[o] = this.muzzlePos.x + vx * t;
+      this.dotPositions[o + 1] = y;
+      this.dotPositions[o + 2] = this.muzzlePos.z + vz * t;
       count++;
+    }
+    // Pass two recomposes the matrices with the size taper: equal time steps
+    // land at equal horizontal gaps, so interpolating by dot index reads as
+    // an even gradient along the arc — dotScaleNear at the muzzle growing
+    // linearly to full size at the water end. Scale-only, no alpha.
+    if (count > 0) {
+      const near = TRAJECTORY_PREVIEW.dotScaleNear;
+      const last = Math.max(1, count - 1);
+      for (let i = 0; i < count; i++) {
+        const s = near + (1 - near) * (i / last);
+        this.dummy.position.set(
+          this.dotPositions[i * 3],
+          this.dotPositions[i * 3 + 1],
+          this.dotPositions[i * 3 + 2],
+        );
+        this.dummy.scale.setScalar(s);
+        this.dummy.updateMatrix();
+        this.mesh.setMatrixAt(i, this.dummy.matrix);
+      }
     }
     this.mesh.count = count;
     this.mesh.instanceMatrix.needsUpdate = true;

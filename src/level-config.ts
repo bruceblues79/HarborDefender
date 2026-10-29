@@ -731,11 +731,13 @@ export const COMBAT = {
  */
 export const TRAJECTORY_PREVIEW = {
   /** Seconds between two guide dots — horizontal gap = shellSpeed_h × this. */
-  timeStep: 0.05,
+  timeStep: 0.035,
   /** InstancedMesh capacity; the longest lob stays well under this. */
-  maxDots: 48,
-  /** Cube edge (m) — under half a core radius, a quiet marker, not a target. */
+  maxDots: 72,
+  /** Cube edge (m) at the tail (full size) — under half a core radius. */
   dotSize: 0.04,
+  /** Muzzle-end dot edge scale (× dotSize); grows linearly to 1 at the tail. */
+  dotScaleNear: 0.1,
   /** Warm gold (sRGB hex) — the shared accent (defense pads / repair glow). */
   color: 0xffc46a,
   /**
