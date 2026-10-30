@@ -72,20 +72,25 @@ void main() {
   // View ray through this fragment: the dome hugs the world origin and the
   // player stays within a few metres of it.
   vec3 dir = normalize(vWorldPosition - cameraPosition);
-  vec3 sky = textureCube(uEnvMap, dir).rgb * uSkyIntensity;
 
-  // Facing disc: uMaxAlpha on the world -z axis, fading to exactly 0 across
-  // the rim band (uFadeCos -> uEdgeCos). Two octaves of STATIC value noise
-  // (no uTime) perturb the band so the rim is ragged, not a clean circle;
-  // the noise term is scaled by band = m*(1-m)*4, which is 0 at both ends,
-  // so inside the disc alpha is exactly uMaxAlpha and outside exactly 0.
+  // Mask first, sample later — the fillrate guard. Fragments past the rim
+  // discard immediately (no cube fetch, no noise, no blend write), so the
+  // invisible majority of the sphere costs a dot and a smoothstep. Noise
+  // runs only inside the rim band; elsewhere it collapses to neutral 0.5
+  // and the mask is exact: uMaxAlpha inside, exactly 0 outside.
   float d = dot(dir, vec3(0.0, 0.0, -1.0));
   float m = smoothstep(uEdgeCos, uFadeCos, d);
-  vec2 np = dir.xy / (dir.z + 1.4) * uNoiseScale;
-  float n = valueNoise(np) * 0.6 + valueNoise(np * 2.3) * 0.4;
+  if (m <= 0.001) discard;
+
   float band = m * (1.0 - m) * 4.0;
+  float n = 0.5;
+  if (band > 0.001) {
+    vec2 np = dir.xy / (dir.z + 1.4) * uNoiseScale;
+    n = valueNoise(np) * 0.6 + valueNoise(np * 2.3) * 0.4;
+  }
   float alpha = uMaxAlpha * clamp(m + (n - 0.5) * uEdgeNoise * band, 0.0, 1.0);
 
+  vec3 sky = textureCube(uEnvMap, dir).rgb * uSkyIntensity;
   gl_FragColor = vec4(linearToSRGB(sky), alpha);
 }
 `;
@@ -95,7 +100,7 @@ export function createSkyDomeMaterial(): ShaderMaterial {
     uniforms: {
       uEnvMap: { value: null },
       uEnvLoaded: { value: 0 },
-      uMaxAlpha: { value: 0.8 },
+      uMaxAlpha: { value: 1.0 },
       uEdgeCos: { value: Math.cos((60 * Math.PI) / 180) },
       uFadeCos: { value: Math.cos((35 * Math.PI) / 180) },
       uEdgeNoise: { value: 0.4 },

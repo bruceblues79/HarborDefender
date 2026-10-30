@@ -789,8 +789,8 @@ export const WaveIntermission = createComponent('WaveIntermission', {});
  * mirrors these inspector fields into the uniforms.
  */
 export const SkyDome = createComponent('SkyDome', {
-  /** Ceiling of the dome's sky alpha over passthrough (0 = fully see-through). */
-  maxAlpha: { type: 'Float32', default: 0.8 },
+  /** Ceiling of the dome's sky alpha over passthrough (1 = fully opaque). */
+  maxAlpha: { type: 'Float32', default: 1.0 },
   /** Angular radius (deg) of the facing disc; past it, pure passthrough. */
   edgeDeg: { type: 'Float32', default: 60 },
   /** Smoothstep band (deg) inside the rim: fade starts at edgeDeg - fadeWidthDeg. */
