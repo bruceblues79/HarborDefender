@@ -719,8 +719,8 @@ export const TRAJECTORY_PREVIEW = {
   maxDots: 72,
   /** Cube edge (m) at the tail (full size) — under half a core radius. */
   dotSize: 0.054,
-  /** Muzzle-end dot edge scale (× dotSize); grows linearly to 1 at the tail. */
-  dotScaleNear: 0.2,
+  /** Cube edge scale at the muzzle end (x dotSize); grows linearly to 1 at the water end. */
+  dotScaleNear: 0.4,
   /** Warm gold (sRGB hex) — the shared accent (defense pads / repair glow). */
   color: 0xffc46a,
 };
