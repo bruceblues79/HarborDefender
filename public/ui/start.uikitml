@@ -135,11 +135,11 @@
 <Panel class="panel-root">
   <div class="mode-section">
     <button id="mode-story" class="mode-row">
-      <svg class="mode-icon" src="ui/icons/mode-select.svg" />
+      <svg class="mode-icon" src="ui/icons/mode-select.svg" ></svg>
       <div class="mode-label mode-label-off">STORY</div>
     </button>
     <button id="mode-endless" class="mode-row">
-      <svg class="mode-icon" src="ui/icons/mode-select-solid.svg" />
+      <svg class="mode-icon" src="ui/icons/mode-select-solid.svg" ></svg>
       <div class="mode-label mode-label-on">ENDLESS</div>
     </button>
   </div>
