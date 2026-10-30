@@ -46,6 +46,7 @@ uniform float uFadeCos;
 uniform float uEdgeNoise;
 uniform float uNoiseScale;
 uniform float uSkyIntensity;
+uniform float uExposure;
 uniform float uAxisY;
 uniform float uAxisZ;
 varying vec3 vWorldPosition;
@@ -61,6 +62,13 @@ float valueNoise(vec2 p) {
   return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
              mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
              u.y);
+}
+
+// Narkowicz ACES filmic approximation: rolls the HDR highlights off instead
+// of clipping them to white and keeps the shadows down, so the raw gamma
+// stretch no longer flattens the sky into a grey wash.
+vec3 acesFilm(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), vec3(0.0), vec3(1.0));
 }
 
 vec3 linearToSRGB(vec3 c) {
@@ -93,8 +101,8 @@ void main() {
   }
   float alpha = uMaxAlpha * clamp(m + (n - 0.5) * uEdgeNoise * band, 0.0, 1.0);
 
-  vec3 sky = textureCube(uEnvMap, dir).rgb * uSkyIntensity;
-  gl_FragColor = vec4(linearToSRGB(sky), alpha);
+  vec3 sky = textureCube(uEnvMap, dir).rgb * uSkyIntensity * uExposure;
+  gl_FragColor = vec4(linearToSRGB(acesFilm(sky)), alpha);
 }
 `;
 
@@ -104,11 +112,12 @@ export function createSkyDomeMaterial(): ShaderMaterial {
       uEnvMap: { value: null },
       uEnvLoaded: { value: 0 },
       uMaxAlpha: { value: 1.0 },
-      uEdgeCos: { value: Math.cos((45 * Math.PI) / 180) },
-      uFadeCos: { value: Math.cos((20 * Math.PI) / 180) },
+      uEdgeCos: { value: Math.cos((56.25 * Math.PI) / 180) },
+      uFadeCos: { value: Math.cos((31.25 * Math.PI) / 180) },
       uEdgeNoise: { value: 0.4 },
       uNoiseScale: { value: 2.5 },
-      uSkyIntensity: { value: 0.85 },
+      uSkyIntensity: { value: 1.0 },
+      uExposure: { value: 1.0 },
       uAxisY: { value: Math.sin((7.5 * Math.PI) / 180) },
       uAxisZ: { value: -Math.cos((7.5 * Math.PI) / 180) },
     },
