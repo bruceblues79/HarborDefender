@@ -183,8 +183,10 @@ type DirectorPhase =
  * Director for the level -> wave -> unit flow.
  *
  * A single entity carries the LevelDirector state and this system is its only
- * writer. It paces dispatch (`PACING.spawnInterval` between units), pauses
- * while `PACING.maxConcurrentUnits` attackers are on the water, waits for a
+ * writer. It paces dispatch (`PACING.spawnInterval` between units), holds a
+ * unit back while its own layer already counts `PACING.maxConcurrentUnits`
+ * live attackers (the cap is per unitType — a full sea never blocks a
+ * flyer), waits for a
  * wave to clear — every dispatched attacker sunk — before the next, and
  * advances levels until the list runs out ('game-cleared' victory). It also
  * owns the defeat check: the whole battery tagged Destroyed flips the phase
@@ -361,16 +363,22 @@ export class LevelWaveSystem extends createSystem({
     }
   }
 
-  /** Send out units while the field is not full and the wave has some left. */
+  /** Send out units while the wave has some left and layers have room. */
   private updateDispatching(delta: number): void {
     let timer = this.readNumber('timer') - delta;
     let pending = this.pendingUnits();
+    const units = this.currentWaveUnits();
 
-    while (
-      timer <= 0 &&
-      pending > 0 &&
-      this.attackerCount() < PACING.maxConcurrentUnits
-    ) {
+    while (timer <= 0 && pending > 0) {
+      // Layered concurrency: the unit about to go out checks its own layer
+      // (its unitType) against the per-layer cap. A full layer holds the
+      // wave in order — later units never jump ahead of a waiting one.
+      if (
+        this.layerCount(units[units.length - pending]) >=
+        PACING.maxConcurrentUnits
+      ) {
+        break;
+      }
       // A unit whose prototype is still loading holds the wave; retry next frame.
       if (!this.spawnUnit(pending)) break;
       pending -= 1;
@@ -857,6 +865,15 @@ export class LevelWaveSystem extends createSystem({
     let count = 0;
     for (const entity of this.queries.attackers.entities) {
       if (entity.getValue(UnitTag, 'faction') === 'attacker') count += 1;
+    }
+    return count;
+  }
+
+  /** Live attackers of one layer — every unit sharing this unitType. */
+  private layerCount(unitType: string): number {
+    let count = 0;
+    for (const entity of this.queries.attackers.entities) {
+      if (entity.getValue(UnitTag, 'unitType') === unitType) count += 1;
     }
     return count;
   }
