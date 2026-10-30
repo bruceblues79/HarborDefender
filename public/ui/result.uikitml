@@ -71,8 +71,8 @@
 </style>
 
 <Panel class="result-root">
-  <span id="result-title" class="result-title">VICTORY</span>
-  <span id="result-subtitle" class="result-subtitle">ALL RAIDERS SUNK</span>
+  <div id="result-title" class="result-title">VICTORY</div>
+  <div id="result-subtitle" class="result-subtitle">ALL RAIDERS SUNK</div>
   <button id="result-restart-button" class="result-button">RESTART</button>
   <button id="result-main-button" class="result-button">MAIN</button>
 </Panel>

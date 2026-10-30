@@ -51,8 +51,8 @@
 </style>
 
 <Panel class="inter-root">
-  <span id="inter-title" class="inter-title">WAVE 2</span>
+  <div id="inter-title" class="inter-title">WAVE 2</div>
   <div class="inter-middle">
-    <span id="inter-subtitle" class="inter-subtitle">GET READY FOR NEXT WAVE</span>
+    <div id="inter-subtitle" class="inter-subtitle">GET READY FOR NEXT WAVE</div>
   </div>
 </Panel>

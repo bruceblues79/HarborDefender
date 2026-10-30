@@ -39,6 +39,7 @@ import { RepairSystem } from './repair-system.js';
 import { ResultPanelSystem } from './result-panel-system.js';
 import { ShellHitSystem } from './shell-hit-system.js';
 import { ShipMovementSystem } from './ship-movement-system.js';
+import { SkyDomeSystem } from './sky-dome-system.js';
 import { SpawnFadeSystem } from './spawn-fade-system.js';
 import { SplashSystem } from './splash-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
@@ -70,6 +71,9 @@ World.create(
 
   world.registerSystem(CameraOrbitSystem);
   world.registerSystem(OceanSystem);
+  // AR partial-immersion dome: hidden on desktop, a pasted seaward half-dome
+  // of sky over passthrough only while an immersive-AR session is live.
+  world.registerSystem(SkyDomeSystem);
   // Simulation tier: the director paces dispatch, movement runs the ships in
   // while the fade system materialises their hulls in parallel. The endless
   // planner rides the same tier, one step after the director: its

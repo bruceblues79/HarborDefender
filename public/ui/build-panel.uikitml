@@ -226,13 +226,13 @@
   </Panel>
   <Panel class="dock-bar">
     <button id="row-cannon" class="dock-unit">
-      <svg class="unit-icon" src="ui/icons/cannon.svg" />
+      <svg class="unit-icon" src="ui/icons/cannon.svg" ></svg>
     </button>
     <button id="row-sky-ballista" class="dock-unit">
-      <svg class="unit-icon" src="ui/icons/bow-filled.svg" />
+      <svg class="unit-icon" src="ui/icons/bow-filled.svg" ></svg>
     </button>
   </Panel>
   <button id="dock-recycle" class="dock-recycle">
-    <svg class="unit-icon" src="ui/icons/recycle.svg" />
+    <svg class="unit-icon" src="ui/icons/recycle.svg" ></svg>
   </button>
 </Panel>

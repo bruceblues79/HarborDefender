@@ -119,7 +119,12 @@ export const PACING = {
   postWaveDelay: 3.0,
   /** Gap after a level is cleared before the next level starts. */
   postLevelDelay: 5.0,
-  /** Units the director may keep on the water at once, of any type. */
+  /**
+   * Concurrency cap per LAYER, not global: the director counts live
+   * attackers by unitType, and a unit may only spawn while its own layer
+   * holds fewer than this. Layers fill independently — 6 ships on the
+   * water never hold back a flyer's slot.
+   */
   maxConcurrentUnits: 6,
   /** Gap between dismissing the START panel and the first level. */
   postStartDelay: 1.0,
@@ -296,8 +301,11 @@ export enum RewardTier {
 
 /**
  * Flat Islewrath bounty (怒岛号悬赏): every gun turret, the laser main gun
- * and the phase-two chief head each pay this — no destruction-order ladder,
- * no tier linkage to the stock economy.
+ * and the phase-two chief head each pay this. Briefly zeroed (v0.1.264) to
+ * cut the run's biggest income spike; restored to the original 800 after
+ * the zero-bounty boss fight starved the defence's economy (2026-10-30
+ * 实测拍板). The RewardTier tags stay on the spawn sites so a future
+ * achievement system can still read part kills.
  */
 export const BOSS_BOUNTY = 800;
 
@@ -405,9 +413,10 @@ export const SPAWN_ROLL_TRIES = 6;
 /**
  * Designer's sandbox: one level, tuned by hand.
  *
- * The wave is as long as `PACING.maxConcurrentUnits`, so the level runs to
- * completion. A longer wave would simply queue: the director holds units until
- * slots free up, which is what keeps the water from flooding.
+ * The wave runs to completion: a longer wave would simply queue — the
+ * director holds units until their own layer has room
+ * (`PACING.maxConcurrentUnits` per unitType), which is what keeps the water
+ * from flooding.
  *
  * Boss sandbox (task 028): the Islewrath comes down the centre line and the
  * battery starts fully crewed with deep pockets — a pure boss-fight stage.
@@ -481,8 +490,8 @@ export const ENDLESS = {
    */
   moneyDiv: 1600,
   moneyBonusMax: 0.5,
-  /** Hard unit cap per generated wave (overflow waits out the concurrency cap). */
-  maxUnitsPerWave: 8,
+  /** Hard unit cap per generated wave (overflow waits out the layer caps). */
+  maxUnitsPerWave: 18,
   /**
    * Purchase pool for a generated wave: unitType -> budget cost, equal-weight
    * random picks among what the remaining budget affords. Keys are UNIT_TYPES
@@ -592,9 +601,10 @@ export const COMBAT = {
   ornithopterFireInterval: 1.2,
   /**
    * Pool size for ornithopter stones (separate from the ball pool) — sized
-   * for three concurrent flappers firing every ~1.4-1.7s with ~2s flights.
+   * for a full flapper layer (6 concurrent at the per-layer cap) firing
+   * every ~1.4-1.7s with ~2s flights.
    */
-  stonePoolSize: 8,
+  stonePoolSize: 12,
   /** Stone projectile radius (m) — reads as a fist-sized hurled rock. */
   stoneRadius: 0.05,
   /** Grey stone tint (roughness 0.9 / metalness 0 dielectric). */
@@ -811,19 +821,21 @@ export const FLYER_Y =
  * The bombardier's berth band, now designer data instead of a bolt-line
  * derivation: with the ballista's depression floor opened to 20° the derived
  * far edge (≈ -6.15) would reach deep into the ornithopter's own band, so
- * the flyer keeps its tuned explicit range — far out at -3.1, snug against
- * the wall at -1.73 (the old 75° crossing). MIN < MAX keeps the ship
- * constants' reading — MIN far out, MAX against the wall.
+ * the flyer keeps its tuned explicit range — far out at -3.75 (2026-10-30
+ * 外推自 -3.1，给满层 6 机的停位带留出纵深), snug against the wall at -1.73
+ * (the old 75° crossing). MIN < MAX keeps the ship constants' reading —
+ * MIN far out, MAX against the wall.
  */
-export const FLYER_STOP_Z_MIN = -3.1;
+export const FLYER_STOP_Z_MIN = -3.75;
 export const FLYER_STOP_Z_MAX = -1.73;
 
 /**
  * Ornithopter flight envelope. The middle-air band sits below the
  * bombardier's cruise plane but inside the city cannons' reach: a 45° shell
  * launched from y 0.941 crosses y 2.3 on its descent between z ≈ -3.5 and
- * -5.5, so a flyer berthed in the band's core [-4.9, -3.5] stays in the
- * 45° envelope's kill corridor, while the forward extension [-3.5, -3.3]
+ * -5.5, so a flyer berthed in the band's core [-5.25, -3.5] stays in the
+ * 45° envelope's kill corridor (the far edge 外推自 -4.9 至 -5.25，让满层
+ * 6 机可排 3 × 2), while the forward extension [-3.5, -3.3]
  * sits this side of it — still well inside cannon range. The 20° ballista
  * bolt line from its muzzle (y 1.134, z -1.416) crosses the band's core
  * height range [1.8, 2.8] throughout, so the anti-air mount covers it too.
@@ -831,8 +843,8 @@ export const FLYER_STOP_Z_MAX = -1.73;
 export const ORNITHOPTER = {
   /** Cruise altitude (m) — the unit's object-origin height. */
   y: 2.3,
-  /** Berth band: far out at -4.9, nearest at -3.3. */
-  stopZMin: -4.9,
+  /** Berth band: far out at -5.25, nearest at -3.3. */
+  stopZMin: -5.25,
   stopZMax: -3.3,
   /** Uniform model scale — 0.9 reads 10% smaller next to the bombardier. */
   scale: 0.9,
