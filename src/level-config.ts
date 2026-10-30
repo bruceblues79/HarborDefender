@@ -301,12 +301,13 @@ export enum RewardTier {
 
 /**
  * Flat Islewrath bounty (怒岛号悬赏): every gun turret, the laser main gun
- * and the phase-two chief head each pay this. Zeroed (2026-10-30 拍板): the
- * boss fight pays nothing — the old 6 × 800 = 4800 g in-fight injection was
- * the largest single income spike of a run. The RewardTier tags stay on the
- * spawn sites so a future achievement system can still read part kills.
+ * and the phase-two chief head each pay this. Briefly zeroed (v0.1.264) to
+ * cut the run's biggest income spike; restored to the original 800 after
+ * the zero-bounty boss fight starved the defence's economy (2026-10-30
+ * 实测拍板). The RewardTier tags stay on the spawn sites so a future
+ * achievement system can still read part kills.
  */
-export const BOSS_BOUNTY = 0;
+export const BOSS_BOUNTY = 800;
 
 export const REWARD_TABLE: Record<RewardTier, number> = {
   [RewardTier.None]: 0,
