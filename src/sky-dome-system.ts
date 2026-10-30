@@ -80,6 +80,8 @@ export class SkyDomeSystem extends createSystem({
       const edgeNoise = Number(entity.getValue(SkyDome, 'edgeNoise'));
       const noiseScale = Number(entity.getValue(SkyDome, 'noiseScale'));
       const skyIntensity = Number(entity.getValue(SkyDome, 'skyIntensity'));
+      // Disc axis: world -z raised by pitchUpDeg.
+      const pitch = Number(entity.getValue(SkyDome, 'pitchUpDeg')) * DEG2RAD;
       this.traverseUniforms(entity.object3D, (u) => {
         (u.uMaxAlpha as { value: number }).value = maxAlpha;
         (u.uEdgeCos as { value: number }).value = edgeCos;
@@ -87,6 +89,8 @@ export class SkyDomeSystem extends createSystem({
         (u.uEdgeNoise as { value: number }).value = edgeNoise;
         (u.uNoiseScale as { value: number }).value = noiseScale;
         (u.uSkyIntensity as { value: number }).value = skyIntensity;
+        (u.uAxisY as { value: number }).value = Math.sin(pitch);
+        (u.uAxisZ as { value: number }).value = -Math.cos(pitch);
       });
     }
   }
