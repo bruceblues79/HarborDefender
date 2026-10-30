@@ -522,18 +522,26 @@ export const COMBAT = {
   /** Gravity (m/s^2) for the parabolic flight. */
   gravity: 9.8,
   /**
-   * Muzzle speed (m/s) — one gun fires everything, so the envelope is wide
-   * but layered: a flat shot (0°) splashes ~1.8 m out, 22.5° reaches ~5 m,
-   * and 45° lands ~6.5 m out — comfortably past the farthest ship berth
-   * (-6.5). The 80° ceiling hangs shells ~3 m above the muzzle (v0²/2g)
-   * and drops them ~2.2 m out. History: 7.45 → 9.0 (one-cannon plan)
-   * re-opened the flapper band, but 9.0 made every mid elevation land
-   * alike (player report 2026-10-30 "muzzle height doesn't change range");
-   * 7.0 restored the layering, and 7.8 opens it back up one notch — every
-   * flyer stop keeps two-arc solutions again (see FLYER_Y and ORNITHOPTER
-   * below) while 0°/80° still fall well short of 45°.
+   * Muzzle speed (m/s) — one gun fires everything. 12.0 rides with a heavy
+   * linear drag (shellDrag below): the ball leaves fast and visibly sheds
+   * speed, which layers the ranges the way a real throw feels — optimum
+   * carry ~30° (~7 m), 45° ~6.4 m, 60° ~4.9 m (reaches the farthest ship
+   * berth -6.5 on a mid arc), 80° lobs die at ~1.8 m, flat shots carry
+   * ~2.7 m. History: 7.45 → 9.0 (one-cannon plan) re-opened the flapper
+   * band but made every mid elevation land alike; 7.0 → 7.8 restored the
+   * layering while staying vacuum-flat (30-60° within 15%); 12.0 + drag
+   * breaks that flat top for good — raising the barrel past the optimum
+   * now monotonically shortens the shot.
    */
-  shellSpeed: 7.8,
+  shellSpeed: 12.0,
+  /**
+   * Linear air drag (1/s) on defender shells only: dv/dt = -drag·v + g.
+   * Pirate and boss intercepts solve vacuum trajectories, so their shells
+   * launch with drag 0 (the BallisticFlight default) and stay
+   * guaranteed-hit. The trajectory guide samples the same closed form the
+   * integration follows, so preview and flight stay in lockstep.
+   */
+  shellDrag: 1.0,
   /** Shells recycle this far (m) below the ocean surface. */
   splashMargin: 0.05,
   /** Splash ripple: strength 1 -> 0 over this many seconds, then disposed. */
@@ -694,7 +702,7 @@ export const COMBAT = {
  * terminations from BallisticSystem. One render mode: the sparse dot row.
  */
 export const TRAJECTORY_PREVIEW = {
-  /** Seconds between two guide dots — horizontal gap = shellSpeed_h × this. */
+  /** Seconds between two guide dots — under drag the gaps bunch toward the tail. */
   timeStep: 0.035,
   /** InstancedMesh capacity; the longest lob stays well under this. */
   maxDots: 72,
@@ -749,9 +757,9 @@ export const DAMAGE_MATRIX: Record<string, number> = {
  * drift with the retuned shellSpeed — the flyer's berth band and firing
  * geometry are tuned against this plane, so it is pinned instead of
  * re-derived. Value equals the last derived runtime result (v0 7.45 era).
- * At the retuned v0 7.8 the shell envelope tops this plane out to ~3.8 m
- * from the muzzle, while the berth band below reaches only ~2.25 m —
- * every stop stays bracketed with two-arc solutions to spare.
+ * Under the drag-loaded v0 12 lob the band stays bracketed: the near stop
+ * takes a ~78-80° vertical lob (right at the elevation ceiling), the far
+ * stop a comfortable ~40-52° arc through the core.
  */
 export const FLYER_Y = 2.857;
 
@@ -766,12 +774,13 @@ export const FLYER_STOP_Z_MAX = -1.73;
 
 /**
  * Ornithopter flight envelope. The middle-air band sits below the
- * bombardier's cruise plane but inside the city cannons' reach. At the
- * retuned v0 7.8 the whole band keeps proper two-arc hit solutions
- * (far edge ≈ 43°/67°, near stop ≈ 47°/80°) — the v0-7.0 tangency razor
- * shot at -5.25 is gone. The far edge 外推自 -4.9 至 -5.25，让满层 6 机
- * 可排 3 × 2, and the forward extension [-3.5, -3.3] sits this side of
- * it — still well inside cannon range.
+ * bombardier's cruise plane but inside the city cannons' reach. Under the
+ * drag-loaded v0 12 lob the band keeps a healthy mid-arc window (far stop
+ * ≈ 22-35°, near stop ≈ 35-50°); high lobs no longer reach the outer
+ * band — linear drag starves them of horizontal carry, the intended
+ * "steep shots guard close in" behavior. The far edge 外推自 -4.9 至
+ * -5.25，让满层 6 机可排 3 × 2, and the forward extension [-3.5, -3.3]
+ * sits this side of it — still well inside cannon range.
  */
 export const ORNITHOPTER = {
   /** Cruise altitude (m) — the unit's object-origin height. */

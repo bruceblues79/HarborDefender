@@ -141,6 +141,7 @@ export class CannonFireSystem extends createSystem({
       vx: this.muzzleDir.x * COMBAT.shellSpeed,
       vy: this.muzzleDir.y * COMBAT.shellSpeed,
       vz: this.muzzleDir.z * COMBAT.shellSpeed,
+      drag: COMBAT.shellDrag,
     });
     // City batteries fight for the defender side; ShellHitSystem uses the
     // faction to pick consumable cores and the unit type to pick the damage

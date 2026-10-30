@@ -41,11 +41,11 @@ import {
  *
  * The sampling is the closed form of the live flight, not a re-simulation —
  * launch vector copied from CannonFireSystem.fire (muzzle world -Z scaled by
- * COMBAT.shellSpeed), gravity COMBAT.gravity, and the same two terminations
- * BallisticSystem enforces (water splash, ocean far-edge backstop).
- * Horizontal speed is constant mid-flight, so equal time steps land at
- * equal horizontal gaps: the dots read evenly spaced on any arc without any
- * arc-length math.
+ * COMBAT.shellSpeed) flown under gravity plus COMBAT.shellDrag linear drag,
+ * with the same two terminations BallisticSystem enforces (water splash,
+ * ocean far-edge backstop). Horizontal speed decays exponentially, so equal
+ * time steps bunch toward the tail: the dots double as a read on the shell
+ * shedding speed, still with no arc-length math.
  *
  * Rendering is one always-alive InstancedMesh (per frame at most maxDots
  * instance matrices + .count) — zero allocation, matching the
@@ -130,6 +130,7 @@ export class TrajectoryPreviewSystem extends createSystem({
     const vy = this.muzzleDir.y * speed;
     const vz = this.muzzleDir.z * speed;
     const g = COMBAT.gravity;
+    const k = COMBAT.shellDrag;
     const dt = TRAJECTORY_PREVIEW.timeStep;
     const splashY = OCEAN.surfaceY - COMBAT.splashMargin;
 
@@ -137,21 +138,24 @@ export class TrajectoryPreviewSystem extends createSystem({
     // Pass one samples the flight into dotPositions. i starts at 1: the first
     // dot sits one step out of the muzzle, not inside the barrel.
     // Terminations mirror BallisticSystem exactly — shells end at the water,
-    // and the far-edge backstop covers the rest.
+    // and the far-edge backstop covers the rest. Closed form of the
+    // drag-loaded flight: (v/k)(1-e^(-kt)) horizontally, gravity's
+    // ((vy + g/k)/k)(1-e^(-kt)) - (g/k)·t vertically.
     for (let i = 1; count < TRAJECTORY_PREVIEW.maxDots; i++) {
       const t = i * dt;
-      const y = this.muzzlePos.y + vy * t - 0.5 * g * t * t;
+      const decay = Math.exp(-k * t);
+      const y =
+        this.muzzlePos.y + ((vy + g / k) / k) * (1 - decay) - (g / k) * t;
       if (y <= splashY) break;
-      if (this.muzzlePos.z + vz * t <= OCEAN_FAR_Z) break;
+      if (this.muzzlePos.z + (vz / k) * (1 - decay) <= OCEAN_FAR_Z) break;
       const o = count * 3;
-      this.dotPositions[o] = this.muzzlePos.x + vx * t;
+      this.dotPositions[o] = this.muzzlePos.x + (vx / k) * (1 - decay);
       this.dotPositions[o + 1] = y;
-      this.dotPositions[o + 2] = this.muzzlePos.z + vz * t;
+      this.dotPositions[o + 2] = this.muzzlePos.z + (vz / k) * (1 - decay);
       count++;
     }
-    // Pass two recomposes the matrices with the size taper: equal time steps
-    // land at equal horizontal gaps, so interpolating by dot index reads as
-    // an even gradient along the arc — dotScaleNear at the muzzle growing
+    // Pass two recomposes the matrices with the size taper: dot index reads
+    // as an even gradient along the arc — dotScaleNear at the muzzle growing
     // linearly to full size at the water end. Scale-only, no alpha.
     if (count > 0) {
       const near = TRAJECTORY_PREVIEW.dotScaleNear;

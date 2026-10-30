@@ -220,14 +220,18 @@ export const AmmoSelected = createComponent('AmmoSelected', {
 });
 
 /**
- * Parabolic flight for a shell: carrying this *is* the tag "shell airborne".
+ * Flight state for a shell: carrying this *is* the tag "shell airborne".
  * Plain scalars so a shell's velocity stays inspector-readable; BallisticSystem
- * is the only writer. Removed on splash-down, returning the shell to the pool.
+ * is the only writer. `drag` is the shell's linear air-drag coefficient (1/s):
+ * city shells launch with COMBAT.shellDrag, while the pirate/boss intercept
+ * solves assume vacuum flight and keep the 0 default. Removed on splash-down,
+ * returning the shell to the pool.
  */
 export const BallisticFlight = createComponent('BallisticFlight', {
   vx: { type: 'Float32', default: 0 },
   vy: { type: 'Float32', default: 0 },
   vz: { type: 'Float32', default: 0 },
+  drag: { type: 'Float32', default: 0 },
 });
 
 /**
