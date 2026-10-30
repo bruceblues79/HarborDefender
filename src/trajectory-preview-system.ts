@@ -31,6 +31,9 @@ import {
   TRAJECTORY_PREVIEW,
 } from './level-config.js';
 
+/** March-sample ceiling: the longest flight (~2 s at 0.02 s) stays under it. */
+const MAX_SAMPLES = 160;
+
 /**
  * Aim-drag trajectory guide: while a defense unit is being dragged, a guide
  * traces the shot its muzzle would launch right now — the sparse row of
@@ -43,9 +46,9 @@ import {
  * launch vector copied from CannonFireSystem.fire (muzzle world -Z scaled by
  * COMBAT.shellSpeed) flown under gravity plus COMBAT.shellDrag linear drag,
  * with the same two terminations BallisticSystem enforces (water splash,
- * ocean far-edge backstop). Horizontal speed decays exponentially, so equal
- * time steps bunch toward the tail: the dots double as a read on the shell
- * shedding speed, still with no arc-length math.
+ * ocean far-edge backstop). The arc is then resampled at a fixed spatial
+ * step (TRAJECTORY_PREVIEW.stepDistance): dot gaps stay uniform from muzzle
+ * to splash regardless of how the shell sheds speed.
  *
  * Rendering is one always-alive InstancedMesh (per frame at most maxDots
  * instance matrices + .count) — zero allocation, matching the
@@ -72,10 +75,10 @@ export class TrajectoryPreviewSystem extends createSystem({
   private readonly dummy = new Object3D();
   private readonly muzzlePos = new Vector3();
   private readonly muzzleDir = new Vector3();
-  /** Preallocated dot sample store (xyz per dot) bridging the two passes. */
-  private readonly dotPositions = new Float32Array(
-    TRAJECTORY_PREVIEW.maxDots * 3,
-  );
+  /** Preallocated closed-form march buffers: xyz per sample plus the
+   * cumulative arc length at each sample, bridging the two passes. */
+  private readonly pathPoints = new Float32Array(MAX_SAMPLES * 3);
+  private readonly pathLens = new Float32Array(MAX_SAMPLES);
 
   init(): void {
     const geometry = new BoxGeometry(
@@ -131,41 +134,73 @@ export class TrajectoryPreviewSystem extends createSystem({
     const vz = this.muzzleDir.z * speed;
     const g = COMBAT.gravity;
     const k = COMBAT.shellDrag;
-    const dt = TRAJECTORY_PREVIEW.timeStep;
+    const dt = TRAJECTORY_PREVIEW.sampleStep;
     const splashY = OCEAN.surfaceY - COMBAT.splashMargin;
 
-    let count = 0;
-    // Pass one samples the flight into dotPositions. i starts at 1: the first
-    // dot sits one step out of the muzzle, not inside the barrel.
-    // Terminations mirror BallisticSystem exactly — shells end at the water,
-    // and the far-edge backstop covers the rest. Closed form of the
-    // drag-loaded flight: (v/k)(1-e^(-kt)) horizontally, gravity's
-    // ((vy + g/k)/k)(1-e^(-kt)) - (g/k)·t vertically.
-    for (let i = 1; count < TRAJECTORY_PREVIEW.maxDots; i++) {
+    // Pass one marches the closed form at a fine fixed time step, storing
+    // each sample and the cumulative arc length up to it. Sample 0 is the
+    // muzzle itself (length 0). Terminations mirror BallisticSystem exactly —
+    // shells end at the water, and the far-edge backstop covers the rest.
+    // Closed form of the drag-loaded flight: (v/k)(1-e^(-kt)) horizontally,
+    // gravity's ((vy + g/k)/k)(1-e^(-kt)) - (g/k)·t vertically.
+    this.pathPoints[0] = this.muzzlePos.x;
+    this.pathPoints[1] = this.muzzlePos.y;
+    this.pathPoints[2] = this.muzzlePos.z;
+    this.pathLens[0] = 0;
+    let samples = 1;
+    for (let i = 1; i < MAX_SAMPLES; i++) {
       const t = i * dt;
       const decay = Math.exp(-k * t);
       const y =
         this.muzzlePos.y + ((vy + g / k) / k) * (1 - decay) - (g / k) * t;
       if (y <= splashY) break;
       if (this.muzzlePos.z + (vz / k) * (1 - decay) <= OCEAN_FAR_Z) break;
-      const o = count * 3;
-      this.dotPositions[o] = this.muzzlePos.x + (vx / k) * (1 - decay);
-      this.dotPositions[o + 1] = y;
-      this.dotPositions[o + 2] = this.muzzlePos.z + (vz / k) * (1 - decay);
-      count++;
+      const o = samples * 3;
+      const px = this.muzzlePos.x + (vx / k) * (1 - decay);
+      const py = y;
+      const pz = this.muzzlePos.z + (vz / k) * (1 - decay);
+      const p = (samples - 1) * 3;
+      this.pathLens[samples] =
+        this.pathLens[samples - 1] +
+        Math.hypot(
+          px - this.pathPoints[p],
+          py - this.pathPoints[p + 1],
+          pz - this.pathPoints[p + 2],
+        );
+      this.pathPoints[o] = px;
+      this.pathPoints[o + 1] = py;
+      this.pathPoints[o + 2] = pz;
+      samples++;
     }
-    // Pass two recomposes the matrices with the size taper: dot index reads
-    // as an even gradient along the arc — dotScaleNear at the muzzle growing
-    // linearly to full size at the water end. Scale-only, no alpha.
+
+    // Pass two resamples the arc uniformly — one dot every stepDistance
+    // metres of path length, linearly interpolated between march samples —
+    // so gaps never bunch as the shell sheds speed. The size taper rides
+    // along: dotScaleNear at the muzzle growing linearly to full size at the
+    // water end. Scale-only, no alpha.
+    let count = Math.min(
+      TRAJECTORY_PREVIEW.maxDots,
+      Math.floor(this.pathLens[samples - 1] / TRAJECTORY_PREVIEW.stepDistance),
+    );
     if (count > 0) {
       const near = TRAJECTORY_PREVIEW.dotScaleNear;
       const last = Math.max(1, count - 1);
+      let seg = 1;
       for (let i = 0; i < count; i++) {
+        const target = (i + 1) * TRAJECTORY_PREVIEW.stepDistance;
+        while (seg < samples - 1 && this.pathLens[seg] < target) seg++;
+        const s0 = this.pathLens[seg - 1];
+        const s1 = this.pathLens[seg];
+        const f = s1 > s0 ? (target - s0) / (s1 - s0) : 0;
+        const a = (seg - 1) * 3;
+        const b = seg * 3;
         const s = near + (1 - near) * (i / last);
         this.dummy.position.set(
-          this.dotPositions[i * 3],
-          this.dotPositions[i * 3 + 1],
-          this.dotPositions[i * 3 + 2],
+          this.pathPoints[a] + (this.pathPoints[b] - this.pathPoints[a]) * f,
+          this.pathPoints[a + 1] +
+            (this.pathPoints[b + 1] - this.pathPoints[a + 1]) * f,
+          this.pathPoints[a + 2] +
+            (this.pathPoints[b + 2] - this.pathPoints[a + 2]) * f,
         );
         this.dummy.scale.setScalar(s);
         this.dummy.updateMatrix();

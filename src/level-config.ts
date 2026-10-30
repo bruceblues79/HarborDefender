@@ -707,15 +707,18 @@ export const COMBAT = {
  * Aim-drag trajectory guide (TrajectoryPreviewSystem), redrawn every frame
  * while a defense unit is being dragged. Sampling mirrors the live flight
  * exactly — launch vector from CannonFireSystem.fire, gravity and
- * terminations from BallisticSystem. One render mode: the sparse dot row.
+ * terminations from BallisticSystem — resampled at uniform arc-length
+ * spacing, so dot gaps stay constant from muzzle to splash.
  */
 export const TRAJECTORY_PREVIEW = {
-  /** Seconds between two guide dots — under drag the gaps bunch toward the tail. */
-  timeStep: 0.035,
+  /** Metres between two guide dots — uniform along the arc, speed-blind. */
+  stepDistance: 0.12,
+  /** Seconds between two closed-form march samples feeding the resample. */
+  sampleStep: 0.02,
   /** InstancedMesh capacity; the longest lob stays well under this. */
   maxDots: 72,
   /** Cube edge (m) at the tail (full size) — under half a core radius. */
-  dotSize: 0.04,
+  dotSize: 0.054,
   /** Muzzle-end dot edge scale (× dotSize); grows linearly to 1 at the tail. */
   dotScaleNear: 0.2,
   /** Warm gold (sRGB hex) — the shared accent (defense pads / repair glow). */
