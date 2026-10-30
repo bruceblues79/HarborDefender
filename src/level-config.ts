@@ -531,9 +531,10 @@ export const COMBAT = {
    * band but made every mid elevation land alike; 7.0 → 7.8 restored the
    * layering while staying vacuum-flat (30-60° within 15%); 12.0 + drag
    * breaks that flat top for good — raising the barrel past the optimum
-   * now monotonically shortens the shot.
+   * now monotonically shortens the shot; 10.0 (feel test) shrinks max
+   * carry to ~5.6 m @ 32° — ship berths past ~-5.5 fall out of reach.
    */
-  shellSpeed: 12.0,
+  shellSpeed: 10.0,
   /**
    * Linear air drag (1/s) on defender shells only: dv/dt = -drag·v + g.
    * Pirate and boss intercepts solve vacuum trajectories, so their shells
