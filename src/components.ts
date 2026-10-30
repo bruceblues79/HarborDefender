@@ -780,6 +780,29 @@ export const NextWaveCommand = createComponent('NextWaveCommand', {});
  */
 export const WaveIntermission = createComponent('WaveIntermission', {});
 
+/**
+ * Partial-immersion sky dome for AR (部分沉浸穹顶). WebXR on Quest exposes no
+ * passthrough-blend control, so a BackSide sphere unlit-pastes the shared
+ * sky HDR (its own ocean below the horizon included) onto a disc around the
+ * player's facing axis (world -z); past the rim it is pure passthrough, with
+ * a static-noise-ragged smoothstep rim. SkyDomeSystem owns the mesh and
+ * mirrors these inspector fields into the uniforms.
+ */
+export const SkyDome = createComponent('SkyDome', {
+  /** Ceiling of the dome's sky alpha over passthrough (0 = fully see-through). */
+  maxAlpha: { type: 'Float32', default: 0.8 },
+  /** Angular radius (deg) of the facing disc; past it, pure passthrough. */
+  edgeDeg: { type: 'Float32', default: 60 },
+  /** Smoothstep band (deg) inside the rim: fade starts at edgeDeg - fadeWidthDeg. */
+  fadeWidthDeg: { type: 'Float32', default: 25 },
+  /** Static noise amplitude on the rim (0 = clean geometric circle). */
+  edgeNoise: { type: 'Float32', default: 0.4 },
+  /** Noise cells across the dome's sky projection. */
+  noiseScale: { type: 'Float32', default: 2.5 },
+  /** Multiplier on the sampled HDR sky colour. */
+  skyIntensity: { type: 'Float32', default: 0.85 },
+});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -830,4 +853,5 @@ export default defineComponents([
   EndlessMode,
   NextWaveCommand,
   WaveIntermission,
+  SkyDome,
 ]);
