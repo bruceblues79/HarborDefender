@@ -519,8 +519,13 @@ export const COMBAT = {
    */
   fireJitterMin: 0.2,
   fireJitterMax: 0.5,
-  /** Gravity (m/s^2) for the parabolic flight. */
-  gravity: 9.8,
+  /**
+   * Gravity (m/s^2) for the parabolic flight — shared by every projectile:
+   * city shells, dragless attacker intercepts and stones. The intercept
+   * solver compensates exactly, so attacker arcs only steepen. 12.0 (feel
+   * test, from 9.8) drops shots harder and shortens carry to ~5.8 m @ 33°.
+   */
+  gravity: 12.0,
   /**
    * Muzzle speed (m/s) — one gun fires everything. 12.0 rides with a heavy
    * linear drag (shellDrag below): the ball leaves fast and visibly sheds
@@ -532,9 +537,11 @@ export const COMBAT = {
    * layering while staying vacuum-flat (30-60° within 15%); 12.0 + drag
    * breaks that flat top for good — raising the barrel past the optimum
    * now monotonically shortens the shot; 10.0 (feel test) shrinks max
-   * carry to ~5.6 m @ 32° — ship berths past ~-5.5 fall out of reach.
+   * carry to ~5.6 m @ 32° — ship berths past ~-5.5 fall out of reach;
+   * 11.0 + gravity 12.0 (feel test) keeps max carry ~5.8 m @ 33° — the
+   * far ship end -6.5 stays out of reach, the wall-side half hits.
    */
-  shellSpeed: 10.0,
+  shellSpeed: 11.0,
   /**
    * Linear air drag (1/s) on defender shells only: dv/dt = -drag·v + g.
    * Pirate and boss intercepts solve vacuum trajectories, so their shells
