@@ -9,7 +9,6 @@ import { createSystem, Vector3 } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
 import {
   BallisticFlight,
-  BoltTag,
   Destroyed,
   GameOver,
   GamePaused,
@@ -34,7 +33,7 @@ import { solveIntercept } from './shell-launch.js';
  * the ornithopter ORNITHOPTER.stopZMin) — it may shoot, it does not need to
  * have stopped yet. Once in range and the battle has started it:
  *
- * 1. picks one random defender hit core (a city cannon or sky ballista) and
+ * 1. picks one random defender hit core (a city cannon) and
  *    snapshots its world position as the target — mounted defenders never
  *    move; a locked target
  *    that gets knocked out is re-acquired the same way on the next frame, and
@@ -59,7 +58,7 @@ export class PirateFireSystem extends createSystem({
   cores: { required: [HitCore], excluded: [Destroyed] },
   freeShells: {
     required: [ShellTag],
-    excluded: [BallisticFlight, BoltTag, StoneTag],
+    excluded: [BallisticFlight, StoneTag],
   },
   freeStones: {
     required: [ShellTag, StoneTag],
@@ -140,7 +139,7 @@ export class PirateFireSystem extends createSystem({
     }
   }
 
-  /** Pick one random defender core (cannon or sky ballista) and snapshot it. */
+  /** Pick one random defender core (cannon) and snapshot it. */
   private acquireTarget(ship: Entity): boolean {
     // Two passes over the query (count, then pick) keep update() allocation
     // free; this runs on first acquisition and again whenever the previous

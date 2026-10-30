@@ -6,7 +6,7 @@
  */
 
 import { createComponent, defineComponents } from '@iwsdk/core';
-import { COMBAT, ECONOMY, ORNITHOPTER, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y, WAKE_RADIUS } from './level-config.js';
+import { AMMO_DEFS, COMBAT, ECONOMY, ORNITHOPTER, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y, WAKE_RADIUS } from './level-config.js';
 
 /** Marks the ocean body entity so OceanSystem can find it via query. */
 export const OceanTag = createComponent('OceanTag', {});
@@ -164,16 +164,12 @@ export const PanelScaleAnim = createComponent('PanelScaleAnim', {
 export const CameraBlocker = createComponent('CameraBlocker', {});
 
 /**
- * Marks a pooled projectile — cannonball or straight ballista bolt, both
- * living in CannonFireSystem's pools (bolt copies additionally carry
- * BoltTag, which routes them to their own free query). A projectile is free
- * exactly while it does NOT carry `BallisticFlight` — presence of the
- * flight component is the "airborne" tag, so no separate in-use flag exists.
+ * Marks a pooled projectile living in CannonFireSystem's pools. A projectile
+ * is free exactly while it does NOT carry `BallisticFlight` — presence of
+ * the flight component is the "airborne" tag, so no separate in-use flag
+ * exists.
  */
 export const ShellTag = createComponent('ShellTag', {});
-
-/** Marks pooled copies of the ballista-bolt glb inside the ShellTag pool. */
-export const BoltTag = createComponent('BoltTag', {});
 
 /** Marks pooled stone projectiles inside the ShellTag pool (ornithopter). */
 export const StoneTag = createComponent('StoneTag', {});
@@ -210,17 +206,17 @@ export const CannonFire = createComponent('CannonFire', {
    * ShellHitSystem can look the damage up in DAMAGE_MATRIX.
    */
   unitType: { type: 'String', default: '' },
-  /**
-   * Gravity multiplier for this gun's shots: 1 = the standard lob; the sky
-   * ballista fires 0 — bolts fly dead straight along the barrel, the flight
-   * model the flyer's berth band (FLYER_STOP_Z_*) is derived from.
-   */
-  gravityScale: { type: 'Float32', default: 1 },
-  /**
-   * True when this gun fires the straight bolt mesh (ballista) instead of a
-   * cannonball: CannonFireSystem picks the pool and aligns the mesh with it.
-   */
-  bolt: { type: 'Boolean', default: false },
+});
+
+/**
+ * Global ammunition single-select, mounted on the director: the build dock's
+ * ammo row writes it and every cannon's next shot loads the selected round
+ * (one truth for the whole battery, not per slot). The default is the free
+ * iron ball; with only that row in AMMO_DEFS its click is a no-op.
+ */
+export const AmmoSelected = createComponent('AmmoSelected', {
+  /** Selected round id — one of AMMO_DEFS[].id. */
+  ammoId: { type: 'String', default: AMMO_DEFS[0].id },
 });
 
 /**
@@ -232,8 +228,6 @@ export const BallisticFlight = createComponent('BallisticFlight', {
   vx: { type: 'Float32', default: 0 },
   vy: { type: 'Float32', default: 0 },
   vz: { type: 'Float32', default: 0 },
-  /** Gravity multiplier: 1 standard; 0 = dead straight flight (bolts). */
-  gravityScale: { type: 'Float32', default: 1 },
 });
 
 /**
@@ -241,9 +235,7 @@ export const BallisticFlight = createComponent('BallisticFlight', {
  * CannonAimSystem writes it from drag input (browser drag / XR pinch-drag via
  * the native `Pressed` tag) and applies it every frame: yaw on the cannon
  * root, pitch on the gun_rotate pivot. Yaw and pitch limits are per-entity
- * scalars so mounts with different envelopes (the sky ballista's wide
- * traverse and high elevation) can share the component with cannons; the
- * defaults reproduce the stock cannon envelope.
+ * scalars; the defaults reproduce the stock cannon envelope.
  */
 export const CannonAim = createComponent('CannonAim', {
   /** Whole-cannon traverse, degrees, clamped ±yawRangeDeg. */
@@ -256,12 +248,6 @@ export const CannonAim = createComponent('CannonAim', {
   pitchMinDeg: { type: 'Float32', default: COMBAT.aimPitchMin },
   /** Per-entity elevation ceiling (deg) — stock cannon: COMBAT.aimPitchMax. */
   pitchMaxDeg: { type: 'Float32', default: COMBAT.aimPitchMax },
-  /**
-   * Vertical drag sign for a gun_rotate-zone drag: false keeps the shared
-   * "pull down -> muzzle down" mapping; true inverts it (the sky ballista's
-   * body pulls down -> muzzle lifts). Horizontal mapping is never inverted.
-   */
-  pitchDragInvert: { type: 'Boolean', default: false },
 });
 
 /**
@@ -820,9 +806,9 @@ export default defineComponents([
   Billboard,
   PanelScaleAnim,
   ShellTag,
-  BoltTag,
   StoneTag,
   CannonFire,
+  AmmoSelected,
   BallisticFlight,
   CannonAim,
   AimDragging,

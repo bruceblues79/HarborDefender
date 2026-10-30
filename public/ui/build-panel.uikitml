@@ -12,10 +12,8 @@
   containers do not clip children (border-radius is not a mask), and past
   ~5 the cannon glyph scattered into fragments in every file variant
   tried — the original 512-unit path, a scale(0.046875) group wrapper, and
-  a script-baked 0..24 path — while the mdi-family icons (recycle, bow:
-  0..24 content) draw exactly even at 7. The dock keeps one shared icon
-  size, so all three icons sit at the proven 4.5 with the cannon restored
-  to its original cannon.svg. The top row centers one dark group — wallet badge and round close
+  a script-baked 0..24 path — so the icons sit at the proven 4.5 with the
+  cannon restored to its original cannon.svg. The top row centers one dark group — wallet badge and round close
   button side by side (same height 6 and radius, reading as a single
   segmented pill) — instead of pinning the badge to the rim; the badge is
   sized for "9999g", the worst-case wallet, so the digits never resize the
@@ -34,26 +32,24 @@
   GlassMaterial) and washes mid-gray class backgrounds out to white —
   Container (button) renders the class color exactly; the bar itself keeps
   panel-material-class: glass over #ffffffaa to match the pause-menu surface.
-  A recycle button hangs centered below the bar: it sells the opening
-  slot's live occupant for its depreciated book value (book value ×
-  ECONOMY.replaceDiscount) and shares the unit
-  buttons' visual language, but carries a red icon (#e5484d) so the income
-  reads as a sale rather than a purchase. It dims (.dock-recycle-off) when
-  the slot has no live occupant — nothing to sell — instead of hiding, so
-  the column's outline stays constant across open/close cycles and the
-  sell capability stays discoverable. The row deliberately grows the dock
-  downward into the health-bar band (anchor and bar stay put); the dock's
-  render-order 18 already outranks the bars (8/9), so it stays in front.
   BuildPanelSystem binds the clicks and drives a three-state
   class per unit button: .dock-unit (default), .dock-unit-off (its price
   above the current wallet — dimmed; the number itself is not shown) and
   .dock-unit-hidden (that unit already
   occupies the opening slot) — and rewrites the wallet badge every frame
   while the dock is open, so gold spent or earned elsewhere shows live.
+  The bar's second button is the ammo row — a global single-select
+  (AmmoSelected on the director, rows = AMMO_DEFS) applying to every
+  cannon's next shot: the selected round's circle shrinks to 0.75 (the
+  build button's open pose) and lights warm gold from the repair-glow
+  family — reads as "loaded", not hover; v1 ships the free iron ball
+  only, so its click is a no-op and the selection never changes. Note
+  the stylesheet holds no comments: UIKitML rejects them as selectors.
   Runtime setProperties display would lose to the class layer, so every
   state change must be class-driven. Icons load through the <svg> tag's src
   (uikit Svg component: SVGLoader vector meshes, MeshBasicMaterial,
-  tone-mapped off): cannon from the game-icons set, bow from boxicons; fills
+  tone-mapped off): cannon from the game-icons set, the iron ball
+  hand-drawn; fills
   hardcoded #f2f4f7 because currentColor resolves to black in SVGLoader, and
   src resolves against the page base URL (not the .uikitml location), hence
   the ui/ prefix. Every non-colored container declares background-color
@@ -178,7 +174,7 @@
     display: none;
   }
 
-  .dock-recycle {
+  .ammo-unit {
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -190,23 +186,20 @@
     cursor: pointer;
   }
 
-  .dock-recycle:hover {
+  .ammo-unit:hover {
     background-color: #6a717a;
   }
 
-  .dock-recycle:active {
-    background-color: #515861;
-  }
-
-  .dock-recycle-off {
+  .ammo-active {
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    width: 10;
-    height: 10;
-    background-color: #41464d;
+    width: 7.5;
+    height: 7.5;
+    background-color: #ffc46a;
     border-radius: 5;
+    cursor: pointer;
   }
 
   .unit-icon {
@@ -228,11 +221,8 @@
     <button id="row-cannon" class="dock-unit">
       <svg class="unit-icon" src="ui/icons/cannon.svg" ></svg>
     </button>
-    <button id="row-sky-ballista" class="dock-unit">
-      <svg class="unit-icon" src="ui/icons/bow-filled.svg" ></svg>
+    <button id="ammo-ball-iron" class="ammo-active">
+      <svg class="unit-icon" src="ui/icons/ball-iron.svg" ></svg>
     </button>
   </Panel>
-  <button id="dock-recycle" class="dock-recycle">
-    <svg class="unit-icon" src="ui/icons/recycle.svg" ></svg>
-  </button>
 </Panel>

@@ -39,26 +39,15 @@ export class BallisticSystem extends createSystem({
     for (const entity of this.queries.flying.entities) {
       const object = entity.object3D;
       if (!object) continue;
-      const gravityScale = Number(
-        entity.getValue(BallisticFlight, 'gravityScale'),
-      );
       const vy =
         Number(entity.getValue(BallisticFlight, 'vy')) -
-        COMBAT.gravity * gravityScale * delta;
+        COMBAT.gravity * delta;
       entity.setValue(BallisticFlight, 'vy', vy);
       object.position.x += Number(entity.getValue(BallisticFlight, 'vx')) * delta;
       object.position.y += vy * delta;
       object.position.z += Number(entity.getValue(BallisticFlight, 'vz')) * delta;
-      // Ceiling reclaim: straight bolts are never pulled down, so once a
-      // shot climbs past boltReclaimY it is recycled silently — no splash
-      // ripple, it never met the water. The ballistic arcs never get this
-      // high, so the check is safe for every pooled projectile.
-      if (object.position.y >= COMBAT.boltReclaimY) {
-        this.retire(entity);
-        continue;
-      }
       // Far-edge backstop: a shot still airborne past the ocean's far edge
-      // can never come down on anything — recycle it the same silent way.
+      // can never come down on anything — recycle it silently.
       if (object.position.z <= OCEAN_FAR_Z) {
         this.retire(entity);
         continue;

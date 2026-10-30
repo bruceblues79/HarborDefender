@@ -53,11 +53,9 @@ const clamp = (value: number, min: number, max: number): number =>
  *   the drag until pointerup (grab-the-barrel semantics — the drag survives
  *   sliding off the barrel, matching how a real grabbed object behaves).
  *   The part under the press owns the axis: a drag starting on the gun_rotate
- *   subtree (cannon barrel / ballista swivel body) feeds pitch only; a drag
- *   starting anywhere else (carriage, rack base) feeds yaw only — mirrored,
- *   pull right swings the muzzle left. Pull down drops the muzzle unless the
- *   unit inverts the vertical mapping (the sky ballista's body pulls down ->
- *   muzzle lifts, CannonAim.pitchDragInvert).
+ *   subtree (cannon barrel) feeds pitch only; a drag starting anywhere else
+ *   (carriage, rack base) feeds yaw only — mirrored, pull right swings the
+ *   muzzle left. Pull down drops the muzzle.
  * - XR: grabbing a hovered cannon while the trigger is held anchors that
  *   hand; the hand's world-space travel from the grab pose maps to the same
  *   part-owned axis (wrist displacement, not ray-plane geometry — turret
@@ -90,12 +88,10 @@ export class CannonAimSystem extends createSystem({
   private readonly pressZones = new Map<number, boolean>();
   /** Entity index -> the XR ray currently rests on the pitch zone. */
   private readonly hoverZones = new Map<number, boolean>();
-  /** Zone and vertical sign frozen at the drag anchor, browser side. */
+  /** Zone frozen at the drag anchor, browser side. */
   private dragZonePitch = false;
-  private dragPitchInvert = false;
-  /** Zone and vertical sign frozen at the grab anchor, XR side. */
+  /** Zone frozen at the grab anchor, XR side. */
   private xrDragZonePitch = false;
-  private xrPitchInvert = false;
 
   // --- browser drag state (CameraOrbitSystem's pointer-tracking pattern) ---
   private readonly pointers = new Map<number, { x: number; y: number }>();
@@ -239,9 +235,6 @@ export class CannonAimSystem extends createSystem({
       // Entity-keyed — the anchored unit's own last press, no pointer-id
       // matching across event sources (pmndrs re-ids touch pointers).
       this.dragZonePitch = this.pressZones.get(cannon.index) ?? false;
-      this.dragPitchInvert = Boolean(
-        cannon.getValue(CannonAim, 'pitchDragInvert'),
-      );
       return;
     }
     const pos = this.pointers.get(this.dragPointerId);
@@ -252,12 +245,12 @@ export class CannonAimSystem extends createSystem({
     this.dragLast.y = pos.y;
     // Grab-the-part: the pitch zone (gun_rotate subtree) feeds pitch only,
     // the yaw zone feeds yaw only — mirrored, pull right -> muzzle left.
-    // Pitch keeps "pull down -> muzzle down" unless the unit inverts it.
+    // Pitch keeps "pull down -> muzzle down".
     const sensitivity = COMBAT.aimDegreesPerPixel;
     this.addAim(
       this.dragCannon,
       this.dragZonePitch ? 0 : -dx * sensitivity,
-      this.dragZonePitch ? (this.dragPitchInvert ? 1 : -1) * dy * sensitivity : 0,
+      this.dragZonePitch ? -dy * sensitivity : 0,
     );
   }
 
@@ -281,11 +274,8 @@ export class CannonAimSystem extends createSystem({
       this.xrAimStartYaw = Number(cannon.getValue(CannonAim, 'yawDeg'));
       this.xrAimStartPitch = Number(cannon.getValue(CannonAim, 'pitchDeg'));
       // Same part-under-the-ray rule as the browser press: the zone is the
-      // mesh the ray last rested on, the vertical sign is the unit's own.
+      // mesh the ray last rested on.
       this.xrDragZonePitch = this.hoverZones.get(cannon.index) ?? false;
-      this.xrPitchInvert = Boolean(
-        cannon.getValue(CannonAim, 'pitchDragInvert'),
-      );
       return;
     }
     // Continue with the anchoring hand only — releasing it is the sole exit,
@@ -311,7 +301,7 @@ export class CannonAimSystem extends createSystem({
     this.xrDragSpace.getWorldPosition(this.xrHandPos);
     // Wrist travel drives the part-owned axis, absolute from the grab pose,
     // mirrored like the browser drag: hand right -> muzzle left, hand up ->
-    // muzzle up (inverted units flip the vertical sign only).
+    // muzzle up.
     const handDx = this.xrHandPos.x - this.xrHandStart.x;
     const handDy = this.xrHandPos.y - this.xrHandStart.y;
     const sensitivity = COMBAT.aimDegreesPerMeter;
@@ -319,9 +309,7 @@ export class CannonAimSystem extends createSystem({
       cannon,
       this.xrAimStartYaw + (this.xrDragZonePitch ? 0 : handDx * sensitivity),
       this.xrAimStartPitch +
-        (this.xrDragZonePitch
-          ? (this.xrPitchInvert ? -1 : 1) * handDy * sensitivity
-          : 0),
+        (this.xrDragZonePitch ? handDy * sensitivity : 0),
     );
   }
 
@@ -387,8 +375,8 @@ export class CannonAimSystem extends createSystem({
 
   /**
    * True when the hit mesh sits inside the unit's gun_rotate subtree — the
-   * pitch zone (cannon barrel / ballista swivel body). Everything else on the
-   * mount (carriage, rack base) is the yaw zone.
+   * pitch zone (cannon barrel). Everything else on the mount (carriage,
+   * rack base) is the yaw zone.
    */
   private isPitchZone(entityIndex: number, hit: Object3D): boolean {
     const pivot = this.gunPivots.get(entityIndex);
@@ -425,16 +413,15 @@ export class CannonAimSystem extends createSystem({
 
   private setAim(cannon: Entity, yawDeg: number, pitchDeg: number): void {
     // Traverse limits live on the entity like the elevation limits: cannons
-    // keep the stock ±45° via the component default, the sky ballista
-    // overrides with its own wider sweep.
+    // keep the stock ±45° via the component default.
     const yawRange = Number(cannon.getValue(CannonAim, 'yawRangeDeg'));
     cannon.setValue(
       CannonAim,
       'yawDeg',
       clamp(yawDeg, -yawRange, yawRange),
     );
-    // Elevation limits live on the entity: cannons get the stock 0-45 envelope
-    // via component defaults, the sky ballista overrides with its own.
+    // Elevation limits live on the entity: cannons get the stock 0-80 envelope
+    // via component defaults.
     cannon.setValue(
       CannonAim,
       'pitchDeg',
