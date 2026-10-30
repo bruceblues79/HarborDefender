@@ -46,6 +46,8 @@ uniform float uFadeCos;
 uniform float uEdgeNoise;
 uniform float uNoiseScale;
 uniform float uSkyIntensity;
+uniform float uAxisY;
+uniform float uAxisZ;
 varying vec3 vWorldPosition;
 
 float hash(vec2 p) {
@@ -77,8 +79,9 @@ void main() {
   // discard immediately (no cube fetch, no noise, no blend write), so the
   // invisible majority of the sphere costs a dot and a smoothstep. Noise
   // runs only inside the rim band; elsewhere it collapses to neutral 0.5
-  // and the mask is exact: uMaxAlpha inside, exactly 0 outside.
-  float d = dot(dir, vec3(0.0, 0.0, -1.0));
+  // and the mask is exact: uMaxAlpha inside, exactly 0 outside. The disc
+  // axis is world -z raised by pitchUpDeg: (0, uAxisY, uAxisZ).
+  float d = dot(dir, vec3(0.0, uAxisY, uAxisZ));
   float m = smoothstep(uEdgeCos, uFadeCos, d);
   if (m <= 0.001) discard;
 
@@ -101,11 +104,13 @@ export function createSkyDomeMaterial(): ShaderMaterial {
       uEnvMap: { value: null },
       uEnvLoaded: { value: 0 },
       uMaxAlpha: { value: 1.0 },
-      uEdgeCos: { value: Math.cos((60 * Math.PI) / 180) },
-      uFadeCos: { value: Math.cos((35 * Math.PI) / 180) },
+      uEdgeCos: { value: Math.cos((45 * Math.PI) / 180) },
+      uFadeCos: { value: Math.cos((20 * Math.PI) / 180) },
       uEdgeNoise: { value: 0.4 },
       uNoiseScale: { value: 2.5 },
       uSkyIntensity: { value: 0.85 },
+      uAxisY: { value: Math.sin((7.5 * Math.PI) / 180) },
+      uAxisZ: { value: -Math.cos((7.5 * Math.PI) / 180) },
     },
     vertexShader,
     fragmentShader,

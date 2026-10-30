@@ -792,7 +792,7 @@ export const SkyDome = createComponent('SkyDome', {
   /** Ceiling of the dome's sky alpha over passthrough (1 = fully opaque). */
   maxAlpha: { type: 'Float32', default: 1.0 },
   /** Angular radius (deg) of the facing disc; past it, pure passthrough. */
-  edgeDeg: { type: 'Float32', default: 60 },
+  edgeDeg: { type: 'Float32', default: 45 },
   /** Smoothstep band (deg) inside the rim: fade starts at edgeDeg - fadeWidthDeg. */
   fadeWidthDeg: { type: 'Float32', default: 25 },
   /** Static noise amplitude on the rim (0 = clean geometric circle). */
@@ -801,6 +801,8 @@ export const SkyDome = createComponent('SkyDome', {
   noiseScale: { type: 'Float32', default: 2.5 },
   /** Multiplier on the sampled HDR sky colour. */
   skyIntensity: { type: 'Float32', default: 0.85 },
+  /** Elevation (deg) of the disc axis above the horizontal -z forward. */
+  pitchUpDeg: { type: 'Float32', default: 7.5 },
 });
 
 export default defineComponents([
