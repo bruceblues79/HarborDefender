@@ -64,20 +64,21 @@ const PANEL_FACTORS = { xr: 1, flat: 1.8 };
  * The shared build dock — the only writer of the BuildOpen lifecycle.
  *
  * A BuildOpen tag on the director (added by a build-button press) reveals
- * the billboarded dock over that slot: one circular purchase button per
- * placeable unit, always at the full book value — there is no trade-in,
- * and a slot's live occupant simply hides its own button. A button whose
- * price exceeds the wallet renders dimmed; the top-row badge beside the
- * close button shows the live gold. Picking a button mounts the unit into
- * the empty slot via replaceDefenseUnit, deducts from the wallet and
- * closes; the round close button above the bar dismisses without spending.
- * While the tag sits on the director the open slot's build icon renders
- * shrunk (DefenseButtonSystem's half of the contract); pressing another
- * slot's button moves the dock there, pressing the open slot's own button
- * closes it. The bar's second button is the ammo row: a global single
- * select (AmmoSelected on the director, one row per AMMO_DEFS entry) that
- * retargets every cannon's next shot — picking the already-selected round
- * is a no-op, and with v1's single free iron ball it always is.
+ * the billboarded dock over that slot. The bar's content follows the slot
+ * state: an empty (or Destroyed) slot shows one circular purchase button
+ * per placeable unit at the full book value — there is no trade-in — while
+ * a slot with a live occupant shows the ammo row only; the two never render
+ * together. A unit button whose price exceeds the wallet renders dimmed; the
+ * top-row badge beside the close button shows the live gold. Picking a
+ * button mounts the unit into the empty slot via replaceDefenseUnit, deducts
+ * from the wallet and closes; the round close button above the bar dismisses
+ * without spending. While the tag sits on the director the open slot's build
+ * icon renders shrunk (DefenseButtonSystem's half of the contract); pressing
+ * another slot's button moves the dock there, pressing the open slot's own
+ * button closes it. The ammo row is a global single select (AmmoSelected on
+ * the director, one row per AMMO_DEFS entry) that retargets every cannon's
+ * next shot — picking the already-selected round is a no-op, and with v1's
+ * single free iron ball it always is.
  */
 export class BuildPanelSystem extends createSystem({
   directors: { required: [LevelDirector] },
@@ -246,8 +247,11 @@ export class BuildPanelSystem extends createSystem({
   private refreshRows(director: Entity): void {
     const slot = Number(director.getValue(BuildOpen, 'slot'));
     const info = getDefenseSlotInfo(slot);
-    const occupant =
-      info && !info.entity.hasComponent(Destroyed) ? info.unit : null;
+    // Occupied = a live (not Destroyed) unit sits in the opened slot. An
+    // occupied slot offers ammo only; an empty or destroyed one offers the
+    // placeable units — the dock never shows both rows at once.
+    const occupied =
+      !!info && !info.entity.hasComponent(Destroyed);
     const money = director.hasComponent(Wallet)
       ? (director.getValue(Wallet, 'money') as number)
       : Number.POSITIVE_INFINITY;
@@ -266,7 +270,8 @@ export class BuildPanelSystem extends createSystem({
       if (!row) continue;
       const price = this.priceFor(unitId);
       let next: string;
-      if (unitId === occupant) {
+      if (occupied) {
+        // A live occupant turns the whole unit row off — ammo only.
         next = 'dock-unit-hidden';
       } else if (price > money) {
         next = 'dock-unit-off';
@@ -275,6 +280,7 @@ export class BuildPanelSystem extends createSystem({
       }
       this.setUnitClass(unitId, row, next);
     }
+    this.refreshAmmoRows();
   }
 
   /**
@@ -355,18 +361,29 @@ export class BuildPanelSystem extends createSystem({
 
   /**
    * Gold face = the selected round, every other row falls back to the base
-   * circle. Global state: refreshed on load and on pick, never per slot —
-   * the class swap is the only reliable toggle (same layer rule as units).
+   * circle. Global state: refreshed on load, on pick and per frame while the
+   * dock is open (via refreshRows) — ammo rows render only over an occupied
+   * slot; an empty one hides the whole row behind `ammo-hidden`. The class
+   * swap is the only reliable toggle (same layer rule as units).
    */
   private refreshAmmoRows(): void {
     const director = this.findOpenDirector();
     if (!director) return;
+    const slot = Number(director.getValue(BuildOpen, 'slot'));
+    const info = getDefenseSlotInfo(slot);
+    const occupied =
+      !!info && !info.entity.hasComponent(Destroyed);
     const selected = String(director.getValue(AmmoSelected, 'ammoId'));
     for (const [ammoId, row] of this.ammoRows) {
       if (!row) continue;
-      const next = ammoId === selected ? 'ammo-active' : 'ammo-unit';
+      let next: string;
+      if (!occupied) {
+        next = 'ammo-hidden';
+      } else {
+        next = ammoId === selected ? 'ammo-active' : 'ammo-unit';
+      }
       if (this.ammoClasses.get(ammoId) === next) continue;
-      row.classList.remove('ammo-unit', 'ammo-active');
+      row.classList.remove('ammo-unit', 'ammo-active', 'ammo-hidden');
       row.classList.add(next);
       this.ammoClasses.set(ammoId, next);
     }

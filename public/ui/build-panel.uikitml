@@ -35,12 +35,15 @@
   BuildPanelSystem binds the clicks and drives a three-state
   class per unit button: .dock-unit (default), .dock-unit-off (its price
   above the current wallet — dimmed; the number itself is not shown) and
-  .dock-unit-hidden (that unit already
-  occupies the opening slot) — and rewrites the wallet badge every frame
-  while the dock is open, so gold spent or earned elsewhere shows live.
-  The bar's second button is the ammo row — a global single-select
+  .dock-unit-hidden (the opened slot holds a live occupant — the whole
+  unit row hides, ammo takes the bar) — and rewrites the wallet badge every
+  frame while the dock is open, so gold spent or earned elsewhere shows live.
+  The ammo row — a global single-select
   (AmmoSelected on the director, rows = AMMO_DEFS) applying to every
-  cannon's next shot: the selected round's circle shrinks to 0.75 (the
+  cannon's next shot — renders only over an occupied slot: an empty or
+  destroyed one swaps the rows to .ammo-hidden (display none), so build
+  and ammo never share the bar. Over an occupied slot the selected round's
+  circle shrinks to 0.75 (the
   build button's open pose) and lights warm gold from the repair-glow
   family — reads as "loaded", not hover; v1 ships the free iron ball
   only, so its click is a no-op and the selection never changes. Note
@@ -200,6 +203,10 @@
     background-color: #ffc46a;
     border-radius: 5;
     cursor: pointer;
+  }
+
+  .ammo-hidden {
+    display: none;
   }
 
   .unit-icon {
