@@ -695,14 +695,15 @@ export const ChiefRise = createComponent('ChiefRise', {
  *
  * - bolt (死光闪电): instant segment between the chief's hit core and one
  *   random surviving defender core; `boltTimer` counts the visual's life
- *   down while the state stays 'idle'. The 20%-of-max damage is written at
- *   fire time; death stays in ShellHitSystem's sweep.
+ *   down while the state stays 'idle'. Damage is written at fire time;
+ *   death stays in ShellHitSystem's sweep.
  * - sweep (死光扫射): the state machine `aiming -> hold -> forming ->
  *   sweeping` walks the head's yaw to one end of the wall, holds, forms the
  *   beam, then sweeps across the slot row. `origin` freezes the chief's hit
  *   core position; `aimA`/`aimB` are the two wall-face endpoints the beam
  *   tracks between (world space). Each live defender core the sweeping
- *   corridor crosses loses 50% of its max Health, once per sweep.
+ *   corridor crosses loses DEATH_LIGHT.sweepDamageRatio of its max Health,
+ *   once per sweep.
  */
 export const ChiefDeathLight = createComponent('ChiefDeathLight', {
   /** 'idle' | 'aiming' | 'hold' | 'forming' | 'sweeping'. */
