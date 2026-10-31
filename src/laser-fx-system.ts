@@ -51,6 +51,8 @@ const SHARD_CYAN = 0x66ddff;
 
 /** Per-cannon fx rig: plain Object3D children under the frozen muzzle node. */
 interface LaserFxRig {
+  /** Owner laser entity — the liveness probe for the per-frame reconcile. */
+  entity: Entity;
   group: Object3D;
   particles: InstancedMesh;
   /** Unit spawn direction per shard, muzzle-local (3 floats each). */
@@ -183,23 +185,32 @@ export class LaserFxSystem extends createSystem({
         String(entity.getValue(LaserCycle, 'muzzleName')),
       );
       if (!muzzle) return;
-      this.rigs.set(entity.index, this.buildRig(muzzle));
+      this.rigs.set(entity.index, this.buildRig(muzzle, entity));
     });
     // The turret left the query (boss torn down or turret destroyed): drop
     // the rig. Per-entity resources only — the muzzle node itself belongs to
     // the prototype clone and must survive for the next battle.
     this.queries.lasers.subscribe('disqualify', (entity) => {
-      const rig = this.rigs.get(entity.index);
-      if (!rig) return;
-      (rig.glow.material as ShaderMaterial).dispose();
-      rig.particles.dispose();
-      rig.group.removeFromParent();
-      this.rigs.delete(entity.index);
+      this.teardownRig(entity.index);
     });
   }
 
+  /**
+   * Drop one rig: per-entity resources disposed, group unpinned from the
+   * muzzle, map entry cleared. The single teardown truth for both the
+   * disqualify subscriber and the reconcile sweep in update().
+   */
+  private teardownRig(index: number): void {
+    const rig = this.rigs.get(index);
+    if (!rig) return;
+    (rig.glow.material as ShaderMaterial).dispose();
+    rig.particles.dispose();
+    rig.group.removeFromParent();
+    this.rigs.delete(index);
+  }
+
   /** Build the charge/beam rig under the given muzzle node. */
-  private buildRig(muzzle: Object3D): LaserFxRig {
+  private buildRig(muzzle: Object3D, entity: Entity): LaserFxRig {
     const group = new Object3D();
     group.name = 'laser-fx';
     group.visible = false;
@@ -251,10 +262,17 @@ export class LaserFxSystem extends createSystem({
     group.add(beam);
 
     muzzle.add(group);
-    return { group, particles, dirs, radii, phases, glow, beam, beamCore, beamGlow };
+    return { entity, group, particles, dirs, radii, phases, glow, beam, beamCore, beamGlow };
   }
 
   update(delta: number): void {
+    // Reconcile: disqualify owns rig teardown, but elics dispatches the
+    // subscriber chain synchronously inside dispose — an earlier subscriber
+    // throwing aborts the rest, and the beam would outlive its cannon. Drop
+    // any rig whose owner entity is already dead, one frame late at worst.
+    for (const [index, rig] of this.rigs) {
+      if (!rig.entity.active) this.teardownRig(index);
+    }
     // Settlement screen: the run is over — retire every rig instead of
     // freezing a half-drawn beam or charge cloud behind the overlay.
     if (this.over()) {
