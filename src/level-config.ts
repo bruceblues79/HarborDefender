@@ -798,19 +798,19 @@ export const DAMAGE_MATRIX: Record<string, number> = {
  * geometry are tuned against this plane, so it is pinned instead of
  * re-derived. Value equals the last derived runtime result (v0 7.45 era).
  * Under the drag-loaded v0 12 lob the band stays bracketed: the near stop
- * takes a ~78-80° vertical lob (right at the elevation ceiling), the far
- * stop a comfortable ~40-52° arc through the core.
+ * takes the steepest lobs, the far stop a comfortable ~40-52° arc through
+ * the core.
  */
 export const FLYER_Y = 2.857;
 
 /**
  * The bombardier's berth band: far out at -3.75 (2026-10-30 外推自 -3.1，
- * 给满层 6 机的停位带留出纵深), snug against the wall at -1.73 (the old
- * 75° crossing). MIN < MAX keeps the ship constants' reading — MIN far
- * out, MAX against the wall.
+ * 给满层 6 机的停位带留出纵深), near end pulled back to -2.0 (2026-10-31
+ * 近停点外移，不再贴墙). MIN < MAX keeps the ship constants' reading —
+ * MIN far out, MAX against the wall.
  */
 export const FLYER_STOP_Z_MIN = -3.75;
-export const FLYER_STOP_Z_MAX = -1.73;
+export const FLYER_STOP_Z_MAX = -2.0;
 
 /**
  * Ornithopter flight envelope. The middle-air band sits below the
