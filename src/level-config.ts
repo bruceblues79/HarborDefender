@@ -165,7 +165,7 @@ export const WALL_LAND_FACE_Z: number = WALL_CENTER_Z + WALL_DEPTH_Z / 2;
  * Editing a slot's `unit` swaps what stands there; no system code changes.
  * x is the slot centre across the wall (m); every mount faces the sea (-Z).
  */
-export type DefenseUnitId = 'cannon';
+export type DefenseUnitId = 'cannon' | 'iron-guard';
 
 export interface DefenseSlotDef {
   /** Slot centre x across the wall (m). */
@@ -189,7 +189,7 @@ export const DEFENSE_SLOTS: DefenseSlotDef[] = [
 ];
 
 /** Unit ids the build panel can mount into a slot — the row order it renders. */
-export const PLACEABLE_UNITS: DefenseUnitId[] = ['cannon'];
+export const PLACEABLE_UNITS: DefenseUnitId[] = ['cannon', 'iron-guard'];
 
 /**
  * Ammunition the cannons load. The dock's ammo row is a global single
@@ -249,6 +249,14 @@ export const DEFENSE_BUTTONS = {
    */
   repairGlowColor: 0xffc46a,
   repairGlow: 0.6,
+  /**
+   * 灰化 pose for a slot occupied by a live iron-guard (钢铁卫士): both its
+   * buttons multiply their icon's vertex colors down to this flat gray and
+   * ignore presses until the guard falls and frees the slot. White
+   * (0xffffff) restores the stock look. Pure material colour write — no
+   * geometry, proxy or layout change.
+   */
+  blockedColor: 0x5d6168,
 };
 
 /**
@@ -290,6 +298,9 @@ export const ECONOMY = {
    */
   unitValues: {
     cannon: 200,
+    // 钢铁卫士：计划 2000 金一只（嘲讽承伤坦位），试验阶段 0 金便于检验，
+    // 后期可能上调。
+    'iron-guard': 0,
   } as Record<DefenseUnitId, number>,
 };
 
@@ -733,6 +744,9 @@ export const TRAJECTORY_PREVIEW = {
  */
 export const DEFENDER_BAR_Y: Record<DefenseUnitId, number> = {
   cannon: 0.186 + COMBAT.healthBarDefenderMarginY,
+  // 钢铁卫士：静态雕塑剪影，实测导出顶点 0.46（盔顶冠羽），共享 0.12 边距
+  // 即可（不需要炮车那样为抬起的炮管预留的大边距）。
+  'iron-guard': 0.46 + COMBAT.healthBarMarginY,
 };
 
 /**
@@ -760,6 +774,12 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   // Pirate chief head (task 031): every defender shell chips a flat 2% of
   // its 100-point pool.
   'cannon->islewrath-chief': 2,
+  // 钢铁卫士（iron-guard）：承伤固定 2% —— 每个攻击者一发都只扣 2%，
+  // boss 炮塔同样按此行结算（boss 只是无视嘲讽，不豁免它挡刀）。
+  'pirate-ship->iron-guard': 2,
+  'bombardier->iron-guard': 2,
+  'ornithopter->iron-guard': 2,
+  'islewrath-turret->iron-guard': 2,
 };
 
 /**

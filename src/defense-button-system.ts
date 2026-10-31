@@ -32,6 +32,13 @@ import { getDefenseSlotInfo } from './battle-setup.js';
  * - repair: toggles the Repairing tag on the slot's mounted unit. A dead
  *   (Destroyed) slot repairs nothing; the build panel is the way back.
  *
+ * A slot mounted with a live iron-guard (钢铁卫士) is inert: both its
+ * buttons gray out (DEFENSE_BUTTONS.blockedColor) and swallow presses until
+ * the guard is knocked out and the slot frees — no build panel, no repair,
+ * no rebuild over the taunting statue. Gray-out is a material-colour
+ * multiply on the icon (its own clone), so the GLB's baked look returns
+ * untouched the moment the slot frees.
+ *
  * Both commands share the cannon-aim phase gate: before the START gate
  * opens, while paused or after an outcome the buttons are scenery.
  *
@@ -92,6 +99,19 @@ export class DefenseButtonSystem extends createSystem({
     return false;
   }
 
+  /**
+   * A live iron-guard blocks its slot: both buttons gray out and ignore
+   * presses until the guard falls (Destroyed frees the slot for rebuild).
+   */
+  private blocked(slot: number): boolean {
+    const info = getDefenseSlotInfo(slot);
+    return (
+      !!info &&
+      info.unit === 'iron-guard' &&
+      !info.entity.hasComponent(Destroyed)
+    );
+  }
+
   /** True before the START gate opens — the buttons are scenery then. */
   private waitingStart(): boolean {
     for (const director of this.queries.directors.entities) {
@@ -105,6 +125,8 @@ export class DefenseButtonSystem extends createSystem({
   private onPressed(entity: Entity): void {
     if (this.paused() || this.over() || this.waitingStart()) return;
     const slot = Number(entity.getValue(DefenseButton, 'slot'));
+    // A live iron-guard owns the slot: no build, no repair, no dock toggle.
+    if (this.blocked(slot)) return;
     const director = this.director();
     if (!director) return;
     if (String(entity.getValue(DefenseButton, 'kind')) === 'build') {
@@ -144,6 +166,11 @@ export class DefenseButtonSystem extends createSystem({
       const icon = this.icons.get(entity.index);
       if (!icon) continue;
       const slot = Number(entity.getValue(DefenseButton, 'slot'));
+      // Iron-guard slot: both icons sit flat gray until the guard falls.
+      const mat = icon.material as MeshStandardMaterial;
+      mat.color.setHex(
+        this.blocked(slot) ? DEFENSE_BUTTONS.blockedColor : 0xffffff,
+      );
       if (String(entity.getValue(DefenseButton, 'kind')) === 'build') {
         icon.scale.setScalar(
           openSlot === slot ? DEFENSE_BUTTONS.openScale : 1,

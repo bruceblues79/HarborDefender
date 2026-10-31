@@ -19,6 +19,7 @@ import {
   ShellTag,
   ShipMovement,
   StoneTag,
+  Taunt,
   UnitTag,
 } from './components.js';
 import { COMBAT } from './level-config.js';
@@ -33,7 +34,8 @@ import { solveIntercept } from './shell-launch.js';
  * the ornithopter ORNITHOPTER.stopZMin) — it may shoot, it does not need to
  * have stopped yet. Once in range and the battle has started it:
  *
- * 1. picks one random defender hit core (a city cannon) and
+ * 1. picks one random defender hit core (a city cannon, or the taunting
+ *    iron-guard while one lives — its Taunt tag hijacks the whole roll) and
  *    snapshots its world position as the target — mounted defenders never
  *    move; a locked target
  *    that gets knocked out is re-acquired the same way on the next frame, and
@@ -139,19 +141,31 @@ export class PirateFireSystem extends createSystem({
     }
   }
 
-  /** Pick one random defender core (cannon) and snapshot it. */
+  /**
+   * Pick one random defender core and snapshot it. 嘲讽 hijacks the roll:
+   * while any live defender carries the Taunt tag, the pick runs exclusively
+   * over carriers — every raider shells the iron-guard instead of a random
+   * cannon. Without carriers the roll stays the old uniform random. The
+   * boss's own targeting (FreeLockTargetSystem) never reads the tag.
+   */
   private acquireTarget(ship: Entity): boolean {
     // Two passes over the query (count, then pick) keep update() allocation
     // free; this runs on first acquisition and again whenever the previous
     // target's cannon was knocked out.
     let defenderCount = 0;
+    let tauntCount = 0;
     for (const core of this.queries.cores.entities) {
-      if (core.getValue(HitCore, 'faction') === 'defender') defenderCount += 1;
+      if (core.getValue(HitCore, 'faction') === 'defender') {
+        defenderCount += 1;
+        if (core.hasComponent(Taunt)) tauntCount += 1;
+      }
     }
     if (defenderCount === 0) return false;
-    let pick = Math.floor(Math.random() * defenderCount);
+    const poolSize = tauntCount > 0 ? tauntCount : defenderCount;
+    let pick = Math.floor(Math.random() * poolSize);
     for (const core of this.queries.cores.entities) {
       if (core.getValue(HitCore, 'faction') !== 'defender') continue;
+      if (tauntCount > 0 && !core.hasComponent(Taunt)) continue;
       if (pick > 0) {
         pick -= 1;
         continue;

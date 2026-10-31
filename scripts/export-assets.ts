@@ -542,6 +542,126 @@ export function createCannonExport(): Object3D {
 }
 
 // ---------------------------------------------------------------------------
+// Iron guard (钢铁卫士) — half-body knight bust on a plinth, one merged steel
+// mesh, all colour baked into vertex colors (metalness 1 / roughness 0.1)
+// ---------------------------------------------------------------------------
+
+/** 钢铁卫士金属灰调色板：每个部件一个基色 + 少量明度抖动。 */
+const GUARD_PLINTH = 0x3f444c;
+const GUARD_CUIRASS = 0x9aa3ad;
+const GUARD_PAULDRON = 0x7b848f;
+const GUARD_GORGET = 0x6a727d;
+const GUARD_HELM = 0xaab2bc;
+const GUARD_CREST = 0x565e69;
+const GUARD_SLIT = 0x171b21;
+const GUARD_ARM = 0x6a727d;
+const GUARD_SHIELD = 0x848d98;
+const GUARD_SHIELD_RIM = 0x5b636e;
+const GUARD_BOSS = 0x454c56;
+
+/**
+ * 钢铁卫士：戴盔重甲的半身骑士，持圆盾，金属灰主色调。
+ *
+ * - 原点在底座底面中心（挂载时落在 pad 顶面），正面朝 -Z（面海，
+ *   与炮口朝向约定一致）；观察缝与盾牌都在 -Z 侧。
+ * - 全高 0.46 m（冠羽顶），横向 ~0.43 m（盾缘），与 0.6 m 槽距、
+ *   0.4 m 炮车协调；低模基元，无贴图。
+ * - 固有色全部烘进顶点色，材质基色为白，metalness 1 / roughness 0.1。
+ * - 单一合并 mesh（iron-guard-mesh）一次 draw call；无 gun_rotate、
+ *   无 muzzle —— 本单位不开火不瞄准，hit_core 由运行时的
+ *   decorateCombatPrototype 挂在包围盒中心。
+ */
+export function createIronGuardExport(): Object3D {
+  const rand = makeRandom(20261031);
+  const parts: BufferGeometry[] = [];
+
+  // 底座：矮圆台，读作雕像剖面的截断基座。
+  const plinth = new CylinderGeometry(0.125, 0.15, 0.035, 12);
+  plinth.translate(0, 0.0175, 0);
+  paint(plinth, GUARD_PLINTH, 0.03, rand);
+  parts.push(plinth);
+
+  // 胸甲：上宽下窄的圆台（肩宽腰窄的半身剪影）。
+  const cuirass = new CylinderGeometry(0.12, 0.095, 0.2, 12);
+  cuirass.translate(0, 0.135, 0);
+  paint(cuirass, GUARD_CUIRASS, 0.025, rand);
+  parts.push(cuirass);
+
+  // 肩甲：两枚压扁的半球扣在肩线上。
+  for (const side of [-1, 1]) {
+    const pauldron = new SphereGeometry(0.055, 8, 6);
+    pauldron.scale(1, 0.8, 1);
+    pauldron.translate(side * 0.125, 0.23, 0);
+    paint(pauldron, GUARD_PAULDRON, 0.025, rand);
+    parts.push(pauldron);
+  }
+
+  // 护颈：头盔与胸甲之间的过渡环。
+  const gorget = new CylinderGeometry(0.055, 0.068, 0.045, 10);
+  gorget.translate(0, 0.255, 0);
+  paint(gorget, GUARD_GORGET, 0.02, rand);
+  parts.push(gorget);
+
+  // 大头盔：直筒圆台（great helm），平顶。
+  const helm = new CylinderGeometry(0.075, 0.082, 0.145, 12);
+  helm.translate(0, 0.35, 0);
+  paint(helm, GUARD_HELM, 0.02, rand);
+  parts.push(helm);
+
+  // 盔顶冠羽：背脊上的薄鳍片（全模型最高点 0.46）。
+  const crest = new BoxGeometry(0.014, 0.045, 0.16);
+  crest.translate(0, 0.4375, 0.005);
+  paint(crest, GUARD_CREST, 0.02, rand);
+  parts.push(crest);
+
+  // 面甲观察缝：贴在盔体前表面 (-Z) 的深色薄板。
+  const slit = new BoxGeometry(0.105, 0.02, 0.014);
+  slit.translate(0, 0.36, -0.081);
+  paint(slit, GUARD_SLIT, 0, rand);
+  parts.push(slit);
+
+  // 持盾臂：从躯干右侧斜伸向盾后的小臂块。
+  const arm = new BoxGeometry(0.045, 0.045, 0.11);
+  arm.rotateX(0.5);
+  arm.translate(0.08, 0.185, -0.075);
+  paint(arm, GUARD_ARM, 0.02, rand);
+  parts.push(arm);
+
+  // 圆盾：盘面朝 -Z，外缘箍环 + 盾心凸台。
+  const shield = new CylinderGeometry(0.085, 0.085, 0.016, 14);
+  shield.rotateX(Math.PI / 2);
+  shield.translate(0.125, 0.2, -0.145);
+  paint(shield, GUARD_SHIELD, 0.02, rand);
+  parts.push(shield);
+
+  const shieldRim = new TorusGeometry(0.083, 0.009, 6, 16);
+  shieldRim.translate(0.125, 0.2, -0.145);
+  paint(shieldRim, GUARD_SHIELD_RIM, 0.02, rand);
+  parts.push(shieldRim);
+
+  const shieldBoss = new SphereGeometry(0.022, 8, 6);
+  shieldBoss.translate(0.125, 0.2, -0.158);
+  paint(shieldBoss, GUARD_BOSS, 0.02, rand);
+  parts.push(shieldBoss);
+
+  const material = new MeshStandardMaterial({
+    name: 'iron-guard-steel',
+    color: 0xffffff,
+    metalness: 1,
+    roughness: 0.1,
+    vertexColors: true,
+  });
+
+  const mesh = new Mesh(mergeParts(parts), material);
+  mesh.name = 'iron-guard-mesh';
+
+  const root = new Object3D();
+  root.name = 'iron-guard';
+  root.add(mesh);
+  return root;
+}
+
+// ---------------------------------------------------------------------------
 // Pirate ship (lofted hull + bow gun on a gun_rotate pivot)
 // ---------------------------------------------------------------------------
 
@@ -894,6 +1014,8 @@ export function createPirateShipExport(): Object3D {
 
 /** Goblin skin — the whimsical little pilot reads at a glance from afar. */
 const GOBLIN_COLOR = 0x6a9944;
+/** Hemp rope/string tint (原 task 022 sky-ballista 调色板，da4eb8d 误删后恢复）。 */
+const STRING_COLOR = 0x9a8a6a;
 
 /**
  * Gondola side profile: shape local x is the length axis with the bow at
@@ -2404,6 +2526,8 @@ mkdirSync(OUT_DIR, { recursive: true });
 await exportGLB(createOceanBodyExport(), 'ocean-body.glb');
 await exportGLB(createHarborWallExport(), 'harbor-wall.glb');
 await exportGLB(createCannonExport(), 'cannon.glb');
+// iron-guard: 钢铁卫士半身骑士（嘲讽承伤守方单位）。
+await exportGLB(createIronGuardExport(), 'iron-guard.glb');
 // pirate-ship-v2: the deck gun dropped the naval wheel carriage for a
 // fixed pedestal + turntable; the renamed file isolates the node-structure
 // change from any stale cached GLB.

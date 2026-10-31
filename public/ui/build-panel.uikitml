@@ -228,6 +228,9 @@
     <button id="row-cannon" class="dock-unit">
       <svg class="unit-icon" src="ui/icons/cannon.svg" ></svg>
     </button>
+    <button id="row-iron-guard" class="dock-unit">
+      <svg class="unit-icon" src="ui/icons/iron-guard.svg" ></svg>
+    </button>
     <button id="ammo-ball-iron" class="ammo-active">
       <svg class="unit-icon" src="ui/icons/ball-iron.svg" ></svg>
     </button>

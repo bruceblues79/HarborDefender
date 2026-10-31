@@ -94,6 +94,12 @@ export default defineAssets({
     name: 'Cannon',
     priority: 'background',
   },
+  'iron-guard': {
+    url: publicAssetUrl('gltf/iron-guard.glb'),
+    type: AssetType.GLTF,
+    name: 'Iron Guard',
+    priority: 'background',
+  },
   'defense-button-build': {
     url: publicAssetUrl('gltf/defense-button-build.glb'),
     type: AssetType.GLTF,

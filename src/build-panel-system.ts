@@ -371,8 +371,14 @@ export class BuildPanelSystem extends createSystem({
     if (!director) return;
     const slot = Number(director.getValue(BuildOpen, 'slot'));
     const info = getDefenseSlotInfo(slot);
+    // Occupied = a live (not Destroyed) unit sits in the opened slot. The
+    // iron-guard offers no ammunition of any kind (含基础弹也不给): its
+    // build button is inert so the dock can't normally open there, but a
+    // stale BuildOpen must never show the ammo row over the statue either.
     const occupied =
-      !!info && !info.entity.hasComponent(Destroyed);
+      !!info &&
+      info.unit !== 'iron-guard' &&
+      !info.entity.hasComponent(Destroyed);
     const selected = String(director.getValue(AmmoSelected, 'ammoId'));
     for (const [ammoId, row] of this.ammoRows) {
       if (!row) continue;

@@ -478,6 +478,16 @@ export const Wallet = createComponent('Wallet', {
 export const Repairing = createComponent('Repairing', {});
 
 /**
+ * Explicit tag: 嘲讽 (taunt) — the unit's mere presence hijacks the raiders'
+ * free targeting: as long as one live carrier exists, every non-boss attacker
+ * rolls its target exclusively among carriers. Only the raider fire path
+ * (PirateFireSystem) reads the tag; the boss ignores taunts by design (its
+ * turret sweep, laser and death light keep their own targeting). Carried by
+ * the iron-guard (钢铁卫士), which never fires and never repairs.
+ */
+export const Taunt = createComponent('Taunt', {});
+
+/**
  * Explicit tag: the shared build panel is open, targeting the defense slot
  * in `slot`. Added/removed by DefenseButtonSystem (build button click:
  * open, switch slot, toggle close), removed by BuildPanelSystem (row
@@ -849,4 +859,5 @@ export default defineComponents([
   NextWaveCommand,
   WaveIntermission,
   SkyDome,
+  Taunt,
 ]);
