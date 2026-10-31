@@ -192,6 +192,15 @@ export const DEFENSE_SLOTS: DefenseSlotDef[] = [
 export const PLACEABLE_UNITS: DefenseUnitId[] = ['cannon', 'iron-guard'];
 
 /**
+ * 全场唯一单位：这些 unit id 在任意槽位存活一只时，其余空槽一律禁建
+ * （面板行置灰、点击拒绝），直到这只毁灭。唯一性是全局事实，不是每槽
+ * 属性 —— 钢铁卫士的嘲讽由它独自承担，多只没有意义。
+ */
+export const UNIQUE_UNITS: ReadonlySet<DefenseUnitId> = new Set([
+  'iron-guard',
+]);
+
+/**
  * Ammunition the cannons load. The dock's ammo row is a global single
  * select over this table (AmmoSelected on the director) and applies to
  * every cannon's next shot. v1 ships one round only — a future round adds

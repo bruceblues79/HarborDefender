@@ -200,6 +200,18 @@ export function getDefenseSlotInfo(
 }
 
 /**
+ * Whether a live (not Destroyed) occupant of `unitId` stands in any slot —
+ * the single truth UNIQUE_UNITS panels consult: one live iron-guard anywhere
+ * forbids building a second.
+ */
+export function hasLiveDefenseUnit(unitId: DefenseUnitId): boolean {
+  return defenseEntities.some(
+    (entry) =>
+      entry.unit === unitId && !entry.entity.hasComponent(Destroyed),
+  );
+}
+
+/**
  * Strip a slot's occupant without mounting a replacement: the unit loses
  * its combat components (every combat query drops it this frame), is hidden
  * and is forgotten by the battery registry — hidden forever like a knockout,
