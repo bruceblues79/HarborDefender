@@ -165,7 +165,7 @@ export const WALL_LAND_FACE_Z: number = WALL_CENTER_Z + WALL_DEPTH_Z / 2;
  * Editing a slot's `unit` swaps what stands there; no system code changes.
  * x is the slot centre across the wall (m); every mount faces the sea (-Z).
  */
-export type DefenseUnitId = 'cannon' | 'sky-ballista';
+export type DefenseUnitId = 'cannon' | 'iron-guard';
 
 export interface DefenseSlotDef {
   /** Slot centre x across the wall (m). */
@@ -189,7 +189,35 @@ export const DEFENSE_SLOTS: DefenseSlotDef[] = [
 ];
 
 /** Unit ids the build panel can mount into a slot — the row order it renders. */
-export const PLACEABLE_UNITS: DefenseUnitId[] = ['cannon', 'sky-ballista'];
+export const PLACEABLE_UNITS: DefenseUnitId[] = ['cannon', 'iron-guard'];
+
+/**
+ * 全场唯一单位：这些 unit id 在任意槽位存活一只时，其余空槽一律禁建
+ * （面板行置灰、点击拒绝），直到这只毁灭。唯一性是全局事实，不是每槽
+ * 属性 —— 钢铁卫士的嘲讽由它独自承担，多只没有意义。
+ */
+export const UNIQUE_UNITS: ReadonlySet<DefenseUnitId> = new Set([
+  'iron-guard',
+]);
+
+/**
+ * Ammunition the cannons load. The dock's ammo row is a global single
+ * select over this table (AmmoSelected on the director) and applies to
+ * every cannon's next shot. v1 ships one round only — a future round adds
+ * a row here plus its hit-effect branch; the dock structure never changes.
+ */
+export interface AmmoDef {
+  /** Stable ammo id (AmmoSelected.ammoId, dock row id `ammo-<id>`). */
+  id: string;
+  /** Dock icon path — resolved against the page base URL like every uikit svg. */
+  icon: string;
+  /** Gold charged per shot (0 = free). Deduction arrives with the next round. */
+  costPerShot: number;
+}
+
+export const AMMO_DEFS: AmmoDef[] = [
+  { id: 'ball-iron', icon: 'ui/icons/ball-iron.svg', costPerShot: 0 },
+];
 
 /**
  * Build/repair buttons, two per defense slot, mounted on the wall's land
@@ -230,6 +258,14 @@ export const DEFENSE_BUTTONS = {
    */
   repairGlowColor: 0xffc46a,
   repairGlow: 0.6,
+  /**
+   * 灰化 pose for a slot occupied by a live iron-guard (钢铁卫士): both its
+   * buttons multiply their icon's vertex colors down to this flat gray and
+   * ignore presses until the guard falls and frees the slot. White
+   * (0xffffff) restores the stock look. Pure material colour write — no
+   * geometry, proxy or layout change.
+   */
+  blockedColor: 0x5d6168,
 };
 
 /**
@@ -265,20 +301,15 @@ export const ECONOMY = {
   /** Money drained per second while a unit repairs. */
   repairCostPerSecond: 8,
   /**
-   * Replace discount: while a slot's unit is alive (not Destroyed), its
-   * book value (unitValues) × this factor is credited off the new unit's
-   * price — 200 × 0.3 = a flat 60 trade-in credit. Recycling a live unit
-   * pays out the same factor as an instant refund, so replace ≡ recycle +
-   * rebuild.
-   */
-  replaceDiscount: 0.3,
-  /**
    * Book value per unit id: the ONLY price knob — an empty or destroyed
-   * slot builds at full value, a live swap pays the value difference.
+   * slot builds at full value. There is no trade-in: a live occupant's
+   * button simply stays hidden.
    */
   unitValues: {
     cannon: 200,
-    'sky-ballista': 200,
+    // 钢铁卫士：计划 2000 金一只（嘲讽承伤坦位），试验阶段 0 金便于检验，
+    // 后期可能上调。
+    'iron-guard': 0,
   } as Record<DefenseUnitId, number>,
 };
 
@@ -317,20 +348,6 @@ export const REWARD_TABLE: Record<RewardTier, number> = {
 };
 
 /**
- * Anti-air ballista aim envelope: against flyers — default rests at the
- * mid-range 50° between the 20° floor and the 75° ceiling. The deep 20°
- * floor lets the bolts reach the ornithopter's middle-air band (y ≈ 2.3 at
- * z -4.4..-2.8) instead of only the higher bombardier plane, and the ±85°
- * traverse out-sweeps the stock cannon's ±45° so the mount covers the flanks.
- */
-export const SKY_BALLISTA = {
-  yawRange: 85,
-  pitchDefault: 50,
-  pitchMin: 20,
-  pitchMax: 75,
-};
-
-/**
  * Pirate hull envelope is ~1.2 m long with the bow on local -Z, so the bow
  * reaches 0.6 m ahead of the ship's origin.
  */
@@ -358,18 +375,6 @@ export const SHIP_Y = 0.66;
 
 /** Spin of the bombardier's rotor nodes, radians per second. */
 export const PROPELLER_SPIN_RAD = 8;
-
-/**
- * Sky-ballista muzzle geometry, kept in step with sky-ballista.glb and its
- * battle-setup placement: the mount stands on the wall top (y 0.8) at the
- * wall centre z (-0.8), the `gun_rotate` pivot rides 0.21 above the floor,
- * and the loaded bolt tip (the muzzle) sits at gun_rotate-local
- * (0, 0.063, -0.157) — assembly-local (0, 0.0525, -0.131) x the 1.2 scale.
- * battle-setup hangs the runtime `muzzle` node at exactly this offset, so
- * these constants stay the muzzle's single truth.
- */
-export const BALLISTA_MUZZLE_LOCAL_Y = 0.063;
-export const BALLISTA_MUZZLE_LOCAL_Z = -0.157;
 
 /**
  * Ripples a moving unit drags across the surface. Strength is the wake's
@@ -534,17 +539,37 @@ export const COMBAT = {
    */
   fireJitterMin: 0.2,
   fireJitterMax: 0.5,
-  /** Gravity (m/s^2) for the parabolic flight. */
-  gravity: 9.8,
   /**
-   * Muzzle speed (m/s). Tuned so a flat shot (0°) reaches z ≈ -2.9 — just
-   * past the dock line — and the maximum pitch (45°) lands at z ≈ -7.4:
-   *   launch at 45° ≈ (x, 0.941, -1.441) — the muzzle swings up on its pivot;
-   *   splash y = surfaceY - splashMargin ≈ 0.625, travel Δz ≈ 5.96
-   *   s = v/√2;  s·[s + √(s² + 2g·0.316)] / g = 5.96  ->  v ≈ 7.45
-   * A slow, lobbed cannonball arc (~26% of the original 29 m/s).
+   * Gravity (m/s^2) for the parabolic flight — shared by every projectile:
+   * city shells, dragless attacker intercepts and stones. The intercept
+   * solver compensates exactly, so attacker arcs only steepen. 12.0 (feel
+   * test, from 9.8) drops shots harder and shortens carry to ~5.8 m @ 33°.
    */
-  shellSpeed: 7.45,
+  gravity: 12.0,
+  /**
+   * Muzzle speed (m/s) — one gun fires everything. 12.0 rides with a heavy
+   * linear drag (shellDrag below): the ball leaves fast and visibly sheds
+   * speed, which layers the ranges the way a real throw feels — optimum
+   * carry ~30° (~7 m), 45° ~6.4 m, 60° ~4.9 m (reaches the farthest ship
+   * berth -6.5 on a mid arc), 80° lobs die at ~1.8 m, flat shots carry
+   * ~2.7 m. History: 7.45 → 9.0 (one-cannon plan) re-opened the flapper
+   * band but made every mid elevation land alike; 7.0 → 7.8 restored the
+   * layering while staying vacuum-flat (30-60° within 15%); 12.0 + drag
+   * breaks that flat top for good — raising the barrel past the optimum
+   * now monotonically shortens the shot; 10.0 (feel test) shrinks max
+   * carry to ~5.6 m @ 32° — ship berths past ~-5.5 fall out of reach;
+   * 11.0 + gravity 12.0 (feel test) keeps max carry ~5.8 m @ 33° — the
+   * far ship end -6.5 stays out of reach, the wall-side half hits.
+   */
+  shellSpeed: 11.0,
+  /**
+   * Linear air drag (1/s) on defender shells only: dv/dt = -drag·v + g.
+   * Pirate and boss intercepts solve vacuum trajectories, so their shells
+   * launch with drag 0 (the BallisticFlight default) and stay
+   * guaranteed-hit. The trajectory guide samples the same closed form the
+   * integration follows, so preview and flight stay in lockstep.
+   */
+  shellDrag: 1.0,
   /** Shells recycle this far (m) below the ocean surface. */
   splashMargin: 0.05,
   /** Splash ripple: strength 1 -> 0 over this many seconds, then disposed. */
@@ -556,13 +581,14 @@ export const COMBAT = {
   splashSpeed: 4,
   /** Whole-cannon traverse clamp, degrees (±) — wide enough to flank the wall. */
   aimYawRange: 45,
-  /** Barrel elevation clamp, degrees. */
+  /** Barrel elevation clamp, degrees — 80° lobs cover the flyer band's near half. */
   aimPitchMin: 0,
-  aimPitchMax: 45,
+  aimPitchMax: 80,
   /**
    * Spawn/reset barrel elevation, degrees — guns enter the battle (and
-   * RESTART / MAIN re-entry) already half-raised, midway through the
-   * 0–45 elevation travel, so the battery reads ready rather than parked.
+   * RESTART / MAIN re-entry) already part-raised, a quarter of the way
+   * through the 0–80 elevation travel, so the battery reads ready rather
+   * than parked.
    */
   aimPitchDefault: 22.5,
   /** Aim degrees per dragged pixel in the browser — retune by feel. */
@@ -593,8 +619,6 @@ export const COMBAT = {
   unitHealth: 100,
   /** Seconds between two shots from one pirate ship that is in fire range. */
   pirateFireInterval: 3.0,
-  /** Seconds between two bolts from one sky ballista (anti-air mount). */
-  ballistaFireInterval: 1.0,
   /** Seconds between two bombs from one bombardier. */
   bombardierFireInterval: 2,
   /** Seconds between two stones from one ornithopter. */
@@ -609,15 +633,6 @@ export const COMBAT = {
   stoneRadius: 0.05,
   /** Grey stone tint (roughness 0.9 / metalness 0 dielectric). */
   stoneColor: 0x8a8a86,
-  /**
-   * World y a shot never crosses: straight bolts (gravityScale 0) are never
-   * pulled down, so once one climbs past this ceiling BallisticSystem recycles it
-   * silently. The ballistic arcs never get this high, so the same check is
-   * safe for every pooled projectile.
-   */
-  boltReclaimY: 3.25,
-  /** Pool size for straight ballista bolts (separate from the ball pool). */
-  boltPoolSize: 12,
   /**
    * Pirate shells keep a constant horizontal speed (m/s); flight time is
    * distance / this and the vertical velocity is solved for an exact hit,
@@ -712,46 +727,35 @@ export const COMBAT = {
  * Aim-drag trajectory guide (TrajectoryPreviewSystem), redrawn every frame
  * while a defense unit is being dragged. Sampling mirrors the live flight
  * exactly — launch vector from CannonFireSystem.fire, gravity and
- * terminations from BallisticSystem. Two render modes share the sampler:
- * parabolic shots draw the sparse dot row; straight bolts (gravityScale 0)
- * draw one continuous crossed-ribbon line.
+ * terminations from BallisticSystem — resampled at uniform arc-length
+ * spacing, so dot gaps stay constant from muzzle to splash.
  */
 export const TRAJECTORY_PREVIEW = {
-  /** Seconds between two guide dots — horizontal gap = shellSpeed_h × this. */
-  timeStep: 0.035,
+  /** Metres between two guide dots — uniform along the arc, speed-blind. */
+  stepDistance: 0.12,
+  /** Seconds between two closed-form march samples feeding the resample. */
+  sampleStep: 0.02,
   /** InstancedMesh capacity; the longest lob stays well under this. */
   maxDots: 72,
   /** Cube edge (m) at the tail (full size) — under half a core radius. */
-  dotSize: 0.04,
-  /** Muzzle-end dot edge scale (× dotSize); grows linearly to 1 at the tail. */
-  dotScaleNear: 0.2,
+  dotSize: 0.054,
+  /** Cube edge scale at the muzzle end (x dotSize); grows linearly to 1 at the water end. */
+  dotScaleNear: 0.4,
   /** Warm gold (sRGB hex) — the shared accent (defense pads / repair glow). */
   color: 0xffc46a,
-  /**
-   * Straight-bolt ribbon: total width (m) of each of the two thin quads
-   * crossing at 90° (cross plates), so the guide keeps its width from every
-   * viewing angle — a single flat ribbon collapses edge-on.
-   */
-  lineWidth: 0.02,
-  /**
-   * Ribbon alpha at the muzzle end. The gradient bakes into the vertex
-   * colours and stretches with the line, so it stays normalized over any
-   * reach: near-invisible at the gun, brightest at the bolt's death point.
-   */
-  lineAlphaNear: 0.1,
-  /** Ribbon alpha at the far end — mirrors the aim far end. */
-  lineAlphaFar: 0.8,
 };
 
 /**
  * Explicit defender health-bar heights (carrier-local y, baked margin
- * included): measured GLB subtree tops at the baked pose — cannon 0.186
- * (barrel level at rest), sky ballista 0.2874 — plus the shared defender
- * margin. The bar system no longer derives heights from bounding boxes.
+ * included): measured GLB subtree top at the baked pose — cannon 0.186
+ * (barrel level at rest) — plus the shared defender margin. The bar system
+ * no longer derives heights from bounding boxes.
  */
 export const DEFENDER_BAR_Y: Record<DefenseUnitId, number> = {
   cannon: 0.186 + COMBAT.healthBarDefenderMarginY,
-  'sky-ballista': 0.2874 + COMBAT.healthBarDefenderMarginY,
+  // 钢铁卫士：静态雕塑剪影，实测导出顶点 0.345（0.75x 定稿后的盔顶冠羽），
+  // 共享 0.12 边距即可（不需要炮车那样为抬起的炮管预留的大边距）。
+  'iron-guard': 0.345 + COMBAT.healthBarMarginY,
 };
 
 /**
@@ -765,80 +769,58 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   'cannon->pirate-ship': COMBAT.shellDamage,
   'cannon->bombardier': 25,
   'cannon->ornithopter': 25,
-  'sky-ballista->pirate-ship': 10,
-  'sky-ballista->bombardier': 20,
-  'sky-ballista->ornithopter': 20,
   'pirate-ship->cannon': COMBAT.pirateShellDamage,
-  'pirate-ship->sky-ballista': 17.5,
   'bombardier->cannon': 10,
-  'bombardier->sky-ballista': 12.5,
   'ornithopter->cannon': 6,
-  'ornithopter->sky-ballista': 8,
   // Boss Islewrath gun turrets (task 029). The `islewrath-turret` core
   // unitType is a damage-matrix key, deliberately distinct from the
   // UNIT_TYPES sheet key `boss_islewrath` (underscore) — never look rows up
   // by the sheet key.
   'islewrath-turret->cannon': 20,
-  'islewrath-turret->sky-ballista': 20,
   // Boss Islewrath turret incoming rows (task 028/031): a city cannon shell
-  // chips a flat 2% of the turret's 100-point pool, a sky-ballista bolt 1%.
+  // chips a flat 2% of the turret's 100-point pool.
   'cannon->islewrath-turret': 2,
-  'sky-ballista->islewrath-turret': 1,
-  // Pirate chief head (task 031): every defender hit — shell or bolt —
-  // chips a flat 2% of its 100-point pool.
+  // Pirate chief head (task 031): every defender shell chips a flat 2% of
+  // its 100-point pool.
   'cannon->islewrath-chief': 2,
-  'sky-ballista->islewrath-chief': 2,
+  // 钢铁卫士（iron-guard）：承伤固定 2% —— 每个攻击者一发都只扣 2%，
+  // boss 炮塔同样按此行结算（boss 只是无视嘲讽，不豁免它挡刀）。
+  'pirate-ship->iron-guard': 2,
+  'bombardier->iron-guard': 2,
+  'ornithopter->iron-guard': 2,
+  'islewrath-turret->iron-guard': 2,
 };
 
 /**
- * Bombardier flight envelope. The flyer must sit above every cannonball the
- * city battery can throw — its cruise plane is derived from the shell
- * ballistics, not chosen by hand:
- * - a cannon's gun_rotate pivot rides the wall top (y 0.8) and the muzzle
- *   hangs gun_rotate-local z -0.2 (same offset as the level-wave-system
- *   muzzle helper), so a 45° barrel launches from y 0.8 + 0.2·sin45° ≈ 0.941
- *   — matching the shellSpeed tuning note above;
- * - the barrel clamps at aimPitchMax 45°, and over [0°, 45°] both the muzzle
- *   height and the vertical speed component rise together, so 45° is the
- *   global worst case;
- * - apex rise = (v·sin45°)² / 2g ≈ 1.42 → the shell tops out at y ≈ 2.36.
- * Pirate cannons are flatter still: their arc solves for an exact hit with a
- * ~0.2-0.35 m apex, nowhere near this plane.
+ * Bombardier cruise altitude, explicit designer data (one-cannon plan,
+ * 2026-10-30): previously derived from the cannon's 45° apex, which would
+ * drift with the retuned shellSpeed — the flyer's berth band and firing
+ * geometry are tuned against this plane, so it is pinned instead of
+ * re-derived. Value equals the last derived runtime result (v0 7.45 era).
+ * Under the drag-loaded v0 12 lob the band stays bracketed: the near stop
+ * takes the steepest lobs, the far stop a comfortable ~40-52° arc through
+ * the core.
  */
-const CANNON_MUZZLE_LOCAL_Z = -0.2;
-const CANNON_MUZZLE_Y_45 = 0.8 - CANNON_MUZZLE_LOCAL_Z * Math.sin(Math.PI / 4);
-const CANNON_APEX_Y =
-  CANNON_MUZZLE_Y_45 +
-  (COMBAT.shellSpeed * Math.sin(Math.PI / 4)) ** 2 / (2 * COMBAT.gravity);
-/** Safety margin above the shell apex, also covering radius differences. */
-const FLYER_CLEARANCE = 0.2;
-/** Extra designer headroom above the ballistic bound. */
-const FLYER_EXTRA_ALTITUDE = 0.3;
-export const FLYER_Y =
-  CANNON_APEX_Y + FLYER_CLEARANCE + FLYER_EXTRA_ALTITUDE;
+export const FLYER_Y = 2.857;
 
 /**
- * The bombardier's berth band, now designer data instead of a bolt-line
- * derivation: with the ballista's depression floor opened to 20° the derived
- * far edge (≈ -6.15) would reach deep into the ornithopter's own band, so
- * the flyer keeps its tuned explicit range — far out at -3.75 (2026-10-30
- * 外推自 -3.1，给满层 6 机的停位带留出纵深), snug against the wall at -1.73
- * (the old 75° crossing). MIN < MAX keeps the ship constants' reading —
+ * The bombardier's berth band: far out at -3.75 (2026-10-30 外推自 -3.1，
+ * 给满层 6 机的停位带留出纵深), near end pulled back to -2.0 (2026-10-31
+ * 近停点外移，不再贴墙). MIN < MAX keeps the ship constants' reading —
  * MIN far out, MAX against the wall.
  */
 export const FLYER_STOP_Z_MIN = -3.75;
-export const FLYER_STOP_Z_MAX = -1.73;
+export const FLYER_STOP_Z_MAX = -2.0;
 
 /**
  * Ornithopter flight envelope. The middle-air band sits below the
- * bombardier's cruise plane but inside the city cannons' reach: a 45° shell
- * launched from y 0.941 crosses y 2.3 on its descent between z ≈ -3.5 and
- * -5.5, so a flyer berthed in the band's core [-5.25, -3.5] stays in the
- * 45° envelope's kill corridor (the far edge 外推自 -4.9 至 -5.25，让满层
- * 6 机可排 3 × 2), while the forward extension [-3.5, -3.3]
- * sits this side of it — still well inside cannon range. The 20° ballista
- * bolt line from its muzzle (y 1.134, z -1.416) crosses the band's core
- * height range [1.8, 2.8] throughout, so the anti-air mount covers it too.
+ * bombardier's cruise plane but inside the city cannons' reach. Under the
+ * drag-loaded v0 12 lob the band keeps a healthy mid-arc window (far stop
+ * ≈ 22-35°, near stop ≈ 35-50°); high lobs no longer reach the outer
+ * band — linear drag starves them of horizontal carry, the intended
+ * "steep shots guard close in" behavior. The far edge 外推自 -4.9 至
+ * -5.25，让满层 6 机可排 3 × 2, and the forward extension [-3.5, -3.3]
+ * sits this side of it — still well inside cannon range.
  */
 export const ORNITHOPTER = {
   /** Cruise altitude (m) — the unit's object-origin height. */

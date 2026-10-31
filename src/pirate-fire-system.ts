@@ -9,7 +9,6 @@ import { createSystem, Vector3 } from '@iwsdk/core';
 import type { Entity, Object3D } from '@iwsdk/core';
 import {
   BallisticFlight,
-  BoltTag,
   Destroyed,
   GameOver,
   GamePaused,
@@ -20,6 +19,7 @@ import {
   ShellTag,
   ShipMovement,
   StoneTag,
+  Taunt,
   UnitTag,
 } from './components.js';
 import { COMBAT } from './level-config.js';
@@ -34,7 +34,8 @@ import { solveIntercept } from './shell-launch.js';
  * the ornithopter ORNITHOPTER.stopZMin) — it may shoot, it does not need to
  * have stopped yet. Once in range and the battle has started it:
  *
- * 1. picks one random defender hit core (a city cannon or sky ballista) and
+ * 1. picks one random defender hit core (a city cannon, or the taunting
+ *    iron-guard while one lives — its Taunt tag hijacks the whole roll) and
  *    snapshots its world position as the target — mounted defenders never
  *    move; a locked target
  *    that gets knocked out is re-acquired the same way on the next frame, and
@@ -59,7 +60,7 @@ export class PirateFireSystem extends createSystem({
   cores: { required: [HitCore], excluded: [Destroyed] },
   freeShells: {
     required: [ShellTag],
-    excluded: [BallisticFlight, BoltTag, StoneTag],
+    excluded: [BallisticFlight, StoneTag],
   },
   freeStones: {
     required: [ShellTag, StoneTag],
@@ -116,14 +117,16 @@ export class PirateFireSystem extends createSystem({
       }
       // Re-validate the locked target every frame: the cores query drops
       // Destroyed cannons, so a missing index means the target died and the
-      // gun re-acquires a random surviving one. With no survivor at all the
-      // ship simply holds fire — LevelWaveSystem's defeat check settles the
-      // run (GameOver flips every consumer silent) on the same frame.
-      if (
-        ship.getValue(PirateCannon, 'hasTarget') &&
-        !this.targetAlive(ship)
-      ) {
-        ship.setValue(PirateCannon, 'hasTarget', false);
+      // gun re-acquires — and a Taunt carrier on the field hijacks every
+      // lock onto a non-carrier, so raiders already mid-battle swing onto
+      // the iron-guard the frame it appears (or re-aims away from it the
+      // frame it falls). With no survivor at all the ship simply holds fire
+      // — LevelWaveSystem's defeat check settles the run (GameOver flips
+      // every consumer silent) on the same frame.
+      if (ship.getValue(PirateCannon, 'hasTarget')) {
+        if (!this.targetAlive(ship) || this.tauntHijacked(ship)) {
+          ship.setValue(PirateCannon, 'hasTarget', false);
+        }
       }
       if (!ship.getValue(PirateCannon, 'hasTarget')) {
         if (!this.acquireTarget(ship)) continue;
@@ -140,19 +143,31 @@ export class PirateFireSystem extends createSystem({
     }
   }
 
-  /** Pick one random defender core (cannon or sky ballista) and snapshot it. */
+  /**
+   * Pick one random defender core and snapshot it. 嘲讽 hijacks the roll:
+   * while any live defender carries the Taunt tag, the pick runs exclusively
+   * over carriers — every raider shells the iron-guard instead of a random
+   * cannon. Without carriers the roll stays the old uniform random. The
+   * boss's own targeting (FreeLockTargetSystem) never reads the tag.
+   */
   private acquireTarget(ship: Entity): boolean {
     // Two passes over the query (count, then pick) keep update() allocation
     // free; this runs on first acquisition and again whenever the previous
     // target's cannon was knocked out.
     let defenderCount = 0;
+    let tauntCount = 0;
     for (const core of this.queries.cores.entities) {
-      if (core.getValue(HitCore, 'faction') === 'defender') defenderCount += 1;
+      if (core.getValue(HitCore, 'faction') === 'defender') {
+        defenderCount += 1;
+        if (core.hasComponent(Taunt)) tauntCount += 1;
+      }
     }
     if (defenderCount === 0) return false;
-    let pick = Math.floor(Math.random() * defenderCount);
+    const poolSize = tauntCount > 0 ? tauntCount : defenderCount;
+    let pick = Math.floor(Math.random() * poolSize);
     for (const core of this.queries.cores.entities) {
       if (core.getValue(HitCore, 'faction') !== 'defender') continue;
+      if (tauntCount > 0 && !core.hasComponent(Taunt)) continue;
       if (pick > 0) {
         pick -= 1;
         continue;
@@ -166,6 +181,32 @@ export class PirateFireSystem extends createSystem({
       ship.setValue(PirateCannon, 'targetZ', this.corePos.z);
       ship.setValue(PirateCannon, 'hasTarget', true);
       return true;
+    }
+    return false;
+  }
+
+  /**
+   * 嘲讽劫持判定：场上存在存活的 Taunt 载体、而本船当前锁定的是非载体
+   * （或锁定已丢失）时为 true —— 已在战斗中的单位因此同帧弃标重锁，而不是
+   * 只影响新出生/丢标后重新索敌的单位。无载体时恒 false，循环零额外开销
+   * 之外的每船一次 cores 遍历（cores ≤ 5，无分配）。
+   */
+  private tauntHijacked(ship: Entity): boolean {
+    if (!this.hasTauntCarrier()) return false;
+    const locked = Number(ship.getValue(PirateCannon, 'targetCoreIndex'));
+    for (const core of this.queries.cores.entities) {
+      if (core.index !== locked) continue;
+      if (core.getValue(HitCore, 'faction') !== 'defender') return true;
+      return !core.hasComponent(Taunt);
+    }
+    return true;
+  }
+
+  /** Whether any live defender core currently carries the Taunt tag. */
+  private hasTauntCarrier(): boolean {
+    for (const core of this.queries.cores.entities) {
+      if (core.getValue(HitCore, 'faction') !== 'defender') continue;
+      if (core.hasComponent(Taunt)) return true;
     }
     return false;
   }

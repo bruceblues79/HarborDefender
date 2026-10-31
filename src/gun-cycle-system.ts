@@ -9,7 +9,6 @@ import { createSystem, Euler, Quaternion, Vector3 } from '@iwsdk/core';
 import type { Entity } from '@iwsdk/core';
 import {
   BallisticFlight,
-  BoltTag,
   GameOver,
   GamePaused,
   GunCycle,
@@ -51,7 +50,7 @@ export class GunCycleSystem extends createSystem({
   carriers: { required: [ShipMovement] },
   freeShells: {
     required: [ShellTag],
-    excluded: [BallisticFlight, BoltTag, StoneTag],
+    excluded: [BallisticFlight, StoneTag],
   },
   freeStones: {
     required: [ShellTag, StoneTag],

@@ -94,10 +94,10 @@ export default defineAssets({
     name: 'Cannon',
     priority: 'background',
   },
-  'sky-ballista': {
-    url: publicAssetUrl('gltf/sky-ballista.glb'),
+  'iron-guard': {
+    url: publicAssetUrl('gltf/iron-guard.glb'),
     type: AssetType.GLTF,
-    name: 'Sky Ballista',
+    name: 'Iron Guard',
     priority: 'background',
   },
   'defense-button-build': {
@@ -116,12 +116,6 @@ export default defineAssets({
     url: publicAssetUrl('gltf/defense-pad.glb'),
     type: AssetType.GLTF,
     name: 'Defense Pad',
-    priority: 'background',
-  },
-  'ballista-bolt': {
-    url: publicAssetUrl('gltf/ballista-bolt.glb'),
-    type: AssetType.GLTF,
-    name: 'Ballista Bolt',
     priority: 'background',
   },
   'pirate-ship': {

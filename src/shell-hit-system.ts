@@ -51,7 +51,7 @@ import {
  * attacker->target damage matrix (DAMAGE_MATRIX, keyed by the shell's
  * attacker unit type and the core's unit type; unknown pairs read 0). At
  * zero the unit dies — an attacker sinks (entity disposed, a splash ripple
- * marks the spot on the surface) and a defender cannon or ballista is
+ * marks the spot on the surface) and a defender cannon is
  * tagged Destroyed (hidden, out of every combat query; LevelWaveSystem
  * reads the tags for defeat).
  *

@@ -15,6 +15,7 @@ import {
 import type { Text } from '@pmndrs/uikit';
 import type { Entity, Object3D } from '@iwsdk/core';
 import {
+  AmmoSelected,
   Billboard,
   BuildOpen,
   CameraBlocker,
@@ -25,13 +26,19 @@ import {
   Wallet,
 } from './components.js';
 import {
+  AMMO_DEFS,
   DEFENSE_SLOTS,
   ECONOMY,
   PLACEABLE_UNITS,
+  UNIQUE_UNITS,
   WALL_CENTER_Z,
 } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
-import { getDefenseSlotInfo, removeDefenseUnit, replaceDefenseUnit } from './battle-setup.js';
+import {
+  getDefenseSlotInfo,
+  hasLiveDefenseUnit,
+  replaceDefenseUnit,
+} from './battle-setup.js';
 
 /** Minimal shape of a uikit element's runtime class list (class layer). */
 type UiElement = Object3D & {
@@ -62,27 +69,21 @@ const PANEL_FACTORS = { xr: 1, flat: 1.8 };
  * The shared build dock — the only writer of the BuildOpen lifecycle.
  *
  * A BuildOpen tag on the director (added by a build-button press) reveals
- * the billboarded dock over that slot: one circular button per placeable
- * unit with the live price overlaid — full book value into a destroyed
- * (empty) slot, the in-place trade-in price (value minus the occupant's
- * book value × ECONOMY.replaceDiscount) while it is alive. The occupant's
- * own button stays hidden, and a button whose price exceeds the wallet
- * renders dimmed; the top-row badge beside the close button shows the live
- * gold. Picking a button swaps the slot's occupant via replaceDefenseUnit,
- * deducts from the wallet and closes; the round close button above the bar
- * dismisses without spending. While the tag sits on the director the open
- * slot's build icon renders shrunk (DefenseButtonSystem's half of the
- * contract); pressing another slot's button moves the dock there, pressing
- * the open slot's own button closes it.
- *
- * The recycle button below the bar sells the opening slot's live occupant
- * for its depreciated book value (book value × ECONOMY.replaceDiscount —
- * the same 30% the trade-in credit uses, so replace ≡ recycle + rebuild):
- * the gold is credited instantly and the unit is stripped via
- * removeDefenseUnit, which drops its combat components so enemy targeting
- * naturally re-selects another defender. The panel stays open after a sale
- * so the player can immediately rebuild at full price; the button renders
- * dimmed while the slot has no live occupant and refuses presses.
+ * the billboarded dock over that slot. The bar's content follows the slot
+ * state: an empty (or Destroyed) slot shows one circular purchase button
+ * per placeable unit at the full book value — there is no trade-in — while
+ * a slot with a live occupant shows the ammo row only; the two never render
+ * together. A unit button whose price exceeds the wallet renders dimmed; the
+ * top-row badge beside the close button shows the live gold. Picking a
+ * button mounts the unit into the empty slot via replaceDefenseUnit, deducts
+ * from the wallet and closes; the round close button above the bar dismisses
+ * without spending. While the tag sits on the director the open slot's build
+ * icon renders shrunk (DefenseButtonSystem's half of the contract); pressing
+ * another slot's button moves the dock there, pressing the open slot's own
+ * button closes it. The ammo row is a global single select (AmmoSelected on
+ * the director, one row per AMMO_DEFS entry) that retargets every cannon's
+ * next shot — picking the already-selected round is a no-op, and with v1's
+ * single free iron ball it always is.
  */
 export class BuildPanelSystem extends createSystem({
   directors: { required: [LevelDirector] },
@@ -106,10 +107,10 @@ export class BuildPanelSystem extends createSystem({
   private readonly rows = new Map<DefenseUnitId, UiElement | null>();
   /** Class currently applied per unit button; guards redundant class swaps. */
   private readonly unitClasses = new Map<DefenseUnitId, string>();
-  /** The recycle button below the bar: sells the slot's live occupant. */
-  private recycleRow: UiElement | null = null;
-  /** Class currently applied to the recycle button; guards redundant swaps. */
-  private recycleClass: string | null = null;
+  /** Ammo buttons keyed by ammo id — the global single-select row(s). */
+  private readonly ammoRows = new Map<string, UiElement | null>();
+  /** Class currently applied per ammo button; guards redundant class swaps. */
+  private readonly ammoClasses = new Map<string, string>();
 
   init(): void {
     this.loadPanel();
@@ -156,6 +157,18 @@ export class BuildPanelSystem extends createSystem({
             this.rows.set(unitId, row);
           }
         }
+        for (const def of AMMO_DEFS) {
+          const row = panel.getElementById(
+            `ammo-${def.id}`,
+          ) as UiElement | null;
+          if (row) {
+            row.addEventListener('click', () => this.onAmmoPicked(def.id));
+            this.cleanupFuncs.push(() =>
+              row.removeEventListener('click', () => this.onAmmoPicked(def.id)),
+            );
+            this.ammoRows.set(def.id, row);
+          }
+        }
         const dismiss = panel.getElementById('build-dismiss');
         this.walletText = this.resolveText(
           panel.getElementById('wallet-value'),
@@ -166,21 +179,12 @@ export class BuildPanelSystem extends createSystem({
             dismiss.removeEventListener('click', () => this.closePanel()),
           );
         }
-        const recycle = panel.getElementById(
-          'dock-recycle',
-        ) as UiElement | null;
-        if (recycle) {
-          recycle.addEventListener('click', () => this.onRecycle());
-          this.cleanupFuncs.push(() =>
-            recycle.removeEventListener('click', () => this.onRecycle()),
-          );
-          this.recycleRow = recycle;
-        }
 
         // The tag may have been raised while the asset was still loading:
         // catch up immediately.
         this.applyVisibility();
         this.applyPanelScale();
+        this.refreshAmmoRows();
         const director = this.findOpenDirector();
         if (director) this.refreshRows(director);
       })
@@ -231,19 +235,11 @@ export class BuildPanelSystem extends createSystem({
   }
 
   /**
-   * Price for unitId into the slot the panel was opened for: an empty or
-   * destroyed slot pays the book value in full (200); a live occupant turns
-   * the swap into a value difference — the new unit's book value minus the
-   * old unit's depreciated value (200 − 200×0.3 = 140, either direction).
+   * Price for unitId: always the full book value — there is no trade-in;
+   * an occupied slot's own button is simply hidden instead.
    */
-  private priceFor(director: Entity, unitId: DefenseUnitId): number {
-    const slot = Number(director.getValue(BuildOpen, 'slot'));
-    const info = getDefenseSlotInfo(slot);
-    const price = ECONOMY.unitValues[unitId] ?? 0;
-    if (!info || info.entity.hasComponent(Destroyed)) return price;
-    const credit =
-      (ECONOMY.unitValues[info.unit] ?? 0) * ECONOMY.replaceDiscount;
-    return Math.max(0, price - credit);
+  private priceFor(unitId: DefenseUnitId): number {
+    return ECONOMY.unitValues[unitId] ?? 0;
   }
 
   /**
@@ -251,14 +247,16 @@ export class BuildPanelSystem extends createSystem({
    * occupying the open slot hides its own button, a price above the current
    * wallet dims the button, the rest stay in the default style. The top-row
    * badge mirrors the wallet, so gold spent or earned elsewhere shows live
-   * while the dock is open. The recycle button below mirrors the slot's
-   * occupancy: live occupant → active, empty or destroyed slot → dimmed.
+   * while the dock is open.
    */
   private refreshRows(director: Entity): void {
     const slot = Number(director.getValue(BuildOpen, 'slot'));
     const info = getDefenseSlotInfo(slot);
-    const occupant =
-      info && !info.entity.hasComponent(Destroyed) ? info.unit : null;
+    // Occupied = a live (not Destroyed) unit sits in the opened slot. An
+    // occupied slot offers ammo only; an empty or destroyed one offers the
+    // placeable units — the dock never shows both rows at once.
+    const occupied =
+      !!info && !info.entity.hasComponent(Destroyed);
     const money = director.hasComponent(Wallet)
       ? (director.getValue(Wallet, 'money') as number)
       : Number.POSITIVE_INFINITY;
@@ -275,23 +273,26 @@ export class BuildPanelSystem extends createSystem({
     for (const unitId of PLACEABLE_UNITS) {
       const row = this.rows.get(unitId);
       if (!row) continue;
-      const price = this.priceFor(director, unitId);
+      const price = this.priceFor(unitId);
       let next: string;
-      if (unitId === occupant) {
+      if (occupied) {
+        // A live occupant turns the whole unit row off — ammo only.
         next = 'dock-unit-hidden';
-      } else if (price > money) {
+      } else if (
+        // UNIQUE_UNITS (全场唯一): a live carrier anywhere grays its row in
+        // every other slot's dock — same "cannot buy" look as an unmet
+        // price, zero new styles. Refreshes per frame, so building or
+        // losing the carrier flips every open dock live.
+        (UNIQUE_UNITS.has(unitId) && hasLiveDefenseUnit(unitId)) ||
+        price > money
+      ) {
         next = 'dock-unit-off';
       } else {
         next = 'dock-unit';
       }
       this.setUnitClass(unitId, row, next);
     }
-    if (this.recycleRow) {
-      this.setRecycleClass(
-        this.recycleRow,
-        occupant ? 'dock-recycle' : 'dock-recycle-off',
-      );
-    }
+    this.refreshAmmoRows();
   }
 
   /**
@@ -310,18 +311,6 @@ export class BuildPanelSystem extends createSystem({
     }
     row.classList.add(next);
     this.unitClasses.set(unitId, next);
-  }
-
-  /**
-   * Show/dim the recycle button through its class list — same base-vs-class
-   * layer rule as setUnitClass, with only the two occupancy states.
-   */
-  private setRecycleClass(row: UiElement, next: string): void {
-    if (this.recycleClass === next) return;
-    row.classList.remove('dock-recycle');
-    row.classList.remove('dock-recycle-off');
-    row.classList.add(next);
-    this.recycleClass = next;
   }
 
   /**
@@ -352,10 +341,18 @@ export class BuildPanelSystem extends createSystem({
     const director = this.findOpenDirector();
     if (!director || !director.hasComponent(Wallet)) return;
     const slot = Number(director.getValue(BuildOpen, 'slot'));
-    // Valid slot index only — an empty slot (never mounted, recycled or
-    // knocked clean) builds at full book price via priceFor below.
+    // Valid slot index only — an empty (never mounted or knocked clean)
+    // slot is the only build target.
     if (!DEFENSE_SLOTS[slot]) return;
-    const price = this.priceFor(director, unitId);
+    // A live occupant's own button is already hidden; refuse anyway so a
+    // stale click can never buy into an occupied slot.
+    const info = getDefenseSlotInfo(slot);
+    if (info && !info.entity.hasComponent(Destroyed)) return;
+    // UNIQUE_UNITS (全场唯一): one live iron-guard anywhere forbids a
+    // second — the row already renders grayed, this is the stale-click
+    // guard behind it.
+    if (UNIQUE_UNITS.has(unitId) && hasLiveDefenseUnit(unitId)) return;
+    const price = this.priceFor(unitId);
     const money = director.getValue(Wallet, 'money') as number;
     if (money < price) return;
 
@@ -366,26 +363,52 @@ export class BuildPanelSystem extends createSystem({
   }
 
   /**
-   * Sell the opening slot's live occupant: credit the depreciated book
-   * value instantly, strip the unit structurally and refresh in place —
-   * the dock stays open so the player can immediately rebuild at full
-   * price. Empty or destroyed slots refuse, matching the dimmed state.
-   * Pausing or an outcome closes the dock in update(), so neither can
-   * interleave a sale.
+   * Ammo row picked: retargets every cannon's next shot globally (one
+   * truth on the director, not per slot). Picking the already-selected
+   * round is a no-op — v1's single free iron ball always is.
    */
-  private onRecycle(): void {
+  private onAmmoPicked(ammoId: string): void {
     const director = this.findOpenDirector();
-    if (!director || !director.hasComponent(Wallet)) return;
+    if (!director || !director.hasComponent(AmmoSelected)) return;
+    if (String(director.getValue(AmmoSelected, 'ammoId')) === ammoId) return;
+    director.setValue(AmmoSelected, 'ammoId', ammoId);
+    this.refreshAmmoRows();
+  }
+
+  /**
+   * Gold face = the selected round, every other row falls back to the base
+   * circle. Global state: refreshed on load, on pick and per frame while the
+   * dock is open (via refreshRows) — ammo rows render only over an occupied
+   * slot; an empty one hides the whole row behind `ammo-hidden`. The class
+   * swap is the only reliable toggle (same layer rule as units).
+   */
+  private refreshAmmoRows(): void {
+    const director = this.findOpenDirector();
+    if (!director) return;
     const slot = Number(director.getValue(BuildOpen, 'slot'));
     const info = getDefenseSlotInfo(slot);
-    if (!info || info.entity.hasComponent(Destroyed)) return;
-    const refund = Math.floor(
-      (ECONOMY.unitValues[info.unit] ?? 0) * ECONOMY.replaceDiscount,
-    );
-    const money = director.getValue(Wallet, 'money') as number;
-    director.setValue(Wallet, 'money', money + refund);
-    removeDefenseUnit(this.world, slot);
-    this.refreshRows(director);
+    // Occupied = a live (not Destroyed) unit sits in the opened slot. The
+    // iron-guard offers no ammunition of any kind (含基础弹也不给): its
+    // build button is inert so the dock can't normally open there, but a
+    // stale BuildOpen must never show the ammo row over the statue either.
+    const occupied =
+      !!info &&
+      info.unit !== 'iron-guard' &&
+      !info.entity.hasComponent(Destroyed);
+    const selected = String(director.getValue(AmmoSelected, 'ammoId'));
+    for (const [ammoId, row] of this.ammoRows) {
+      if (!row) continue;
+      let next: string;
+      if (!occupied) {
+        next = 'ammo-hidden';
+      } else {
+        next = ammoId === selected ? 'ammo-active' : 'ammo-unit';
+      }
+      if (this.ammoClasses.get(ammoId) === next) continue;
+      row.classList.remove('ammo-unit', 'ammo-active', 'ammo-hidden');
+      row.classList.add(next);
+      this.ammoClasses.set(ammoId, next);
+    }
   }
 
   update(): void {

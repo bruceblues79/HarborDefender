@@ -46,6 +46,10 @@ const CORE_HOT = 0xffddd0;
 
 /** Per-chief fx rig: plain Object3D children under a root-level entity. */
 interface ChiefDeathLightFxRig {
+  /** Owner chief entity — the liveness probe for the per-frame reconcile. */
+  owner: Entity;
+  /** The root-level world-space rig entity; disposed on teardown. */
+  entity: Entity;
   group: Object3D;
   boltGroup: Object3D;
   sweepGroup: Object3D;
@@ -135,21 +139,32 @@ export class ChiefDeathLightFxSystem extends createSystem({
     });
 
     this.queries.chiefs.subscribe('qualify', (entity) => {
-      this.rigs.set(entity.index, this.buildRig());
+      this.rigs.set(entity.index, this.buildRig(entity));
     });
     // The chief left the query (killed or the field cleared): drop the rig.
-    // Root-level rig entity disposes; shared geometry/materials survive.
+    // The ROOT-LEVEL rig entity disposes — never the chief, whose death is
+    // single-truthed in ShellHitSystem's kill(); shared geometry/materials
+    // survive for the next battle.
     this.queries.chiefs.subscribe('disqualify', (entity) => {
-      const rig = this.rigs.get(entity.index);
-      if (!rig) return;
-      rig.group.removeFromParent();
-      entity.dispose({ disposeResources: false });
-      this.rigs.delete(entity.index);
+      this.teardownRig(entity.index);
     });
   }
 
+  /**
+   * Drop one rig: unpin the group and dispose the root-level rig entity
+   * (its release detaches the Object3D). The single teardown truth for both
+   * the disqualify subscriber and the reconcile sweep in update().
+   */
+  private teardownRig(index: number): void {
+    const rig = this.rigs.get(index);
+    if (!rig) return;
+    rig.group.removeFromParent();
+    rig.entity.dispose({ disposeResources: false });
+    this.rigs.delete(index);
+  }
+
   /** Build one root-level rig: bolt group + sweep group, both hidden. */
-  private buildRig(): ChiefDeathLightFxRig {
+  private buildRig(owner: Entity): ChiefDeathLightFxRig {
     const group = new Object3D();
     group.name = 'chief-death-light-fx';
 
@@ -185,8 +200,10 @@ export class ChiefDeathLightFxSystem extends createSystem({
 
     // Root-level world-space entity — the frozen component fields are world
     // coordinates; nothing parents the fx to the (yawing) head.
-    this.world.createTransformEntity(group);
+    const entity = this.world.createTransformEntity(group);
     return {
+      owner,
+      entity,
       group,
       boltGroup,
       sweepGroup,
@@ -199,6 +216,13 @@ export class ChiefDeathLightFxSystem extends createSystem({
   }
 
   update(delta: number): void {
+    // Reconcile: disqualify owns rig teardown, but elics dispatches the
+    // subscriber chain synchronously inside dispose — an earlier subscriber
+    // throwing aborts the rest, and the root-level world-space beam would
+    // float frozen forever. Drop any rig whose chief is already dead.
+    for (const [index, rig] of this.rigs) {
+      if (!rig.owner.active) this.teardownRig(index);
+    }
     // Settlement screen: retire every rig instead of freezing a half-drawn
     // bolt or beam behind the overlay.
     if (this.over()) {

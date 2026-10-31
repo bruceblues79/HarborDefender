@@ -15,6 +15,7 @@ import {
 } from '@iwsdk/core';
 import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
 import {
+  AmmoSelected,
   BossTurret,
   BuildOpen,
   ChiefDown,
@@ -214,6 +215,9 @@ export class LevelWaveSystem extends createSystem({
     // Player wallet rides the director; RepairSystem drains it per frame,
     // BuildPanelSystem deducts builds, this system resets it per run.
     director.addComponent(Wallet);
+    // Global ammo single-select rides the director too: the dock's ammo row
+    // writes it, every cannon's next shot reads it (default = iron ball).
+    director.addComponent(AmmoSelected);
     this.director = director;
 
     for (const [type, def] of Object.entries(UNIT_TYPES)) {
@@ -280,7 +284,7 @@ export class LevelWaveSystem extends createSystem({
    * first wave. Caller removes GamePaused first (MenuSystem owns that tag).
    * Dropping GameOver re-shows the pause-menu call button and dismisses the
    * result panel. syncBatteryToLevel re-crews the slots to the level's own
-   * initialUnits — mid-run swaps (a ballista where a cannon stood, wing-slot
+   * initialUnits — mid-run swaps (wing-slot
    * builds) do not survive a restart. In endless mode the generated wave
    * list crops back to the seed wave, so the run restarts from wave 1.
    */
@@ -470,7 +474,7 @@ export class LevelWaveSystem extends createSystem({
    * moment its ship leaves the water, with no cleanup anywhere.
    *
    * The z bounds come from the unit's own berth band (ships roll the ocean's
-   * wall-side half; the bombardier rolls the sky-ballista coverage band).
+   * wall-side half; the bombardier rolls its own higher berth band).
    * This runs once per dispatch (about every two seconds), never per frame.
    */
   private pickTarget(def: UnitTypeDef): { x: number; z: number } {

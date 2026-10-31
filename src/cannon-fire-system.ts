@@ -6,7 +6,6 @@
  */
 
 import {
-  AssetManager,
   createSystem,
   IcosahedronGeometry,
   Mesh,
@@ -17,7 +16,6 @@ import {
 import type { Entity, Object3D } from '@iwsdk/core';
 import {
   BallisticFlight,
-  BoltTag,
   CannonFire,
   Destroyed,
   GameOver,
@@ -32,13 +30,11 @@ import { COMBAT } from './level-config.js';
 /**
  * Owns the shared projectile pools and the cannons' fire rhythm.
  *
- * Pools: `COMBAT.shellPoolSize` cannonballs created synchronously at init,
- * plus `COMBAT.boltPoolSize` straight ballista bolts cloned from the
- * ballista-bolt glb once it loads (until then that pool is simply empty and
- * fire() retries shortly), plus `COMBAT.stonePoolSize` ornithopter stones.
- * All copies share geometry/materials and carry ShellTag; bolts additionally
- * carry BoltTag and stones StoneTag, which route them to their own free
- * queries so a ball-firing gun can never grab a bolt mesh and vice versa.
+ * Pools: `COMBAT.shellPoolSize` cannonballs and `COMBAT.stonePoolSize`
+ * ornithopter stones, all created synchronously at init. All copies share
+ * geometry/materials and carry ShellTag; stones additionally carry
+ * StoneTag, which routes them to their own free query so a ball-firing gun
+ * can never grab a stone and vice versa.
  * A projectile is free exactly while it does not carry BallisticFlight.
  * Firing never allocates — it repositions a free projectile at the muzzle
  * and hands it to BallisticSystem by adding BallisticFlight.
@@ -50,11 +46,7 @@ export class CannonFireSystem extends createSystem({
   cannons: { required: [CannonFire], excluded: [Destroyed] },
   freeShells: {
     required: [ShellTag],
-    excluded: [BallisticFlight, BoltTag, StoneTag],
-  },
-  freeBolts: {
-    required: [ShellTag, BoltTag],
-    excluded: [BallisticFlight],
+    excluded: [BallisticFlight, StoneTag],
   },
   airborne: { required: [ShellTag, BallisticFlight] },
   directors: { required: [LevelDirector] },
@@ -67,8 +59,6 @@ export class CannonFireSystem extends createSystem({
   private readonly retiring: Entity[] = [];
   private readonly muzzlePos = new Vector3();
   private readonly muzzleDir = new Vector3();
-  /** lookAt target for bolt alignment; allocated once, reused per shot. */
-  private readonly boltAim = new Vector3();
 
   init(): void {
     const geometry = new SphereGeometry(COMBAT.shellRadius, 8, 6);
@@ -83,22 +73,6 @@ export class CannonFireSystem extends createSystem({
       shell.visible = false;
       this.world.createTransformEntity(shell).addComponent(ShellTag);
     }
-    // Bolt pool: clones of the vertex-coloured ballista-bolt glb (head along
-    // its local +Z). Loads asynchronously — the pool starts empty and fire()
-    // retries until the copies exist.
-    AssetManager.loadGLTFById('ballista-bolt').then((gltf) => {
-      for (let i = 0; i < COMBAT.boltPoolSize; i++) {
-        const bolt = gltf.scene.clone();
-        bolt.traverse((node) => {
-          node.castShadow = true;
-        });
-        bolt.visible = false;
-        this.world
-          .createTransformEntity(bolt)
-          .addComponent(ShellTag)
-          .addComponent(BoltTag);
-      }
-    });
     // Stone pool: plain icosahedron rocks for the ornithopters, no glb wait.
     const stoneGeometry = new IcosahedronGeometry(COMBAT.stoneRadius, 0);
     const stoneMaterial = new MeshStandardMaterial({
@@ -154,8 +128,7 @@ export class CannonFireSystem extends createSystem({
   private fire(cannon: Entity): boolean {
     const muzzle = this.muzzles.get(cannon.index);
     if (!muzzle) return false;
-    const isBolt = Boolean(cannon.getValue(CannonFire, 'bolt'));
-    const shell = isBolt ? this.firstFreeBolt() : this.firstFreeShell();
+    const shell = this.firstFreeShell();
     const shellObject = shell?.object3D;
     if (!shell || !shellObject) return false;
 
@@ -163,18 +136,12 @@ export class CannonFireSystem extends createSystem({
     // Object3D.getWorldDirection returns +Z; the barrel fires down its -Z.
     muzzle.getWorldDirection(this.muzzleDir).negate();
     shellObject.position.copy(this.muzzlePos);
-    if (isBolt) {
-      // Straight bolt: point the mesh's modelled-forward +Z along the launch
-      // direction so it flies nose-first; no spin, fins keep it stable.
-      this.boltAim.copy(this.muzzlePos).add(this.muzzleDir);
-      shellObject.lookAt(this.boltAim);
-    }
     shellObject.visible = true;
     shell.addComponent(BallisticFlight, {
       vx: this.muzzleDir.x * COMBAT.shellSpeed,
       vy: this.muzzleDir.y * COMBAT.shellSpeed,
       vz: this.muzzleDir.z * COMBAT.shellSpeed,
-      gravityScale: Number(cannon.getValue(CannonFire, 'gravityScale')),
+      drag: COMBAT.shellDrag,
     });
     // City batteries fight for the defender side; ShellHitSystem uses the
     // faction to pick consumable cores and the unit type to pick the damage
@@ -197,17 +164,6 @@ export class CannonFireSystem extends createSystem({
       if (shell.hasComponent(BallisticFlight)) continue;
       this.claimed.add(shell.index);
       return shell;
-    }
-    return undefined;
-  }
-
-  /** Same discipline as firstFreeShell, over the bolt pool. */
-  private firstFreeBolt(): Entity | undefined {
-    for (const bolt of this.queries.freeBolts.entities) {
-      if (this.claimed.has(bolt.index)) continue;
-      if (bolt.hasComponent(BallisticFlight)) continue;
-      this.claimed.add(bolt.index);
-      return bolt;
     }
     return undefined;
   }
