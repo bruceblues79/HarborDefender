@@ -744,9 +744,9 @@ export const TRAJECTORY_PREVIEW = {
  */
 export const DEFENDER_BAR_Y: Record<DefenseUnitId, number> = {
   cannon: 0.186 + COMBAT.healthBarDefenderMarginY,
-  // 钢铁卫士：静态雕塑剪影，实测导出顶点 0.46（盔顶冠羽），共享 0.12 边距
-  // 即可（不需要炮车那样为抬起的炮管预留的大边距）。
-  'iron-guard': 0.46 + COMBAT.healthBarMarginY,
+  // 钢铁卫士：静态雕塑剪影，实测导出顶点 0.345（0.75x 定稿后的盔顶冠羽），
+  // 共享 0.12 边距即可（不需要炮车那样为抬起的炮管预留的大边距）。
+  'iron-guard': 0.345 + COMBAT.healthBarMarginY,
 };
 
 /**

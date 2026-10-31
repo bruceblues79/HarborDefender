@@ -117,14 +117,16 @@ export class PirateFireSystem extends createSystem({
       }
       // Re-validate the locked target every frame: the cores query drops
       // Destroyed cannons, so a missing index means the target died and the
-      // gun re-acquires a random surviving one. With no survivor at all the
-      // ship simply holds fire — LevelWaveSystem's defeat check settles the
-      // run (GameOver flips every consumer silent) on the same frame.
-      if (
-        ship.getValue(PirateCannon, 'hasTarget') &&
-        !this.targetAlive(ship)
-      ) {
-        ship.setValue(PirateCannon, 'hasTarget', false);
+      // gun re-acquires — and a Taunt carrier on the field hijacks every
+      // lock onto a non-carrier, so raiders already mid-battle swing onto
+      // the iron-guard the frame it appears (or re-aims away from it the
+      // frame it falls). With no survivor at all the ship simply holds fire
+      // — LevelWaveSystem's defeat check settles the run (GameOver flips
+      // every consumer silent) on the same frame.
+      if (ship.getValue(PirateCannon, 'hasTarget')) {
+        if (!this.targetAlive(ship) || this.tauntHijacked(ship)) {
+          ship.setValue(PirateCannon, 'hasTarget', false);
+        }
       }
       if (!ship.getValue(PirateCannon, 'hasTarget')) {
         if (!this.acquireTarget(ship)) continue;
@@ -179,6 +181,32 @@ export class PirateFireSystem extends createSystem({
       ship.setValue(PirateCannon, 'targetZ', this.corePos.z);
       ship.setValue(PirateCannon, 'hasTarget', true);
       return true;
+    }
+    return false;
+  }
+
+  /**
+   * 嘲讽劫持判定：场上存在存活的 Taunt 载体、而本船当前锁定的是非载体
+   * （或锁定已丢失）时为 true —— 已在战斗中的单位因此同帧弃标重锁，而不是
+   * 只影响新出生/丢标后重新索敌的单位。无载体时恒 false，循环零额外开销
+   * 之外的每船一次 cores 遍历（cores ≤ 5，无分配）。
+   */
+  private tauntHijacked(ship: Entity): boolean {
+    if (!this.hasTauntCarrier()) return false;
+    const locked = Number(ship.getValue(PirateCannon, 'targetCoreIndex'));
+    for (const core of this.queries.cores.entities) {
+      if (core.index !== locked) continue;
+      if (core.getValue(HitCore, 'faction') !== 'defender') return true;
+      return !core.hasComponent(Taunt);
+    }
+    return true;
+  }
+
+  /** Whether any live defender core currently carries the Taunt tag. */
+  private hasTauntCarrier(): boolean {
+    for (const core of this.queries.cores.entities) {
+      if (core.getValue(HitCore, 'faction') !== 'defender') continue;
+      if (core.hasComponent(Taunt)) return true;
     }
     return false;
   }

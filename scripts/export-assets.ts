@@ -564,8 +564,9 @@ const GUARD_BOSS = 0x454c56;
  *
  * - 原点在底座底面中心（挂载时落在 pad 顶面），正面朝 -Z（面海，
  *   与炮口朝向约定一致）；观察缝与盾牌都在 -Z 侧。
- * - 全高 0.46 m（冠羽顶），横向 ~0.43 m（盾缘），与 0.6 m 槽距、
- *   0.4 m 炮车协调；低模基元，无贴图。
+ * - 整体尺寸按用户定稿缩小 25%（scale 0.75）：全高 0.345 m（冠羽顶），
+ *   横向 ~0.32 m（盾缘），与 0.6 m 槽距、0.4 m 炮车协调；低模基元，
+ *   无贴图。
  * - 固有色全部烘进顶点色，材质基色为白，metalness 1 / roughness 0.1。
  * - 单一合并 mesh（iron-guard-mesh）一次 draw call；无 gun_rotate、
  *   无 muzzle —— 本单位不开火不瞄准，hit_core 由运行时的
@@ -608,7 +609,7 @@ export function createIronGuardExport(): Object3D {
   paint(helm, GUARD_HELM, 0.02, rand);
   parts.push(helm);
 
-  // 盔顶冠羽：背脊上的薄鳍片（全模型最高点 0.46）。
+  // 盔顶冠羽：背脊上的薄鳍片（缩放前全模型最高点 0.46）。
   const crest = new BoxGeometry(0.014, 0.045, 0.16);
   crest.translate(0, 0.4375, 0.005);
   paint(crest, GUARD_CREST, 0.02, rand);
@@ -652,7 +653,10 @@ export function createIronGuardExport(): Object3D {
     vertexColors: true,
   });
 
+  // 用户定稿：整体缩小 25%（0.75x）—— 烘进合并顶点而非挂载 scale，
+  // 保证 hit_core 定位、血条挂点等运行时推导都建立在最终尺寸上。
   const mesh = new Mesh(mergeParts(parts), material);
+  mesh.geometry.scale(0.75, 0.75, 0.75);
   mesh.name = 'iron-guard-mesh';
 
   const root = new Object3D();
