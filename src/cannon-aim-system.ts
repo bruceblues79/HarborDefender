@@ -26,20 +26,6 @@ import { COMBAT } from './level-config.js';
 
 const DEG2RAD = Math.PI / 180;
 
-/**
- * Minimal shape of the three-style pointer event that reaches the unit root:
- * the specific mesh under the pointer / XR ray (`object`, from
- * @pmndrs/pointer-events — the same dispatch InputSystem tags Pressed and
- * Hovered from). No pointer id: pmndrs re-ids every pointer through an
- * internal counter (`generateUniquePointerId`), which never matches the
- * native ids the canvas listeners see — so zones are keyed by entity, never
- * by pointer.
- */
-interface ZoneHitEvent {
-  type: string;
-  object: Object3D;
-}
-
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
 
@@ -52,15 +38,14 @@ const clamp = (value: number, min: number, max: number): number =>
  * - Browser: once a press on a cannon anchors a pointer, that pointer owns
  *   the drag until pointerup (grab-the-barrel semantics — the drag survives
  *   sliding off the barrel, matching how a real grabbed object behaves).
- *   The part under the press owns the axis: a drag starting on the gun_rotate
- *   subtree (cannon barrel) feeds pitch only; a drag starting anywhere else
- *   (carriage, rack base) feeds yaw only — mirrored, pull right swings the
- *   muzzle left. Pull down drops the muzzle.
+ *   The whole mount is one hit target with no per-part zones: horizontal
+ *   travel feeds yaw (mirrored, pull right swings the muzzle left) while
+ *   vertical travel feeds pitch (pull down drops the muzzle) — both at once.
  * - XR: grabbing a hovered cannon while the trigger is held anchors that
  *   hand; the hand's world-space travel from the grab pose maps to the same
- *   part-owned axis (wrist displacement, not ray-plane geometry — turret
- *   rotation never feeds back into the mapping). The zone is the mesh the
- *   ray rested on at grab time. The drag continues until that hand
+ *   dual-axis mapping (wrist displacement, not ray-plane geometry — turret
+ *   rotation never feeds back into the mapping). The drag continues until
+ *   that hand
  *   releases, so the barrel or the ray wandering off never drops the
  *   gesture. Starts key off `Hovered` rather than `Pressed`: InputSystem
  *   clears `Pressed` the moment the ray slides off the barrel (even
@@ -80,18 +65,6 @@ export class CannonAimSystem extends createSystem({
 }) {
   /** gun_rotate pivot per cannon entity index, resolved once on qualify. */
   private readonly gunPivots = new Map<number, Object3D>();
-
-  // --- drag-zone capture: which part of the mount owns the drag's axis ---
-  /** Teardown for the zone listeners attached per unit, keyed by entity index. */
-  private readonly zoneTeardowns = new Map<number, () => void>();
-  /** Entity index -> the unit's last press landed on the pitch zone. */
-  private readonly pressZones = new Map<number, boolean>();
-  /** Entity index -> the XR ray currently rests on the pitch zone. */
-  private readonly hoverZones = new Map<number, boolean>();
-  /** Zone frozen at the drag anchor, browser side. */
-  private dragZonePitch = false;
-  /** Zone frozen at the grab anchor, XR side. */
-  private xrDragZonePitch = false;
 
   // --- browser drag state (CameraOrbitSystem's pointer-tracking pattern) ---
   private readonly pointers = new Map<number, { x: number; y: number }>();
@@ -126,18 +99,11 @@ export class CannonAimSystem extends createSystem({
     this.queries.cannons.subscribe('qualify', (entity) => {
       const pivot = entity.object3D?.getObjectByName('gun_rotate');
       if (pivot) this.gunPivots.set(entity.index, pivot);
-      this.attachZoneListeners(entity);
     });
     // A unit leaving the registry (Destroyed, or swapped out by the build
     // panel) must not carry a stale mid-drag tag into its next life.
     this.queries.cannons.subscribe('disqualify', (entity) => {
       if (entity.hasComponent(AimDragging)) entity.removeComponent(AimDragging);
-    });
-    // Zone listeners live for the system's lifetime; one aggregate teardown
-    // covers every attach (restoreCannons re-qualifies Destroyed units).
-    this.cleanupFuncs.push(() => {
-      for (const teardown of this.zoneTeardowns.values()) teardown();
-      this.zoneTeardowns.clear();
     });
   }
 
@@ -231,10 +197,6 @@ export class CannonAimSystem extends createSystem({
       cannon.addComponent(AimDragging);
       this.dragLast.x = pos.x;
       this.dragLast.y = pos.y;
-      // The part under the press owns the axis; freeze its vertical sign.
-      // Entity-keyed — the anchored unit's own last press, no pointer-id
-      // matching across event sources (pmndrs re-ids touch pointers).
-      this.dragZonePitch = this.pressZones.get(cannon.index) ?? false;
       return;
     }
     const pos = this.pointers.get(this.dragPointerId);
@@ -243,15 +205,10 @@ export class CannonAimSystem extends createSystem({
     const dy = pos.y - this.dragLast.y;
     this.dragLast.x = pos.x;
     this.dragLast.y = pos.y;
-    // Grab-the-part: the pitch zone (gun_rotate subtree) feeds pitch only,
-    // the yaw zone feeds yaw only — mirrored, pull right -> muzzle left.
-    // Pitch keeps "pull down -> muzzle down".
+    // One hit target, two axes at once — mirrored, pull right -> muzzle
+    // left; pitch keeps "pull down -> muzzle down".
     const sensitivity = COMBAT.aimDegreesPerPixel;
-    this.addAim(
-      this.dragCannon,
-      this.dragZonePitch ? 0 : -dx * sensitivity,
-      this.dragZonePitch ? -dy * sensitivity : 0,
-    );
+    this.addAim(this.dragCannon, -dx * sensitivity, -dy * sensitivity);
   }
 
   // -------------------------------------------------------------------- XR
@@ -273,9 +230,6 @@ export class CannonAimSystem extends createSystem({
       space.getWorldPosition(this.xrHandStart);
       this.xrAimStartYaw = Number(cannon.getValue(CannonAim, 'yawDeg'));
       this.xrAimStartPitch = Number(cannon.getValue(CannonAim, 'pitchDeg'));
-      // Same part-under-the-ray rule as the browser press: the zone is the
-      // mesh the ray last rested on.
-      this.xrDragZonePitch = this.hoverZones.get(cannon.index) ?? false;
       return;
     }
     // Continue with the anchoring hand only — releasing it is the sole exit,
@@ -299,17 +253,15 @@ export class CannonAimSystem extends createSystem({
       return;
     }
     this.xrDragSpace.getWorldPosition(this.xrHandPos);
-    // Wrist travel drives the part-owned axis, absolute from the grab pose,
-    // mirrored like the browser drag: hand right -> muzzle left, hand up ->
-    // muzzle up.
+    // Wrist travel drives both axes, absolute from the grab pose, mirrored
+    // like the browser drag: hand right -> muzzle left, hand up -> muzzle up.
     const handDx = this.xrHandPos.x - this.xrHandStart.x;
     const handDy = this.xrHandPos.y - this.xrHandStart.y;
     const sensitivity = COMBAT.aimDegreesPerMeter;
     this.setAim(
       cannon,
-      this.xrAimStartYaw + (this.xrDragZonePitch ? 0 : handDx * sensitivity),
-      this.xrAimStartPitch +
-        (this.xrDragZonePitch ? handDy * sensitivity : 0),
+      this.xrAimStartYaw + handDx * sensitivity,
+      this.xrAimStartPitch + handDy * sensitivity,
     );
   }
 
@@ -338,55 +290,6 @@ export class CannonAimSystem extends createSystem({
   private firstHoveredCannon(): Entity | undefined {
     for (const entity of this.queries.hovered.entities) return entity;
     return undefined;
-  }
-
-  // ---------------------------------------------------------- drag zones
-
-  /**
-   * Capture which part of the mount the pointer / ray is on. Three-style
-   * pointer events bubble the @pmndrs/pointer-events hit to the entity root —
-   * the very dispatch InputSystem tags Pressed/Hovered from — so the specific
-   * mesh (`event.object`) is free here, no raycasting. Attached once per
-   * entity (restoreCannons re-qualifies Destroyed units, the guard skips the
-   * re-attach); the closure holds the entity's stable index and object3D.
-   */
-  private attachZoneListeners(entity: Entity): void {
-    const object = entity.object3D;
-    if (!object || this.zoneTeardowns.has(entity.index)) return;
-    const record = (event: ZoneHitEvent): void => {
-      if (!event || !event.object) return;
-      const pitchZone = this.isPitchZone(entity.index, event.object);
-      if (event.type === 'pointerdown') {
-        this.pressZones.set(entity.index, pitchZone);
-      } else {
-        // pointermove keeps the XR hover zone fresh while the ray slides
-        // across the unit: enter/leave fire on the unit boundary only,
-        // never between the parts of one mount.
-        this.hoverZones.set(entity.index, pitchZone);
-      }
-    };
-    object.addEventListener('pointerdown', record);
-    object.addEventListener('pointermove', record);
-    this.zoneTeardowns.set(entity.index, () => {
-      object.removeEventListener('pointerdown', record);
-      object.removeEventListener('pointermove', record);
-    });
-  }
-
-  /**
-   * True when the hit mesh sits inside the unit's gun_rotate subtree — the
-   * pitch zone (cannon barrel). Everything else on the mount (carriage,
-   * rack base) is the yaw zone.
-   */
-  private isPitchZone(entityIndex: number, hit: Object3D): boolean {
-    const pivot = this.gunPivots.get(entityIndex);
-    if (!pivot) return false;
-    let node: Object3D | null = hit;
-    while (node) {
-      if (node === pivot) return true;
-      node = node.parent;
-    }
-    return false;
   }
 
   // ---------------------------------------------------------------- shared
