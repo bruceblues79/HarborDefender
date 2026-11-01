@@ -298,8 +298,8 @@ export const ECONOMY = {
   killReward: 200,
   /** Health points restored per second while a unit repairs (100 pool). */
   repairHpPerSecond: 10,
-  /** Money drained per second while a unit repairs. */
-  repairCostPerSecond: 8,
+  /** Money drained per second while a unit repairs (修满 130 金). */
+  repairCostPerSecond: 13,
   /**
    * Book value per unit id: the ONLY price knob — an empty or destroyed
    * slot builds at full value. There is no trade-in: a live occupant's
@@ -307,9 +307,8 @@ export const ECONOMY = {
    */
   unitValues: {
     cannon: 200,
-    // 钢铁卫士：计划 2000 金一只（嘲讽承伤坦位），试验阶段 0 金便于检验，
-    // 后期可能上调。
-    'iron-guard': 0,
+    // 钢铁卫士：2500 金一只（嘲讽承伤坦位，boss 承伤 90% 减免）。
+    'iron-guard': 2500,
   } as Record<DefenseUnitId, number>,
 };
 
@@ -335,10 +334,11 @@ export enum RewardTier {
  * and the phase-two chief head each pay this. Briefly zeroed (v0.1.264) to
  * cut the run's biggest income spike; restored to the original 800 after
  * the zero-bounty boss fight starved the defence's economy (2026-10-30
- * 实测拍板). The RewardTier tags stay on the spawn sites so a future
- * achievement system can still read part kills.
+ * 实测拍板); 2026-11-01 下调到 200，同日回调到 400。The RewardTier tags
+ * stay on the spawn sites so a future achievement system can still read
+ * part kills.
  */
-export const BOSS_BOUNTY = 800;
+export const BOSS_BOUNTY = 400;
 
 export const REWARD_TABLE: Record<RewardTier, number> = {
   [RewardTier.None]: 0,
@@ -783,12 +783,13 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   // Pirate chief head (task 031): every defender shell chips a flat 2% of
   // its 100-point pool.
   'cannon->islewrath-chief': 2,
-  // 钢铁卫士（iron-guard）：承伤固定 2% —— 每个攻击者一发都只扣 2%，
-  // boss 炮塔同样按此行结算（boss 只是无视嘲讽，不豁免它挡刀）。
+  // 钢铁卫士（iron-guard）：普通攻击者承伤固定 2% —— 一发只扣 2%。
+  // boss 炮塔单独一行 0.2（boss 伤害 90% 减免，2026-11-01；boss 本就无视
+  // 嘲讽——FreeLockTargetSystem 均匀随机索敌，不读 Taunt）。
   'pirate-ship->iron-guard': 2,
   'bombardier->iron-guard': 2,
   'ornithopter->iron-guard': 2,
-  'islewrath-turret->iron-guard': 2,
+  'islewrath-turret->iron-guard': 0.2,
 };
 
 /**
