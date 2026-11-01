@@ -384,13 +384,13 @@ export class BuildPanelSystem extends createSystem({
   }
 
   /**
-   * Red rim = the selected round, every other row falls back to the base
+   * White disc = the selected round, every other row falls back to the base
    * circle. Global state: refreshed on load, on pick and per frame while the
    * dock is open (via refreshRows) — ammo rows render only over an occupied
    * slot; an empty one hides the whole row behind `ammo-hidden`. The class
    * swap is the only reliable toggle (same layer rule as units), and the
    * selected row's icon class swaps with it — the 6-wide active icon over
-   * the 7.5 red disc halves the visible rim (UIKitML has no descendant
+   * the 7.5 white disc halves the visible rim (UIKitML has no descendant
    * selectors, so a child cannot follow its parent's state in CSS).
    */
   private refreshAmmoRows(): void {
@@ -420,7 +420,8 @@ export class BuildPanelSystem extends createSystem({
       row.classList.add(next);
       this.ammoClasses.set(ammoId, next);
       // Icon state is 1:1 with the row state, so the row-class guard above
-      // covers it too: the active icon is larger, slimming the red rim.
+      // covers it too: the active icon is larger and flips dark on the
+      // white disc (CSS color override on .ammo-icon-active).
       const icon = this.ammoIcons.get(ammoId);
       if (icon) {
         const iconNext = next === 'ammo-active' ? 'ammo-icon-active' : 'unit-icon';
