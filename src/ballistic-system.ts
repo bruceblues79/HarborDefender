@@ -44,7 +44,10 @@ export class BallisticSystem extends createSystem({
       if (!object) continue;
       // Linear drag integrated exactly over the step: v' = v·e^(-k·dt) minus
       // gravity's share (g/k)(1-e^(-k·dt)) on vy — the same closed form the
-      // trajectory guide samples, so preview and flight stay in lockstep.
+      // trajectory guide samples. Position rides the same integral (pre-step
+      // velocity, exact displacement), so the flight lands exactly on the
+      // guide at any frame rate; semi-implicit Euler here would fall short of
+      // the preview by O(dt²) per step and drift with the frame rate.
       // Dragless shells (drag 0) keep the plain Euler fall.
       const k = Number(entity.getValue(BallisticFlight, 'drag'));
       let vx = Number(entity.getValue(BallisticFlight, 'vx'));
@@ -52,18 +55,24 @@ export class BallisticSystem extends createSystem({
       let vz = Number(entity.getValue(BallisticFlight, 'vz'));
       if (k > 0) {
         const decay = Math.exp(-k * delta);
+        const horiz = (1 - decay) / k;
+        object.position.x += vx * horiz;
+        object.position.y +=
+          ((vy + COMBAT.gravity / k) / k) * (1 - decay) -
+          (COMBAT.gravity / k) * delta;
+        object.position.z += vz * horiz;
         vx *= decay;
         vz *= decay;
         vy = vy * decay - (COMBAT.gravity / k) * (1 - decay);
       } else {
         vy -= COMBAT.gravity * delta;
+        object.position.x += vx * delta;
+        object.position.y += vy * delta;
+        object.position.z += vz * delta;
       }
       entity.setValue(BallisticFlight, 'vx', vx);
       entity.setValue(BallisticFlight, 'vy', vy);
       entity.setValue(BallisticFlight, 'vz', vz);
-      object.position.x += vx * delta;
-      object.position.y += vy * delta;
-      object.position.z += vz * delta;
       // Far-edge backstop: a shot still airborne past the ocean's far edge
       // can never come down on anything — recycle it silently.
       if (object.position.z <= OCEAN_FAR_Z) {
