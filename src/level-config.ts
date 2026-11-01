@@ -298,8 +298,8 @@ export const ECONOMY = {
   killReward: 200,
   /** Health points restored per second while a unit repairs (100 pool). */
   repairHpPerSecond: 10,
-  /** Money drained per second while a unit repairs (修满 130 金). */
-  repairCostPerSecond: 13,
+  /** Money drained per second while a unit repairs (修满 100 金). */
+  repairCostPerSecond: 10,
   /**
    * Book value per unit id: the ONLY price knob — an empty or destroyed
    * slot builds at full value. There is no trade-in: a live occupant's
