@@ -307,9 +307,8 @@ export const ECONOMY = {
    */
   unitValues: {
     cannon: 200,
-    // 钢铁卫士：计划 2000 金一只（嘲讽承伤坦位），试验阶段 0 金便于检验，
-    // 后期可能上调。
-    'iron-guard': 0,
+    // 钢铁卫士：2000 金一只（嘲讽承伤坦位）。
+    'iron-guard': 2000,
   } as Record<DefenseUnitId, number>,
 };
 

@@ -111,6 +111,10 @@ export class BuildPanelSystem extends createSystem({
   private readonly ammoRows = new Map<string, UiElement | null>();
   /** Class currently applied per ammo button; guards redundant class swaps. */
   private readonly ammoClasses = new Map<string, string>();
+  /** Ammo icon (svg) per ammo id — rides the same state as its row. */
+  private readonly ammoIcons = new Map<string, UiElement | null>();
+  /** Class currently applied per ammo icon; guards redundant class swaps. */
+  private readonly ammoIconClasses = new Map<string, string>();
 
   init(): void {
     this.loadPanel();
@@ -168,6 +172,10 @@ export class BuildPanelSystem extends createSystem({
             );
             this.ammoRows.set(def.id, row);
           }
+          this.ammoIcons.set(
+            def.id,
+            panel.getElementById(`ammo-icon-${def.id}`) as UiElement | null,
+          );
         }
         const dismiss = panel.getElementById('build-dismiss');
         this.walletText = this.resolveText(
@@ -376,11 +384,14 @@ export class BuildPanelSystem extends createSystem({
   }
 
   /**
-   * Gold face = the selected round, every other row falls back to the base
+   * Red rim = the selected round, every other row falls back to the base
    * circle. Global state: refreshed on load, on pick and per frame while the
    * dock is open (via refreshRows) — ammo rows render only over an occupied
    * slot; an empty one hides the whole row behind `ammo-hidden`. The class
-   * swap is the only reliable toggle (same layer rule as units).
+   * swap is the only reliable toggle (same layer rule as units), and the
+   * selected row's icon class swaps with it — the 6-wide active icon over
+   * the 7.5 red disc halves the visible rim (UIKitML has no descendant
+   * selectors, so a child cannot follow its parent's state in CSS).
    */
   private refreshAmmoRows(): void {
     const director = this.findOpenDirector();
@@ -408,6 +419,17 @@ export class BuildPanelSystem extends createSystem({
       row.classList.remove('ammo-unit', 'ammo-active', 'ammo-hidden');
       row.classList.add(next);
       this.ammoClasses.set(ammoId, next);
+      // Icon state is 1:1 with the row state, so the row-class guard above
+      // covers it too: the active icon is larger, slimming the red rim.
+      const icon = this.ammoIcons.get(ammoId);
+      if (icon) {
+        const iconNext = next === 'ammo-active' ? 'ammo-icon-active' : 'unit-icon';
+        if (this.ammoIconClasses.get(ammoId) !== iconNext) {
+          icon.classList.remove('unit-icon', 'ammo-icon-active');
+          icon.classList.add(iconNext);
+          this.ammoIconClasses.set(ammoId, iconNext);
+        }
+      }
     }
   }
 
