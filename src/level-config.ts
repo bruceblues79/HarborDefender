@@ -298,8 +298,8 @@ export const ECONOMY = {
   killReward: 200,
   /** Health points restored per second while a unit repairs (100 pool). */
   repairHpPerSecond: 10,
-  /** Money drained per second while a unit repairs (修满 140 金). */
-  repairCostPerSecond: 14,
+  /** Money drained per second while a unit repairs (修满 130 金). */
+  repairCostPerSecond: 13,
   /**
    * Book value per unit id: the ONLY price knob — an empty or destroyed
    * slot builds at full value. There is no trade-in: a live occupant's
@@ -334,11 +334,11 @@ export enum RewardTier {
  * and the phase-two chief head each pay this. Briefly zeroed (v0.1.264) to
  * cut the run's biggest income spike; restored to the original 800 after
  * the zero-bounty boss fight starved the defence's economy (2026-10-30
- * 实测拍板); 2026-11-01 下调到 200，与 stock 悬赏持平。The RewardTier tags
+ * 实测拍板); 2026-11-01 下调到 200，同日回调到 400。The RewardTier tags
  * stay on the spawn sites so a future achievement system can still read
  * part kills.
  */
-export const BOSS_BOUNTY = 200;
+export const BOSS_BOUNTY = 400;
 
 export const REWARD_TABLE: Record<RewardTier, number> = {
   [RewardTier.None]: 0,
