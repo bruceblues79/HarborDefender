@@ -7,7 +7,7 @@
 
 - 一个任务 = 一次会话，完成即停，review 通过后 commit，不跨任务夹带。
 - 每次会话收尾必跑：`npm run --if-present typecheck` → `npm run build`。
-- 不启动 dev runtime、不做浏览器/视觉验证；涉及可见变化的任务在"待用户验证"一节列出核对点，由用户决定自验或部署后验证。
+- 不启动 dev runtime、不做浏览器/视觉验证；涉及可见变化的任务在交付说明中列出核对点，由用户决定自验或部署后验证。
 - 部署由用户执行，部署前必须提升 `package.json` 版本号。
 - 范围红线：只做任务清单内的事，不顺手重构、不加任务未提及的功能。
 
@@ -19,10 +19,6 @@
 - [ ] T2 数值小补丁：过时注释 + planner 账面价值 + wave2 预算
 - [ ] T3 门卫 helper 去重 + 池认领模式统一（纯重构）
 - [ ] T4 拆分 level-wave-system（纯重构）
-- [ ] T5 弹药扩充方案设计（只出方案，等拍板）
-- [ ] T6 付费弹种实现（依赖 T5 拍板）
-- [ ] T7 海盗船火控并轨 GunCycle（大重构）
-- [ ] T8 （可选，待拍板）头目闪电伤害方差调整 75% → 50-60%
 
 ---
 
@@ -112,69 +108,7 @@
 **验证**：typecheck + build。
 **红线**：不改 spawn 语义、不改 dispose 纪律（`disposeResources: false`）、不改事件顺序（GameOver 提交在 tag 之前等既有约束）。
 
-## T5 弹药扩充方案设计（只出方案）
-
-**目标**：在 `docs/` 产出一份弹药数值方案，列 2-3 种付费弹，等用户拍板后进 T6。
-
-**步骤**：
-- [ ] 候选弹种数值表（伤害/成本/弹道差异），基于现有框架：`AMMO_DEFS` 行 + `costPerShot` + `DAMAGE_MATRIX` 行 + shell-hit 命中分支
-- [ ] 候选：爆炸弹（AoE 半径 + 伤害衰减，对密集停泊带）、重弹（高伤慢速，对 Boss 部位）、链弹（对飞行单位倍率）
-- [ ] DPS / 成本 / 回收周期推演（对照杀赏 200、维修 13g/s）
-- [ ] 余额不足时的射击行为方案（降速重试 vs 拒发），二选一给推荐
-- [ ] 产出 `docs/ammo-expansion-proposal.md`，停，等拍板
-
-**红线**：不写任何实现代码。
-
-## T6 付费弹种实现（依赖 T5 拍板）
-
-**目标**：按拍板结果实现弹药扩充。
-
-**步骤**：
-- [ ] `AMMO_DEFS` 增行 + dock 图标资产确认（`ui/icons/*.svg` 是否需要新增——需要则先出图）
-- [ ] `CannonFireSystem.fire()` 接入 `AmmoSelected` + `Wallet` 扣费（按 T5 拍板的余额策略）
-- [ ] `DAMAGE_MATRIX` 增行 + shell-hit 命中效果分支（AoE/倍率）
-- [ ] build-panel ammo 行自动随 `AMMO_DEFS` 渲染（现有循环已支持，验证即可）
-- [ ] 数值自证：新弹种 vs 铁弹的 TTK 对比表写进 commit message
-
-**验证**：typecheck + build。
-**待用户验证**（视觉/手感类，不自行验证）：dock 新行渲染、图标、射击手感。
-
-## T7 海盗船火控并轨 GunCycle
-
-**目标**：删除攻击方火控双轨制——海盗船从 `PirateCannon` 迁到 `GunCycle` + `LockTarget`，删除 `pirate-fire-system.ts`（约 330 行）。
-
-**改动点**：
-- `GunCycle` 增加字段：`fireLineZ`（Float32，默认 `-Infinity`，替代 requireStopped 的语义：炮线是"过了就能打"，requireStopped 是"停了才打"——两者共存，boss 用后者，海盗用前者）
-- `LockTarget` / `FreeLockTargetSystem` 增加可选的嘲讽语义：per-gun `respectTaunt`（Boolean，默认 false；boss 装配保持 false，海盗 spawn 置 true）——嘲讽劫持从 PirateFireSystem 平移进索敌系统
-- `spawnUnitByType`（level-wave-system）给武装单位改挂 `GunCycle`（interval = 单位表 fireInterval，shellUnitType = unitType，muzzle/pivot 沿用现有装饰节点）+ `LockTarget`
-- `components.ts`：`PirateCannon`、`PirateFireSystem` 相关删除；`index.ts` 注销注册
-- 注意语义保真：海盗第一发立即开火（cooldown 0）✈ 现 GunCycle 开局 cooldown 需给海盗 0；flyer 炮塔缺失时的 whole-hull yaw 路径 GunCycle 已有
-
-**步骤**：
-- [ ] 组件字段扩展（fireLineZ / respectTaunt）
-- [ ] FreeLockTargetSystem 接嘲讽劫持（读 Taunt 的两遍扫描平移自 pirate-fire）
-- [ ] spawn 挂载切换 + PirateCannon 删除
-- [ ] pirate-fire-system.ts 删除 + index.ts 注销
-- [ ] 行为对照清单核对：开火时机（过线即打）、嘲讽劫持、目标死亡重锁、石头池路径（ornithopter）
-
-**验证**：typecheck + build。
-**待用户验证**：海盗船开火节奏、嘲讽表现、ornithopter 投石——实机体验类，等用户安排。
-**红线**：boss 火控行为一字不动（free-lock 现有语义保持）。
-
-## T8 （可选，待拍板）头目闪电方差调整
-
-`DEATH_LIGHT.damageRatio` 75% → 50-60%，收窄残局方差（2 炮台时一发闪电≈死刑）。只改一个数 + 注释补推演。**等用户拍板是否做、目标值取多少。**
-
----
-
-## 待用户验证清单（累计）
-
-| 任务 | 核对点 |
-|---|---|
-| T6 | build dock 新弹药行渲染、图标、扣费手感 |
-| T7 | 海盗船开火时机、嘲讽转向、ornithopter 投石 |
-| T8 | 头目闪电伤害体感 |
-
 ## 合并策略
 
-全部完成后按主题决定：T1-T4 可整段并入 main（低风险）；T6/T7 各自独立评估。合并前由用户 review 每个任务的 commit。
+全部完成后按主题决定：T1-T4 可整段并入 main（低风险）。合并前由用户 review 每个任务的 commit。
+
