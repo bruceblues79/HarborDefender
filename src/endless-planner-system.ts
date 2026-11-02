@@ -10,12 +10,13 @@ import type { Entity } from '@iwsdk/core';
 import {
   Destroyed,
   EndlessMode,
+  Health,
   HitCore,
   LevelDirector,
   NextWaveCommand,
   Wallet,
 } from './components.js';
-import { ENDLESS, ECONOMY, endlessLevel } from './level-config.js';
+import { DEFENSE_SLOTS, ENDLESS, ECONOMY, endlessLevel } from './level-config.js';
 import type { WaveSpec } from './level-config.js';
 
 /** Purchase pool: unitType -> budget cost, as entries for random picks. */
@@ -66,20 +67,33 @@ export class EndlessPlannerSystem extends createSystem({
 
   /** Build the WaveSpec for the given 1-based wave number. */
   private composeWave(waveNumber: number, director: Entity): WaveSpec {
-    // Boss cadence: every `bossEvery` waves the wave IS a boss wave — one
-    // lone boss rolled from the pool, no escort composition.
+    // Boss cadence: every `bossEvery` waves IS a boss wave — fixed考试，不乘任何系数.
     if (waveNumber % ENDLESS.bossEvery === 0) {
       const boss =
         ENDLESS.bossPool[Math.floor(Math.random() * ENDLESS.bossPool.length)];
       return { units: [boss] };
     }
 
-    // Budget: linear growth, scaled up by how strong the defence looks.
-    const base =
-      ENDLESS.baseBudgetWave2 + (waveNumber - 2) * ENDLESS.budgetPerWave;
     const money = Number(director.getValue(Wallet, 'money'));
-    const moneyFactor = 1 + Math.min(ENDLESS.moneyBonusMax, money / ENDLESS.moneyDiv);
-    let budget = Math.max(1, base) * this.defenderPressure() * moneyFactor;
+    const { power, pressure, sustainFactor } = this.estimateCapacity(money);
+
+    const base = Math.max(1,
+      ENDLESS.baseBudgetWave2 + (waveNumber - 2) * ENDLESS.budgetPerWave,
+    );
+    const aggression = Math.min(
+      ENDLESS.aggressionMax,
+      1 + Math.max(0, waveNumber - 5) * ENDLESS.aggressionPerWave,
+    );
+    const isPreBoss = (waveNumber + 1) % ENDLESS.bossEvery === 0;
+
+    let budget = base * pressure * sustainFactor * aggression;
+    if (isPreBoss) budget *= ENDLESS.preBossEase;
+    // 性能上限：maxUnitsPerWave 的 1.0 倍即预算够出 36 只最便宜单位就封顶
+    budget = Math.min(budget, ENDLESS.maxUnitsPerWave);
+
+    console.info(
+      `[ddt] wave ${waveNumber}: power=${power.toFixed(2)} pressure=${pressure.toFixed(3)} sustain=${sustainFactor.toFixed(3)} aggro=${aggression.toFixed(2)}${isPreBoss ? ' preBoss' : ''} budget=${budget.toFixed(2)}`,
+    );
 
     const units: string[] = [];
     while (units.length < ENDLESS.maxUnitsPerWave) {
@@ -94,20 +108,71 @@ export class EndlessPlannerSystem extends createSystem({
   }
 
   /**
-   * Defender pressure multiplier: the surviving battery's book value (every
-   * unit shares the 200 g value) interpolated between pressureMin (empty
-   * wall) and pressureMax (battery at pressureMoneyFull). Destroyed cannons
-   * are skipped — a crumbling defence draws a lighter wave.
+   * 每一波都重新估玩家的真实承受能力：炮台血量 × 修满购买力 + 卫士权重 + 空槽重建购买力。
+   * 钱只通过修理/重建转成战力，剩余钱算 sustainFactor，不重复乘。
    */
-  private defenderPressure(): number {
-    let alive = 0;
+  private estimateCapacity(money: number): {
+    power: number;
+    pressure: number;
+    sustainFactor: number;
+  } {
+    let cannonCurrentSum = 0;
+    let cannonMaxSum = 0;
+    let cannonCount = 0;
+    let guardHpSum = 0;
+    let guardCount = 0;
+
     for (const core of this.queries.cores.entities) {
       if (core.getValue(HitCore, 'faction') !== 'defender') continue;
       if (core.hasComponent(Destroyed)) continue;
-      alive += 1;
+
+      const unitType = core.getValue(HitCore, 'unitType');
+      const current = Number(core.getValue(Health, 'current'));
+      const max = Number(core.getValue(Health, 'max'));
+
+      if (unitType === 'iron-guard') {
+        guardCount++;
+        guardHpSum += current / max;
+      } else {
+        // 炮台（包括未来的新防御单位，都按 cannon 处理）
+        cannonCount++;
+        cannonCurrentSum += current;
+        cannonMaxSum += max;
+      }
     }
-    const value = alive * ECONOMY.killReward;
-    const t = Math.min(1, value / ENDLESS.pressureMoneyFull);
-    return ENDLESS.pressureMin + (ENDLESS.pressureMax - ENDLESS.pressureMin) * t;
+
+    const totalSlots = DEFENSE_SLOTS.length;
+    const emptySlots = totalSlots - (cannonCount + guardCount);
+
+    // 修理成本（只算炮台，卫士不可修）
+    const repairCostPerHp =
+      ECONOMY.repairCostPerSecond / ECONOMY.repairHpPerSecond;
+    const missingHp = cannonMaxSum - cannonCurrentSum;
+    const repairCost = missingHp * repairCostPerHp;
+    const repairSpend = Math.min(money, repairCost);
+    const hpFactor = repairCost > 0 ? repairSpend / repairCost : 1;
+
+    // currentPower：炮台按当前血量 + 可修部分补满；卫士按 1.5×当前血量（不可修）
+    const cannonHpRatioCurrent = cannonMaxSum > 0 ? cannonCurrentSum / cannonMaxSum : 0;
+    const currentPower =
+      cannonCount * (cannonHpRatioCurrent + (1 - cannonHpRatioCurrent) * hpFactor) +
+      ENDLESS.guardPowerWeight * guardHpSum;
+
+    // 重建：修完剩下的钱能在空槽里建几门炮
+    const moneyAfterRepair = money - repairSpend;
+    const rebuildCost = ECONOMY.unitValues.cannon;
+    const rebuildable = Math.min(emptySlots, Math.floor(moneyAfterRepair / rebuildCost));
+    const power = currentPower + rebuildable;
+
+    // 多出来的钱 = 续航，不再进 power
+    const excess = moneyAfterRepair - rebuildable * rebuildCost;
+    const sustainFactor = 1 + Math.min(ENDLESS.sustainMax, excess / ENDLESS.sustainDiv);
+
+    // 压力曲线
+    const ratio = Math.min(ENDLESS.powerRatioMax, power / ENDLESS.powerFull);
+    const pressure =
+      ENDLESS.pressureMin + (ENDLESS.pressureMax - ENDLESS.pressureMin) * ratio;
+
+    return { power, pressure, sustainFactor };
   }
 }

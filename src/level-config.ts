@@ -481,23 +481,38 @@ export const ENDLESS = {
   /** Budget of wave 2; each later wave adds `budgetPerWave`. */
   baseBudgetWave2: 2,
   budgetPerWave: 0.75,
-  /**
-   * Defender pressure: the surviving battery's book value (unitValues ×
-   * alive count) over `pressureMoneyFull` interpolates the budget multiplier
-   * from `pressureMin` (empty wall) to `pressureMax` (full battery) — a
-   * stronger defence draws a stronger wave.
-   */
-  pressureMoneyFull: 600,
+
+  // — 压力曲线（和旧 pressureMin/pressureMax 同名兼容，语义变了） —
+  /** Pressure 曲线下限 / 上限；power=3 时 pressure=pressureMax。 */
   pressureMin: 0.7,
   pressureMax: 1.15,
-  /**
-   * Money grind: the wallet adds money / `moneyDiv` to the budget multiplier
-   * (200 g ≈ +12.5%, 800 g hits the cap) — 存款越多，下一波越重.
-   */
-  moneyDiv: 1600,
-  moneyBonusMax: 0.5,
+  /** pressureMin + (pressureMax - pressureMin) × min(powerRatioMax, power/powerFull) */
+  powerFull: 3,
+  powerRatioMax: 2.5,
+
+  // — 卫士 & 续航 —
+  /** iron-guard 的 power 权重：承伤不输出，按 1.5×当前血量比计入。 */
+  guardPowerWeight: 1.5,
+  /** 剩余钱（修完 + 建完之后）转 sustainFactor：1 + min(sustainMax, excess / sustainDiv) */
+  sustainDiv: 4000,
+  sustainMax: 0.5,
+  /** Boss 前一波额外 × 0.85，让玩家有机会修满/重建再进考场。 */
+  preBossEase: 0.85,
+
+  // — 侵略性（只放大数量，不动伤害矩阵） —
+  aggressionPerWave: 0.06,
+  aggressionMax: 2.2,
+
+  // — 每层单位上限（随波次放开） —
+  layerCapStart: 6,
+  layerCapStep: 1,
+  layerCapStepWaves: 3,
+  layerCapMax: 12,
+
+  // — 总体硬上限 —
   /** Hard unit cap per generated wave (overflow waits out the layer caps). */
-  maxUnitsPerWave: 18,
+  maxUnitsPerWave: 36,
+
   /**
    * Purchase pool for a generated wave: unitType -> budget cost, equal-weight
    * random picks among what the remaining budget affords. Keys are UNIT_TYPES
