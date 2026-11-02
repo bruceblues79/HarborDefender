@@ -126,9 +126,12 @@ World.create(
   world.registerSystem(HitFlashSystem, { priority: 15 });
   world.registerSystem(DieBurstSystem, { priority: 15 });
   world.registerSystem(SplashSystem, { priority: 15 });
-  // Repair drain: the only per-frame wallet writer, on the simulation tier
-  // so pauses and outcomes freeze it like every other sim system.
-  world.registerSystem(RepairSystem, { priority: 12 });
+  // Repair drain: the only per-frame wallet writer. Registered after
+  // ShellHitSystem's death sweep (14) on purpose — a laser or death-light that
+  // lands exactly on 0 HP must be dead before repair can tick it back above 0,
+  // otherwise the unit survives as a zero-health ghost. Pauses and outcomes
+  // still freeze it like every other sim system.
+  world.registerSystem(RepairSystem, { priority: 15 });
   // Build/repair button commands: a sim-tier consumer of the transient
   // Pressed tags; it opens the build panel through the director's BuildOpen
   // tag and keeps the button visuals (shrunk pose, repair glow) current.

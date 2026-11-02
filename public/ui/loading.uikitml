@@ -2,6 +2,9 @@
   Loading overlay panel.
   100 × 50 UIKit units = 1 m × 0.5 m at scale 1.
   Faces +Z by default.
+  Same glass surface as the main menu panels (panel-material-class: glass
+  plus a hex8 alpha background); text is dark for contrast on the light
+  glass — white text would wash out exactly like on a white plate.
 -->
 <style>
   .panel-root {
@@ -11,14 +14,15 @@
     height: 50;
     justify-content: center;
     align-items: center;
-    background-color: #1a1a2e;
-    border-radius: 2;
+    panel-material-class: glass;
+    background-color: #ffffffaa;
+    border-radius: 4;
   }
 
   .loading-text {
     font-size: 6;
     font-weight: 700;
-    color: #ffffff;
+    color: #202030;
     text-align: center;
   }
 </style>
