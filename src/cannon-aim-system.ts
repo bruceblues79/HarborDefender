@@ -257,11 +257,10 @@ export class CannonAimSystem extends createSystem({
     // like the browser drag: hand right -> muzzle left, hand up -> muzzle up.
     const handDx = this.xrHandPos.x - this.xrHandStart.x;
     const handDy = this.xrHandPos.y - this.xrHandStart.y;
-    const sensitivity = COMBAT.aimDegreesPerMeter;
     this.setAim(
       cannon,
-      this.xrAimStartYaw + handDx * sensitivity,
-      this.xrAimStartPitch + handDy * sensitivity,
+      this.xrAimStartYaw + handDx * COMBAT.aimDegreesPerMeterYaw,
+      this.xrAimStartPitch + handDy * COMBAT.aimDegreesPerMeterPitch,
     );
   }
 

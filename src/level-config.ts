@@ -595,10 +595,13 @@ export const COMBAT = {
   /** Aim degrees per dragged pixel in the browser — retune by feel. */
   aimDegreesPerPixel: 0.4,
   /**
-   * Aim degrees per metre of wrist travel in XR — retune by feel on device.
-   * 200 puts a full ±45° sweep at ~23 cm of hand travel; 1 cm ≈ 2°.
+   * Aim degrees per metre of horizontal (yaw) wrist travel in XR — retune by
+   * feel on device. 100 puts a full ±45° sweep at ~45 cm of hand travel;
+   * 1 cm ≈ 1°. Halved from 200 so coarse horizontal steering feels steadier.
    */
-  aimDegreesPerMeter: 200,
+  aimDegreesPerMeterYaw: 100,
+  /** Aim degrees per metre of vertical (pitch) wrist travel in XR. */
+  aimDegreesPerMeterPitch: 200,
   /**
    * Hit-core radii (m): a shell within this 3D distance of an opposing
    * faction's hit_core is consumed. The pirate core sits at bounding-box
