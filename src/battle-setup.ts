@@ -266,6 +266,12 @@ export function replaceDefenseUnit(
 let battlefieldReady = false;
 /** Whether a battle entry is currently in flight (guards double ENTER). */
 let battleStarted = false;
+/**
+ * Whether the loading panel already carries a transform entity — re-entries
+ * after a failed load reuse the same cached document, and a second
+ * createTransformEntity on one object would double-place it.
+ */
+let loadingPanelPlaced = false;
 const battlefieldObjects: Object3D[] = [];
 
 /**
@@ -300,6 +306,27 @@ const defenseEntities: DefenseEntity[] = [];
  * helper; iron-guard is a static bust with only hit_core).
  */
 const defensePrototypes = new Map<DefenseUnitId, Object3D>();
+
+/**
+ * Battle-entry failure recovery. Every load error used to only console.error —
+ * the loading panel stayed on screen forever with the entry gate armed, a
+ * dead lock (triggered when a stale cached shell requested a since-deleted
+ * GLB and got a 404). Now the gate re-arms, the loading panel hides and the
+ * welcome screen returns: ENTER GAME retries, and every load that already
+ * succeeded is an AssetManager cache hit. Safe to retry blindly — all
+ * network failures happen before the first world placement.
+ */
+function failEntry(
+  world: World,
+  loadingPanel: UIKitMLAsset | null,
+  err: unknown,
+): void {
+  console.error('Battle entry failed:', err);
+  battleStarted = false;
+  if (loadingPanel) loadingPanel.visible = false;
+  const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
+  if (panel) panel.visible = true;
+}
 
 /**
  * One-shot battle start flow: hide the welcome panel, show the loading
@@ -357,8 +384,14 @@ export function startBattle(world: World): void {
   // 2. Show loading panel (1 m × 0.5 m, faces +Z)
   loadUIKitMLAsset('loading-panel')
     .then((loadingPanel) => {
-      loadingPanel.position.set(0, 1.25, -1.5);
-      world.createTransformEntity(loadingPanel);
+      // A failed entry reuses the same cached document — guard against a
+      // second createTransformEntity double-placing it.
+      if (!loadingPanelPlaced) {
+        loadingPanel.position.set(0, 1.25, -1.5);
+        world.createTransformEntity(loadingPanel);
+        loadingPanelPlaced = true;
+      }
+      loadingPanel.visible = true;
 
       // 3. Load game assets: HDR env + solidified GLB models
       AssetManager.loadHDRTextureById('ocean-env.hdr')
@@ -511,13 +544,9 @@ export function startBattle(world: World): void {
           loadingPanel.visible = false;
           proceed();
         })
-        .catch((err: unknown) => {
-          console.error('Failed to load game assets:', err);
-        });
+        .catch((err: unknown) => failEntry(world, loadingPanel, err));
     })
-    .catch((err: unknown) => {
-      console.error('Failed to load loading panel:', err);
-    });
+    .catch((err: unknown) => failEntry(world, null, err));
 }
 
 /**
