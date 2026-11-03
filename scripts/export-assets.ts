@@ -27,7 +27,6 @@ import {
   Mesh,
   MeshStandardMaterial,
   Object3D,
-  Path,
   PlaneGeometry,
   Quaternion,
   Shape,
@@ -1344,146 +1343,6 @@ export function createBombardierExport(): Object3D {
 }
 
 // ---------------------------------------------------------------------------
-// Defense button (flat wall-mounted repair control mark, wrench) — a
-// mechanical silhouette with colour zones baked into vertex colors
-// ---------------------------------------------------------------------------
-
-// Shares the cannon palette (brass, steel) plus the identity tint the HUD
-// already used: camo olive for repair. Flat crisp zones — jitter stays far
-// below the unit mottle.
-const BTN_BRASS = 0xd1a249;
-const BTN_STEEL = 0x737b84;
-/** Camouflage olive — the wrench's identity green, naturally darker. */
-const BTN_GREEN = 0x556b2f;
-
-/** Base plate thickness (m); the front face lands at z = +0.0065. */
-const BUTTON_PLATE_DEPTH = 0.013;
-
-function buttonRect(xMin: number, yMin: number, xMax: number, yMax: number): Shape {
-  const s = new Shape();
-  s.moveTo(xMin, yMin);
-  s.lineTo(xMax, yMin);
-  s.lineTo(xMax, yMax);
-  s.lineTo(xMin, yMax);
-  s.closePath();
-  return s;
-}
-
-/** Thin plate from a 2D outline, centred on z = 0 with a machined edge bevel. */
-function buttonPlate(shape: Shape, depth = BUTTON_PLATE_DEPTH, bevel = 0.0015): BufferGeometry {
-  const geo = new ExtrudeGeometry(shape, {
-    depth,
-    bevelEnabled: bevel > 0,
-    bevelThickness: bevel,
-    bevelSize: bevel,
-    bevelSegments: 1,
-  });
-  geo.translate(0, 0, -depth / 2);
-  return geo;
-}
-
-/** Accent plate raised proud of the base plate front (spans z 0.006..0.011). */
-function proudPlate(shape: Shape): BufferGeometry {
-  const geo = new ExtrudeGeometry(shape, {
-    depth: 0.005,
-    bevelEnabled: false,
-  });
-  geo.translate(0, 0, 0.006);
-  return geo;
-}
-
-/** Front-face boss: solid prism (innerR null) or annular ring, standing proud. */
-function frontBoss(
-  x: number,
-  y: number,
-  outerR: number,
-  innerR: number | null,
-  segments: number,
-  hex: number,
-  rand: () => number,
-): BufferGeometry {
-  let geo: BufferGeometry;
-  if (innerR !== null) {
-    const shape = new Shape();
-    shape.absarc(0, 0, outerR, 0, Math.PI * 2, false);
-    const hole = new Path();
-    hole.absarc(0, 0, innerR, 0, Math.PI * 2, true);
-    shape.holes.push(hole);
-    geo = new ExtrudeGeometry(shape, { depth: 0.005, bevelEnabled: false });
-    geo.translate(x, y, 0.006);
-  } else {
-    geo = new CylinderGeometry(outerR, outerR, 0.006, segments);
-    geo.rotateX(Math.PI / 2);
-    geo.translate(x, y, 0.008);
-  }
-  paint(geo, hex, 0.015, rand);
-  return geo;
-}
-
-/** One white dielectric material carrying the baked vertex colors. */
-function buttonRoot(name: string, geometry: BufferGeometry): Object3D {
-  const material = new MeshStandardMaterial({
-    name,
-    color: 0xffffff,
-    roughness: 0.5,
-    metalness: 0,
-    vertexColors: true,
-  });
-  const mesh = new Mesh(geometry, material);
-  mesh.name = 'button-icon';
-  const root = new Object3D();
-  root.name = name;
-  root.add(mesh);
-  return root;
-}
-
-/**
- * Repair mark — a service wrench, camo-olive identity family: olive body
- * with a chamfered open-end jaw, waisted shaft and ring foot, a proud steel
- * collar reinforcing the ring, and a brass hex boss on the shaft.
- *
- * - Origin: icon centre on the wall plane; the glyph faces +Z (land face).
- * - Envelope ~0.082 × 0.162 m (1.2x baked in), one merged mesh, one draw call.
- */
-function createDefenseButtonRepairExport(): Object3D {
-  const rand = makeRandom(20261023);
-  const parts: BufferGeometry[] = [];
-
-  const body = new Shape();
-  body.moveTo(0.02, 0.024);
-  body.lineTo(0.034, 0.024);
-  body.lineTo(0.034, 0.056);
-  body.lineTo(0.026, 0.064);
-  body.lineTo(0.016, 0.064);
-  body.lineTo(0, 0.038);
-  body.lineTo(-0.016, 0.064);
-  body.lineTo(-0.026, 0.064);
-  body.lineTo(-0.034, 0.056);
-  body.lineTo(-0.034, 0.024);
-  body.lineTo(-0.02, 0.024);
-  body.lineTo(-0.0125, -0.012);
-  body.lineTo(-0.014, -0.03);
-  // Ring foot: sweep CCW around the bottom back to the right flare.
-  body.absarc(0, -0.047, 0.0235, Math.PI - 0.88, 0.88, false);
-  body.lineTo(0.0125, -0.012);
-  body.closePath();
-  const hole = new Path();
-  hole.absarc(0, -0.047, 0.0105, 0, Math.PI * 2, true);
-  body.holes.push(hole);
-  const bodyGeo = buttonPlate(body);
-  paint(bodyGeo, BTN_GREEN, 0.015, rand);
-  parts.push(bodyGeo);
-
-  parts.push(frontBoss(0, -0.047, 0.0195, 0.0125, 24, BTN_STEEL, rand));
-  parts.push(frontBoss(0, 0.006, 0.009, null, 6, BTN_BRASS, rand));
-
-  // 1.2x presence baked into the geometry (see the build mark).
-  const merged = mergeParts(parts);
-  merged.scale(1.2, 1.2, 1.2);
-  return buttonRoot('defense-button-repair', merged);
-}
-
-// ---------------------------------------------------------------------------
 // Defense pad (empty-slot pedestal disc under every defense slot)
 // ---------------------------------------------------------------------------
 
@@ -2464,10 +2323,6 @@ await exportGLB(createPirateShipExport(), 'pirate-ship-v2.glb');
 // bombardier: the goblin-piloted flyer joins the raid (task 023); the v3
 // rename isolates the new baked-in `muzzle` bomb anchor from any stale GLB.
 await exportGLB(createBombardierExport(), 'bombardier-v3.glb');
-// defense button: the wall's repair control mark leaves the runtime
-// ExtrudeGeometry shape for a designed, vertex-coloured GLB asset; a fresh
-// file name keeps it isolated from any stale caching.
-await exportGLB(createDefenseButtonRepairExport(), 'defense-button-repair.glb');
 // defense pads: the empty-slot pedestal discs leave runtime primitives for a
 // designed, vertex-coloured GLB asset; a fresh file name keeps it isolated
 // from any stale caching.

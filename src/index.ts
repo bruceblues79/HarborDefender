@@ -18,7 +18,6 @@ import { CannonFireSystem } from './cannon-fire-system.js';
 import { ChiefDeathLightFxSystem } from './chief-death-light-fx-system.js';
 import { ChiefDeathLightSystem } from './chief-death-light-system.js';
 import { Billboard } from './components.js';
-import { DefenseButtonSystem } from './defense-button-system.js';
 import { DefensePadInputSystem } from './defense-pad-input-system.js';
 import { DefensePadSystem } from './defense-pad-system.js';
 import { DieBurstSystem } from './die-burst-system.js';
@@ -37,6 +36,7 @@ import { PanelScaleSystem } from './panel-scale-system.js';
 import { PirateFireSystem } from './pirate-fire-system.js';
 import { PropellerSpinSystem } from './propeller-spin-system.js';
 import { RepairSystem } from './repair-system.js';
+import { RepairButtonSystem } from './repair-button-system.js';
 import { ResultPanelSystem } from './result-panel-system.js';
 import { ShellHitSystem } from './shell-hit-system.js';
 import { ShipMovementSystem } from './ship-movement-system.js';
@@ -133,10 +133,6 @@ World.create(
   // otherwise the unit survives as a zero-health ghost. Pauses and outcomes
   // still freeze it like every other sim system.
   world.registerSystem(RepairSystem, { priority: 15 });
-  // Repair-button commands: a sim-tier consumer of the transient Pressed
-  // tags; it toggles Repairing on the slot's mounted unit and keeps the
-  // button visuals (shrunk pose, repair glow) current.
-  world.registerSystem(DefenseButtonSystem, { priority: 16 });
   // Pedestal-pad entry: keeps RayInteractable on empty slots only and opens
   // the shared build dock on a press (BuildOpen on the director).
   world.registerSystem(DefensePadInputSystem, { priority: 16 });
@@ -163,6 +159,9 @@ World.create(
   // unit's freshest rotation; keeps billboarding through pauses like the
   // other viewer-facing systems.
   world.registerSystem(HealthBarSystem, { priority: 30 });
+  // 维修按钮：血条（30）之后的视图 + 命令层，按钮对齐本帧的血条左缘上方；
+  // 同一个系统消费 Pressed 并切换目标炮台的 Repairing 标签。
+  world.registerSystem(RepairButtonSystem, { priority: 31 });
   installXRButton(world);
 
   // Keep the welcome panel turned toward the viewer in browser and XR alike.

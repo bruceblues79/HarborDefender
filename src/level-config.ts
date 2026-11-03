@@ -201,47 +201,38 @@ export const UNIQUE_UNITS: ReadonlySet<DefenseUnitId> = new Set([
 ]);
 
 /**
- * The repair button, one per defense slot, mounted on the wall's land (+Z)
- * face below each unit. The icon is a designed GLB asset (npm run
- * export-assets) — a flat mechanical glyph with colour zones baked into
- * vertex colors — facing +Z, with an enlarged invisible hit proxy, so a
- * thumb or XR ray never has to hit the glyph itself.
+ * 维修按钮：挂在每个守方炮台血条的左缘上方，只在血量不满且可维修时出现。
+ * 图标是任务给定的白色 SVG path（运行时绘成 CanvasTexture），外圈是 dock
+ * 同款灰底圆钮；命中盒比圆钮大一圈，鼠标 / 触摸 / XR 射线都不必落在图标上。
+ *
+ * 位置：按钮左缘对齐血条左缘，底缘离血条顶边 `gap` 米；尺寸是世界尺寸，
+ * 不随守方血条的 0.6 缩放变化。
  */
-export const DEFENSE_BUTTONS = {
-  /** Button centre height — a small lift above the wall's land face (y 0.8). */
-  y: 0.65,
-  /** Button centre z — a hand's width off the wall's land face (z -1.1). */
-  z: -0.98,
-  /** Repair-button offset to the right of the slot centre. */
-  spacingX: 0.115,
+export const REPAIR_BUTTON = {
+  /** 圆钮直径（m）。 */
+  diameter: 0.08,
+  /** 图标平面边长（m）——白色 glyph 居中于圆钮。 */
+  iconSize: 0.042,
+  /** 按钮底缘与血条顶边的间隙（m）。 */
+  gap: 0.02,
+  /** 维修中可见内容组的缩放（旧的缩小反馈）。 */
+  activeScale: 0.75,
+  /** 金色叠加发光层的放大倍数（维修中可见）。 */
+  glowScale: 1.35,
+  /** dock 同款灰底圆钮。 */
+  background: 0x5d646d,
+  /** 发光色：与空槽底座、旧维修反馈一致的暖金色。 */
+  glowColor: 0xffc46a,
   /**
-   * Invisible hit proxy (m): a tall box sized over the 1.2x glyph and
-   * trimmed in X so neighbouring slots never overlap. The Z depth stays
-   * thin: just enough plane for ray detection, no thick invisible wall.
+   * 不可见命中盒（m）：比圆钮大一圈，Z 向保持薄片，只提供射线平面。
    */
-  proxyRepair: { x: 0.11, y: 0.2, z: 0.04 },
+  proxy: { x: 0.11, y: 0.11, z: 0.035 },
   /**
-   * Repair-active pose: the wrench shrinks to openScale and glows — its own
-   * material clone raises emissiveIntensity to repairGlow in
-   * repairGlowColor (the GLB bakes black emissive, so the runtime owns the
-   * colour). Deactivating the repair restores scale 1 and intensity 0.
+   * 透明绘制顺序：血条底板 8 / 血量 9 之上，菜单与建造 dock（18/20）之下。
    */
-  openScale: 0.75,
-  /**
-   * Repair glow colour: the wrench's own material clone raises
-   * emissiveIntensity to repairGlow in this warm gold — the same visual
-   * language as the empty-slot pads' emissive.
-   */
-  repairGlowColor: 0xffc46a,
-  repairGlow: 0.6,
-  /**
-   * 灰化 pose for a slot occupied by a live iron-guard (钢铁卫士): the
-   * repair button multiplies its icon's vertex colors down to this flat
-   * gray and ignores presses until the guard falls and frees the slot.
-   * White (0xffffff) restores the stock look. Pure material colour write —
-   * no geometry, proxy or layout change.
-   */
-  blockedColor: 0x5d6168,
+  backgroundRenderOrder: 11,
+  glowRenderOrder: 12,
+  iconRenderOrder: 13,
 };
 
 /**

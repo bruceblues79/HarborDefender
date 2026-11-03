@@ -23,7 +23,6 @@ import { CameraOrbitSystem } from './camera-orbit-system.js';
 import {
   CannonAim,
   CannonFire,
-  DefenseButton,
   DefensePad,
   Destroyed,
   Health,
@@ -32,9 +31,8 @@ import {
   Repairing,
   Taunt,
 } from './components.js';
-import { COMBAT, activeLevelList, DEFENSE_BUTTONS, DEFENSE_PAD, DEFENSE_SLOTS, DEFENDER_BAR_Y, OCEAN, WALL_CENTER_Z } from './level-config.js';
+import { COMBAT, activeLevelList, DEFENSE_PAD, DEFENSE_SLOTS, DEFENDER_BAR_Y, OCEAN, WALL_CENTER_Z } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
-import { createRepairButtonRig } from './defense-buttons.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
@@ -403,13 +401,12 @@ export function startBattle(world: World): void {
           });
           cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
 
-          const [oceanGltf, wallGltf, cannonGltf, ironGuardGltf, repairButtonGltf, padGltf] =
+          const [oceanGltf, wallGltf, cannonGltf, ironGuardGltf, padGltf] =
             await Promise.all([
               AssetManager.loadGLTFById('ocean-body'),
               AssetManager.loadGLTFById('harbor-wall'),
               AssetManager.loadGLTFById('cannon'),
               AssetManager.loadGLTFById('iron-guard'),
-              AssetManager.loadGLTFById('defense-button-repair'),
               AssetManager.loadGLTFById('defense-pad'),
             ]);
 
@@ -508,26 +505,6 @@ export function startBattle(world: World): void {
             battlefieldObjects.push(pad);
           }
 
-          // Repair button: one per slot on the wall's land face. Persistent
-          // battlefield objects like the units (hidden on MAIN, revealed on
-          // re-entry); the pedestal pad is the build entry now.
-          for (
-            let slotIndex = 0;
-            slotIndex < DEFENSE_SLOTS.length;
-            slotIndex++
-          ) {
-            const rig = createRepairButtonRig(repairButtonGltf.scene);
-            rig.position.set(
-              DEFENSE_SLOTS[slotIndex].x + DEFENSE_BUTTONS.spacingX,
-              DEFENSE_BUTTONS.y,
-              DEFENSE_BUTTONS.z,
-            );
-            world
-              .createTransformEntity(rig)
-              .addComponent(RayInteractable)
-              .addComponent(DefenseButton, { slot: slotIndex });
-            battlefieldObjects.push(rig);
-          }
           battlefieldReady = true;
 
           // 4. Hide loading panel — game is ready, ease into the game view,

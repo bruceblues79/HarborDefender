@@ -462,7 +462,7 @@ export const Wallet = createComponent('Wallet', {
  * Explicit tag: this defender is under active repair — health rises and
  * money drains until the pool is full, the wallet empties, the unit dies or
  * the player toggles the repair button again. Added/removed by
- * DefenseButtonSystem (the repair button command), drained by RepairSystem.
+ * RepairButtonSystem (the repair button command), drained by RepairSystem.
  */
 export const Repairing = createComponent('Repairing', {});
 
@@ -488,16 +488,11 @@ export const BuildOpen = createComponent('BuildOpen', {
 });
 
 /**
- * One world-space repair button on the wall's land face: a flat low-poly
- * icon extrusion with an invisible enlarged hit proxy. DefenseButtonSystem
- * owns the visual (the repairing unit's icon shrinks and glows); the press
- * itself is InputSystem's `Pressed` tag (mouse / touch / XR ray share the
- * path).
+ * Explicit tag: 一个守方炮台血条上方的维修按钮实体。RepairButtonSystem 创建
+ * 它、驱动它跟随血条，并把 InputSystem 的 `Pressed` 标签（鼠标 / 触摸 /
+ * XR 射线共享同一条路径）翻译成目标炮台的 `Repairing` 开关。
  */
-export const DefenseButton = createComponent('DefenseButton', {
-  /** Index into DEFENSE_SLOTS this button serves. */
-  slot: { type: 'Int32', default: 0 },
-});
+export const RepairButton = createComponent('RepairButton', {});
 
 /**
  * One pedestal pad under a defense slot. DefensePadSystem drives the empty
@@ -839,7 +834,7 @@ export default defineComponents([
   DieBurst,
   Repairing,
   BuildOpen,
-  DefenseButton,
+  RepairButton,
   DefensePad,
   HideHealthBar,
   BossTurret,
