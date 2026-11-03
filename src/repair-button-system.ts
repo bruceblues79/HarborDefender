@@ -7,7 +7,6 @@
 
 import {
   createSystem,
-  Mesh,
   Object3D,
   Pressed,
   Quaternion,
@@ -50,9 +49,8 @@ interface RepairButtonEntry {
   /** 按钮服务的炮台实体。 */
   readonly unit: Entity;
   readonly root: Object3D;
-  /** 可见内容组：维修中缩放它，命中盒保持不变。 */
-  readonly visual: Object3D;
-  readonly glow: Mesh;
+  /** 维修状态反馈：整组缩小 + 灰底换亮灰。 */
+  readonly setRepairing: (repairing: boolean) => void;
   /** 目标的血条 rig，第一次可见时按名字解析并缓存。 */
   rig: Object3D | null;
 }
@@ -92,8 +90,7 @@ export class RepairButtonSystem extends createSystem({
         button,
         unit,
         root: rig.root,
-        visual: rig.visual,
-        glow: rig.glow,
+        setRepairing: rig.setRepairing,
         rig: null,
       };
       this.entries.set(unit.index, entry);
@@ -145,12 +142,8 @@ export class RepairButtonSystem extends createSystem({
 
       this.alignToBar(entry, rig);
 
-      // 维修中：可见内容组缩小 + 金色叠加发光；命中盒尺寸不变。
-      const repairing = unit.hasComponent(Repairing);
-      entry.visual.scale.setScalar(
-        repairing ? REPAIR_BUTTON.activeScale : 1,
-      );
-      entry.glow.visible = repairing;
+      // 维修中：整组缩小 + 灰底换亮灰；命中盒尺寸不变。
+      entry.setRepairing(unit.hasComponent(Repairing));
     }
   }
 

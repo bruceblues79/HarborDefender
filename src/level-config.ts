@@ -204,35 +204,33 @@ export const UNIQUE_UNITS: ReadonlySet<DefenseUnitId> = new Set([
  * 维修按钮：挂在每个守方炮台血条的左缘上方，只在血量不满且可维修时出现。
  * 图标是任务给定的白色 SVG path（运行时绘成 CanvasTexture），外圈是 dock
  * 同款灰底圆钮；命中盒比圆钮大一圈，鼠标 / 触摸 / XR 射线都不必落在图标上。
+ * 维修中整组缩小、灰底换亮灰。
  *
  * 位置：按钮左缘对齐血条左缘，底缘离血条顶边 `gap` 米；尺寸是世界尺寸，
  * 不随守方血条的 0.6 缩放变化。
  */
 export const REPAIR_BUTTON = {
   /** 圆钮直径（m）。 */
-  diameter: 0.08,
+  diameter: 0.1,
   /** 图标平面边长（m）——白色 glyph 居中于圆钮。 */
-  iconSize: 0.042,
+  iconSize: 0.0525,
   /** 按钮底缘与血条顶边的间隙（m）。 */
   gap: 0.02,
   /** 维修中可见内容组的缩放（旧的缩小反馈）。 */
   activeScale: 0.75,
-  /** 金色叠加发光层的放大倍数（维修中可见）。 */
-  glowScale: 1.35,
   /** dock 同款灰底圆钮。 */
   background: 0x5d646d,
-  /** 发光色：与空槽底座、旧维修反馈一致的暖金色。 */
-  glowColor: 0xffc46a,
+  /** 维修中的亮灰底，替代旧的金色描边扳手。 */
+  activeBackground: 0x8f98a3,
   /**
    * 不可见命中盒（m）：比圆钮大一圈，Z 向保持薄片，只提供射线平面。
    */
-  proxy: { x: 0.11, y: 0.11, z: 0.035 },
+  proxy: { x: 0.1375, y: 0.1375, z: 0.04 },
   /**
    * 透明绘制顺序：血条底板 8 / 血量 9 之上，菜单与建造 dock（18/20）之下。
    */
   backgroundRenderOrder: 11,
-  glowRenderOrder: 12,
-  iconRenderOrder: 13,
+  iconRenderOrder: 12,
 };
 
 /**
@@ -728,7 +726,7 @@ export const TRAJECTORY_PREVIEW = {
   dotSize: 0.054,
   /** Cube edge scale at the muzzle end (x dotSize); grows linearly to 1 at the water end. */
   dotScaleNear: 0.4,
-  /** Warm gold (sRGB hex) — the shared accent (defense pads / repair glow). */
+  /** Warm gold (sRGB hex) — the shared accent (defense pads). */
   color: 0xffc46a,
 };
 

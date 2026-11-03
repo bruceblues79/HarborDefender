@@ -6,7 +6,6 @@
  */
 
 import {
-  AdditiveBlending,
   BoxGeometry,
   CanvasTexture,
   CircleGeometry,
@@ -27,8 +26,8 @@ import { REPAIR_BUTTON } from './level-config.js';
  * 变换即可，UIKitML 面板在“每单位一份”的场景下成本过高。
  *
  * 结构（根原点 = 按钮中心，正面朝 +Z）：
- * - `visual` 组：dock 同款灰底圆钮 + 图标 + 金色叠加发光层。RepairButtonSystem
- *   只缩放这一组，命中盒保持原尺寸。
+ * - `visual` 组：dock 同款灰底圆钮 + 白色图标。维修中整组缩小、灰底换亮灰；
+ *   命中盒保持原尺寸。
  * - 不可见命中盒：比圆钮大一圈，鼠标 / 触摸 / XR 射线都不必落在图标上。
  *
  * 几何、材质、纹理全部共享；每单位只有 Object3D 层级克隆。
@@ -48,8 +47,8 @@ interface SharedButtonResources {
   iconGeometry: PlaneGeometry;
   proxyGeometry: BoxGeometry;
   backgroundMaterial: MeshBasicMaterial;
+  activeBackgroundMaterial: MeshBasicMaterial;
   iconMaterial: MeshBasicMaterial;
-  glowMaterial: MeshBasicMaterial;
   proxyMaterial: MeshBasicMaterial;
 }
 
@@ -108,12 +107,9 @@ function getSharedResources(): SharedButtonResources {
       side: DoubleSide,
       toneMapped: false,
     }),
-    glowMaterial: new MeshBasicMaterial({
-      color: REPAIR_BUTTON.glowColor,
-      map: iconTexture,
+    activeBackgroundMaterial: new MeshBasicMaterial({
+      color: REPAIR_BUTTON.activeBackground,
       transparent: true,
-      opacity: 0.9,
-      blending: AdditiveBlending,
       depthWrite: false,
       side: DoubleSide,
       toneMapped: false,
@@ -130,10 +126,8 @@ function getSharedResources(): SharedButtonResources {
 export interface RepairButtonRig {
   /** 根节点：RepairButtonSystem 驱动它的世界变换。 */
   root: Object3D;
-  /** 可见内容组：维修中缩放这一组，命中盒不受影响。 */
-  visual: Object3D;
-  /** 金色叠加发光层，仅维修中可见。 */
-  glow: Mesh;
+  /** 维修状态反馈：整组缩小 + 灰底换亮灰。 */
+  setRepairing(repairing: boolean): void;
 }
 
 /**
@@ -153,13 +147,6 @@ export function createRepairButtonRig(): RepairButtonRig {
   background.name = 'repair-button-background';
   background.renderOrder = REPAIR_BUTTON.backgroundRenderOrder;
 
-  const glow = new Mesh(resources.iconGeometry, resources.glowMaterial);
-  glow.name = 'repair-button-glow';
-  glow.scale.setScalar(REPAIR_BUTTON.glowScale);
-  glow.renderOrder = REPAIR_BUTTON.glowRenderOrder;
-  glow.position.z = 0.001;
-  glow.visible = false;
-
   const icon = new Mesh(resources.iconGeometry, resources.iconMaterial);
   icon.name = 'repair-button-icon';
   icon.renderOrder = REPAIR_BUTTON.iconRenderOrder;
@@ -168,15 +155,23 @@ export function createRepairButtonRig(): RepairButtonRig {
   const proxy = new Mesh(resources.proxyGeometry, resources.proxyMaterial);
   proxy.name = 'repair-button-proxy';
 
-  for (const mesh of [background, glow, icon, proxy]) {
+  for (const mesh of [background, icon, proxy]) {
     mesh.castShadow = false;
     mesh.receiveShadow = false;
     mesh.userData.skipShadow = true;
   }
 
-  visual.add(background, glow, icon);
+  visual.add(background, icon);
   const root = new Object3D();
   root.name = 'repair-button';
   root.add(visual, proxy);
-  return { root, visual, glow };
+  return {
+    root,
+    setRepairing(repairing: boolean): void {
+      visual.scale.setScalar(repairing ? REPAIR_BUTTON.activeScale : 1);
+      background.material = repairing
+        ? resources.activeBackgroundMaterial
+        : resources.backgroundMaterial;
+    },
+  };
 }
