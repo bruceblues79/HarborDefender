@@ -790,13 +790,14 @@ export const DAMAGE_MATRIX: Record<string, number> = {
 export const FLYER_Y = 2.857;
 
 /**
- * The bombardier's berth band: far out at -3.75 (2026-10-30 外推自 -3.1，
- * 给满层 6 机的停位带留出纵深), near end pulled back to -2.0 (2026-10-31
- * 近停点外移，不再贴墙). MIN < MAX keeps the ship constants' reading —
- * MIN far out, MAX against the wall.
+ * The bombardier's berth band: far out at -4.7, near end pulled back to -3.15
+ * (2026-11-04 远停自 -4.6 补到 -4.7，纵深 1.55 m，覆盖 STOP_MIN_GAP_Z = 1.5；
+ * 近停越靠前，炮口到目标的水平距离越短、仰角越陡：-2.0 时 66.5°，
+ * -2.9 时 51.3°，-3.15 约 48.5°). MIN < MAX keeps the ship constants'
+ * reading — MIN far out, MAX against the wall.
  */
-export const FLYER_STOP_Z_MIN = -3.75;
-export const FLYER_STOP_Z_MAX = -2.0;
+export const FLYER_STOP_Z_MIN = -4.7;
+export const FLYER_STOP_Z_MAX = -3.15;
 
 /**
  * Ornithopter flight envelope. The middle-air band sits below the
