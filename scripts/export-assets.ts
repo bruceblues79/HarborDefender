@@ -1344,17 +1344,15 @@ export function createBombardierExport(): Object3D {
 }
 
 // ---------------------------------------------------------------------------
-// Defense buttons (flat wall-mounted control marks, build = mallet, repair =
-// wrench) — mechanical silhouettes with colour zones baked into vertex colors
+// Defense button (flat wall-mounted repair control mark, wrench) — a
+// mechanical silhouette with colour zones baked into vertex colors
 // ---------------------------------------------------------------------------
 
-// Shares the cannon palette (brass, steel, dark iron) plus the two
-// identity tints the HUD already used: brass for build, camo olive for
-// repair. Flat crisp zones — jitter stays far below the unit mottle.
+// Shares the cannon palette (brass, steel) plus the identity tint the HUD
+// already used: camo olive for repair. Flat crisp zones — jitter stays far
+// below the unit mottle.
 const BTN_BRASS = 0xd1a249;
 const BTN_STEEL = 0x737b84;
-const BTN_STEEL_LIGHT = 0x9aa2aa;
-const BTN_IRON_DARK = 0x474c53;
 /** Camouflage olive — the wrench's identity green, naturally darker. */
 const BTN_GREEN = 0x556b2f;
 
@@ -1367,26 +1365,6 @@ function buttonRect(xMin: number, yMin: number, xMax: number, yMax: number): Sha
   s.lineTo(xMax, yMin);
   s.lineTo(xMax, yMax);
   s.lineTo(xMin, yMax);
-  s.closePath();
-  return s;
-}
-
-function chamferedRect(
-  xMin: number,
-  yMin: number,
-  xMax: number,
-  yMax: number,
-  c: number,
-): Shape {
-  const s = new Shape();
-  s.moveTo(xMin + c, yMin);
-  s.lineTo(xMax - c, yMin);
-  s.lineTo(xMax, yMin + c);
-  s.lineTo(xMax, yMax - c);
-  s.lineTo(xMax - c, yMax);
-  s.lineTo(xMin + c, yMax);
-  s.lineTo(xMin, yMax - c);
-  s.lineTo(xMin, yMin + c);
   s.closePath();
   return s;
 }
@@ -1457,59 +1435,6 @@ function buttonRoot(name: string, geometry: BufferGeometry): Object3D {
   root.name = name;
   root.add(mesh);
   return root;
-}
-
-/**
- * Build mark — a siege mallet, brass accent family:
- * chamfered steel head, lighter striking-face caps, brass rivets, brass
- * collar and grip strap over a dark iron tapered handle.
- *
- * - Origin: icon centre on the wall plane; the glyph faces +Z (land face).
- * - Envelope ~0.161 × 0.151 m (1.2x baked in), one merged mesh, one draw call.
- */
-function createDefenseButtonBuildExport(): Object3D {
-  const rand = makeRandom(20261023);
-  const parts: BufferGeometry[] = [];
-
-  const head = buttonPlate(chamferedRect(-0.055, 0.006, 0.055, 0.06, 0.014));
-  paint(head, BTN_STEEL, 0.015, rand);
-  parts.push(head);
-
-  const capPlus = proudPlate(buttonRect(0.055, 0.006, 0.067, 0.06));
-  paint(capPlus, BTN_STEEL_LIGHT, 0.015, rand);
-  parts.push(capPlus);
-  const capMinus = proudPlate(buttonRect(-0.067, 0.006, -0.055, 0.06));
-  paint(capMinus, BTN_STEEL_LIGHT, 0.015, rand);
-  parts.push(capMinus);
-
-  parts.push(frontBoss(-0.028, 0.033, 0.0075, null, 8, BTN_BRASS, rand));
-  parts.push(frontBoss(0.028, 0.033, 0.0075, null, 8, BTN_BRASS, rand));
-
-  const collar = proudPlate(buttonRect(-0.024, -0.002, 0.024, 0.01));
-  paint(collar, BTN_BRASS, 0.015, rand);
-  parts.push(collar);
-
-  const handle = new Shape();
-  handle.moveTo(-0.013, 0.004);
-  handle.lineTo(0.013, 0.004);
-  handle.lineTo(0.019, -0.058);
-  handle.lineTo(0.011, -0.066);
-  handle.lineTo(-0.011, -0.066);
-  handle.lineTo(-0.019, -0.058);
-  handle.closePath();
-  const handleGeo = buttonPlate(handle);
-  paint(handleGeo, BTN_IRON_DARK, 0.015, rand);
-  parts.push(handleGeo);
-
-  const grip = proudPlate(buttonRect(-0.0215, -0.044, 0.0215, -0.03));
-  paint(grip, BTN_BRASS, 0.015, rand);
-  parts.push(grip);
-
-  // 1.2x presence baked into the geometry (not a node scale — the runtime
-  // state system writes the icon node's scale every frame).
-  const merged = mergeParts(parts);
-  merged.scale(1.2, 1.2, 1.2);
-  return buttonRoot('defense-button-build', merged);
 }
 
 /**
@@ -2539,10 +2464,9 @@ await exportGLB(createPirateShipExport(), 'pirate-ship-v2.glb');
 // bombardier: the goblin-piloted flyer joins the raid (task 023); the v3
 // rename isolates the new baked-in `muzzle` bomb anchor from any stale GLB.
 await exportGLB(createBombardierExport(), 'bombardier-v3.glb');
-// defense buttons: the wall's build/repair control marks leave the runtime
-// ExtrudeGeometry shapes for designed, vertex-coloured GLB assets; fresh file
-// names keep them isolated from any stale caching.
-await exportGLB(createDefenseButtonBuildExport(), 'defense-button-build.glb');
+// defense button: the wall's repair control mark leaves the runtime
+// ExtrudeGeometry shape for a designed, vertex-coloured GLB asset; a fresh
+// file name keeps it isolated from any stale caching.
 await exportGLB(createDefenseButtonRepairExport(), 'defense-button-repair.glb');
 // defense pads: the empty-slot pedestal discs leave runtime primitives for a
 // designed, vertex-coloured GLB asset; a fresh file name keeps it isolated

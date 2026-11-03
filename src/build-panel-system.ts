@@ -15,7 +15,6 @@ import {
 import type { Text } from '@pmndrs/uikit';
 import type { Entity, Object3D } from '@iwsdk/core';
 import {
-  AmmoSelected,
   Billboard,
   BuildOpen,
   CameraBlocker,
@@ -26,7 +25,6 @@ import {
   Wallet,
 } from './components.js';
 import {
-  AMMO_DEFS,
   DEFENSE_SLOTS,
   ECONOMY,
   PLACEABLE_UNITS,
@@ -68,22 +66,16 @@ const PANEL_FACTORS = { xr: 1, flat: 1.8 };
 /**
  * The shared build dock — the only writer of the BuildOpen lifecycle.
  *
- * A BuildOpen tag on the director (added by a build-button press) reveals
- * the billboarded dock over that slot. The bar's content follows the slot
- * state: an empty (or Destroyed) slot shows one circular purchase button
- * per placeable unit at the full book value — there is no trade-in — while
- * a slot with a live occupant shows the ammo row only; the two never render
- * together. A unit button whose price exceeds the wallet renders dimmed; the
+ * A BuildOpen tag on the director (added by an empty slot's pedestal pad)
+ * reveals the billboarded dock over that slot. The bar shows one circular
+ * purchase button per placeable unit at the full book value — there is no
+ * trade-in. A unit button whose price exceeds the wallet renders dimmed; the
  * top-row badge beside the close button shows the live gold. Picking a
  * button mounts the unit into the empty slot via replaceDefenseUnit, deducts
  * from the wallet and closes; the round close button above the bar dismisses
- * without spending. While the tag sits on the director the open slot's build
- * icon renders shrunk (DefenseButtonSystem's half of the contract); pressing
- * another slot's button moves the dock there, pressing the open slot's own
- * button closes it. The ammo row is a global single select (AmmoSelected on
- * the director, one row per AMMO_DEFS entry) that retargets every cannon's
- * next shot — picking the already-selected round is a no-op, and with v1's
- * single free iron ball it always is.
+ * without spending. Pressing another empty pad moves the dock there,
+ * pressing the open slot's own pad closes it. The dock never opens over an
+ * occupied slot, so its rows always describe a build.
  */
 export class BuildPanelSystem extends createSystem({
   directors: { required: [LevelDirector] },
@@ -103,18 +95,10 @@ export class BuildPanelSystem extends createSystem({
   private walletText: Text | null = null;
   /** Last badge string written; skips redundant Text writes while gold sits still. */
   private lastWalletText: string | null = null;
-  /** Unit buttons keyed by unit — driven through the three-state class below. */
+  /** Unit buttons keyed by unit — driven through the two-state class below. */
   private readonly rows = new Map<DefenseUnitId, UiElement | null>();
   /** Class currently applied per unit button; guards redundant class swaps. */
   private readonly unitClasses = new Map<DefenseUnitId, string>();
-  /** Ammo buttons keyed by ammo id — the global single-select row(s). */
-  private readonly ammoRows = new Map<string, UiElement | null>();
-  /** Class currently applied per ammo button; guards redundant class swaps. */
-  private readonly ammoClasses = new Map<string, string>();
-  /** Ammo icon (svg) per ammo id — rides the same state as its row. */
-  private readonly ammoIcons = new Map<string, UiElement | null>();
-  /** Class currently applied per ammo icon; guards redundant class swaps. */
-  private readonly ammoIconClasses = new Map<string, string>();
 
   init(): void {
     this.loadPanel();
@@ -161,22 +145,6 @@ export class BuildPanelSystem extends createSystem({
             this.rows.set(unitId, row);
           }
         }
-        for (const def of AMMO_DEFS) {
-          const row = panel.getElementById(
-            `ammo-${def.id}`,
-          ) as UiElement | null;
-          if (row) {
-            row.addEventListener('click', () => this.onAmmoPicked(def.id));
-            this.cleanupFuncs.push(() =>
-              row.removeEventListener('click', () => this.onAmmoPicked(def.id)),
-            );
-            this.ammoRows.set(def.id, row);
-          }
-          this.ammoIcons.set(
-            def.id,
-            panel.getElementById(`ammo-icon-${def.id}`) as UiElement | null,
-          );
-        }
         const dismiss = panel.getElementById('build-dismiss');
         this.walletText = this.resolveText(
           panel.getElementById('wallet-value'),
@@ -192,7 +160,6 @@ export class BuildPanelSystem extends createSystem({
         // catch up immediately.
         this.applyVisibility();
         this.applyPanelScale();
-        this.refreshAmmoRows();
         const director = this.findOpenDirector();
         if (director) this.refreshRows(director);
       })
@@ -243,35 +210,26 @@ export class BuildPanelSystem extends createSystem({
   }
 
   /**
-   * Price for unitId: always the full book value — there is no trade-in;
-   * an occupied slot's own button is simply hidden instead.
+   * Price for unitId: always the full book value — there is no trade-in.
    */
   private priceFor(unitId: DefenseUnitId): number {
     return ECONOMY.unitValues[unitId] ?? 0;
   }
 
   /**
-   * Drive every button's three-state class from live state: the unit
-   * occupying the open slot hides its own button, a price above the current
-   * wallet dims the button, the rest stay in the default style. The top-row
-   * badge mirrors the wallet, so gold spent or earned elsewhere shows live
-   * while the dock is open.
+   * Drive every button's two-state class from live state: a price above the
+   * current wallet dims the button, the rest stay in the default style. The
+   * top-row badge mirrors the wallet, so gold spent or earned elsewhere shows
+   * live while the dock is open.
    */
   private refreshRows(director: Entity): void {
-    const slot = Number(director.getValue(BuildOpen, 'slot'));
-    const info = getDefenseSlotInfo(slot);
-    // Occupied = a live (not Destroyed) unit sits in the opened slot. An
-    // occupied slot offers ammo only; an empty or destroyed one offers the
-    // placeable units — the dock never shows both rows at once.
-    const occupied =
-      !!info && !info.entity.hasComponent(Destroyed);
     const money = director.hasComponent(Wallet)
       ? (director.getValue(Wallet, 'money') as number)
       : Number.POSITIVE_INFINITY;
     if (this.walletText && director.hasComponent(Wallet)) {
-      // The gold only moves on repair drain, a purchase, a sale or a level
-      // reset; between those moments rewriting the same string every frame
-      // would needlessly dirty the Text component, so guard on the value.
+      // The gold only moves on repair drain, a purchase or a level reset;
+      // between those moments rewriting the same string every frame would
+      // needlessly dirty the Text component, so guard on the value.
       const text = `${Math.floor(money)}g`;
       if (text !== this.lastWalletText) {
         this.lastWalletText = text;
@@ -283,10 +241,7 @@ export class BuildPanelSystem extends createSystem({
       if (!row) continue;
       const price = this.priceFor(unitId);
       let next: string;
-      if (occupied) {
-        // A live occupant turns the whole unit row off — ammo only.
-        next = 'dock-unit-hidden';
-      } else if (
+      if (
         // UNIQUE_UNITS (全场唯一): a live carrier anywhere grays its row in
         // every other slot's dock — same "cannot buy" look as an unmet
         // price, zero new styles. Refreshes per frame, so building or
@@ -300,13 +255,12 @@ export class BuildPanelSystem extends createSystem({
       }
       this.setUnitClass(unitId, row, next);
     }
-    this.refreshAmmoRows();
   }
 
   /**
-   * Show/hide/dim a unit button through its class list: runtime setProperties
-   * display writes the base property layer, which the markup's .dock-unit
-   * class layer outranks — only a class swap reliably toggles the state.
+   * Toggle a unit button's class: runtime setProperties display writes the
+   * base property layer, which the markup's .dock-unit class layer outranks —
+   * only a class swap reliably toggles the state.
    */
   private setUnitClass(
     unitId: DefenseUnitId,
@@ -314,7 +268,7 @@ export class BuildPanelSystem extends createSystem({
     next: string,
   ): void {
     if (this.unitClasses.get(unitId) === next) return;
-    for (const candidate of ['dock-unit', 'dock-unit-off', 'dock-unit-hidden']) {
+    for (const candidate of ['dock-unit', 'dock-unit-off']) {
       row.classList.remove(candidate);
     }
     row.classList.add(next);
@@ -328,7 +282,7 @@ export class BuildPanelSystem extends createSystem({
   private openPanel(director: Entity): void {
     if (!this.panel) {
       // The panel asset has not finished loading yet; drop the command —
-      // the player simply clicks the build button again.
+      // the player simply presses the pad again.
       director.removeComponent(BuildOpen);
       return;
     }
@@ -352,8 +306,8 @@ export class BuildPanelSystem extends createSystem({
     // Valid slot index only — an empty (never mounted or knocked clean)
     // slot is the only build target.
     if (!DEFENSE_SLOTS[slot]) return;
-    // A live occupant's own button is already hidden; refuse anyway so a
-    // stale click can never buy into an occupied slot.
+    // The dock only opens from an empty pad; refuse anyway so a stale click
+    // can never buy into an occupied slot.
     const info = getDefenseSlotInfo(slot);
     if (info && !info.entity.hasComponent(Destroyed)) return;
     // UNIQUE_UNITS (全场唯一): one live iron-guard anywhere forbids a
@@ -368,70 +322,6 @@ export class BuildPanelSystem extends createSystem({
     const next = replaceDefenseUnit(this.world, slot, unitId);
     if (next.object3D) next.object3D.visible = true;
     this.closePanel();
-  }
-
-  /**
-   * Ammo row picked: retargets every cannon's next shot globally (one
-   * truth on the director, not per slot). Picking the already-selected
-   * round is a no-op — v1's single free iron ball always is.
-   */
-  private onAmmoPicked(ammoId: string): void {
-    const director = this.findOpenDirector();
-    if (!director || !director.hasComponent(AmmoSelected)) return;
-    if (String(director.getValue(AmmoSelected, 'ammoId')) === ammoId) return;
-    director.setValue(AmmoSelected, 'ammoId', ammoId);
-    this.refreshAmmoRows();
-  }
-
-  /**
-   * White disc = the selected round, every other row falls back to the base
-   * circle. Global state: refreshed on load, on pick and per frame while the
-   * dock is open (via refreshRows) — ammo rows render only over an occupied
-   * slot; an empty one hides the whole row behind `ammo-hidden`. The class
-   * swap is the only reliable toggle (same layer rule as units), and the
-   * selected row's icon class swaps with it — the 6-wide active icon over
-   * the 7.5 white disc halves the visible rim (UIKitML has no descendant
-   * selectors, so a child cannot follow its parent's state in CSS).
-   */
-  private refreshAmmoRows(): void {
-    const director = this.findOpenDirector();
-    if (!director) return;
-    const slot = Number(director.getValue(BuildOpen, 'slot'));
-    const info = getDefenseSlotInfo(slot);
-    // Occupied = a live (not Destroyed) unit sits in the opened slot. The
-    // iron-guard offers no ammunition of any kind (含基础弹也不给): its
-    // build button is inert so the dock can't normally open there, but a
-    // stale BuildOpen must never show the ammo row over the statue either.
-    const occupied =
-      !!info &&
-      info.unit !== 'iron-guard' &&
-      !info.entity.hasComponent(Destroyed);
-    const selected = String(director.getValue(AmmoSelected, 'ammoId'));
-    for (const [ammoId, row] of this.ammoRows) {
-      if (!row) continue;
-      let next: string;
-      if (!occupied) {
-        next = 'ammo-hidden';
-      } else {
-        next = ammoId === selected ? 'ammo-active' : 'ammo-unit';
-      }
-      if (this.ammoClasses.get(ammoId) === next) continue;
-      row.classList.remove('ammo-unit', 'ammo-active', 'ammo-hidden');
-      row.classList.add(next);
-      this.ammoClasses.set(ammoId, next);
-      // Icon state is 1:1 with the row state, so the row-class guard above
-      // covers it too: the active icon is larger and flips dark on the
-      // white disc (CSS color override on .ammo-icon-active).
-      const icon = this.ammoIcons.get(ammoId);
-      if (icon) {
-        const iconNext = next === 'ammo-active' ? 'ammo-icon-active' : 'unit-icon';
-        if (this.ammoIconClasses.get(ammoId) !== iconNext) {
-          icon.classList.remove('unit-icon', 'ammo-icon-active');
-          icon.classList.add(iconNext);
-          this.ammoIconClasses.set(ammoId, iconNext);
-        }
-      }
-    }
   }
 
   update(): void {

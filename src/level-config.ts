@@ -201,81 +201,58 @@ export const UNIQUE_UNITS: ReadonlySet<DefenseUnitId> = new Set([
 ]);
 
 /**
- * Ammunition the cannons load. The dock's ammo row is a global single
- * select over this table (AmmoSelected on the director) and applies to
- * every cannon's next shot. v1 ships one round only — a future round adds
- * a row here plus its hit-effect branch; the dock structure never changes.
- */
-export interface AmmoDef {
-  /** Stable ammo id (AmmoSelected.ammoId, dock row id `ammo-<id>`). */
-  id: string;
-  /** Dock icon path — resolved against the page base URL like every uikit svg. */
-  icon: string;
-  /** Gold charged per shot (0 = free). Deduction arrives with the next round. */
-  costPerShot: number;
-}
-
-export const AMMO_DEFS: AmmoDef[] = [
-  { id: 'ball-iron', icon: 'ui/icons/ball-iron.svg', costPerShot: 0 },
-];
-
-/**
- * Build/repair buttons, two per defense slot, mounted on the wall's land
- * (+Z) face below each unit: build on the left, repair on the right. Icons
- * are designed GLB assets (npm run export-assets) — flat mechanical glyphs
- * with colour zones baked into vertex colors — facing +Z, with an enlarged
- * invisible hit proxy over each, so a thumb or XR ray never has to hit the
- * glyph itself.
+ * The repair button, one per defense slot, mounted on the wall's land (+Z)
+ * face below each unit. The icon is a designed GLB asset (npm run
+ * export-assets) — a flat mechanical glyph with colour zones baked into
+ * vertex colors — facing +Z, with an enlarged invisible hit proxy, so a
+ * thumb or XR ray never has to hit the glyph itself.
  */
 export const DEFENSE_BUTTONS = {
   /** Button centre height — a small lift above the wall's land face (y 0.8). */
   y: 0.65,
   /** Button centre z — a hand's width off the wall's land face (z -1.1). */
   z: -0.98,
-  /** Half-gap between the build and repair buttons around the slot centre. */
+  /** Repair-button offset to the right of the slot centre. */
   spacingX: 0.115,
   /**
-   * Invisible hit proxies (m), one per kind: tall boxes sized over the 1.2x
-   * glyphs (hammer wide, wrench narrow) and trimmed in X so the build/repair
-   * pair — and neighbouring slots — never overlap. The Z depth stays thin:
-   * just enough plane for ray detection, no thick invisible wall.
+   * Invisible hit proxy (m): a tall box sized over the 1.2x glyph and
+   * trimmed in X so neighbouring slots never overlap. The Z depth stays
+   * thin: just enough plane for ray detection, no thick invisible wall.
    */
-  proxyBuild: { x: 0.18, y: 0.2, z: 0.04 },
   proxyRepair: { x: 0.11, y: 0.2, z: 0.04 },
   /**
-   * Build-icon scale while its slot's dock is open — the shrunk "open" pose
-   * (pure transform, materials and hit proxies never change). Pressing the
-   * shrunk icon again toggles the dock closed.
+   * Repair-active pose: the wrench shrinks to openScale and glows — its own
+   * material clone raises emissiveIntensity to repairGlow in
+   * repairGlowColor (the GLB bakes black emissive, so the runtime owns the
+   * colour). Deactivating the repair restores scale 1 and intensity 0.
    */
   openScale: 0.75,
   /**
-   * Repair-active pose: the wrench shrinks to openScale (the same shrunk
-   * pose as the build button's open dock) and glows — its own material
-   * clone raises emissiveIntensity to repairGlow in repairGlowColor (the
-   * GLB bakes black emissive, so the runtime owns the colour). Same visual
-   * language as the empty-slot pads' warm-gold emissive. Deactivating the
-   * repair restores scale 1 and intensity 0.
+   * Repair glow colour: the wrench's own material clone raises
+   * emissiveIntensity to repairGlow in this warm gold — the same visual
+   * language as the empty-slot pads' emissive.
    */
   repairGlowColor: 0xffc46a,
   repairGlow: 0.6,
   /**
-   * 灰化 pose for a slot occupied by a live iron-guard (钢铁卫士): both its
-   * buttons multiply their icon's vertex colors down to this flat gray and
-   * ignore presses until the guard falls and frees the slot. White
-   * (0xffffff) restores the stock look. Pure material colour write — no
-   * geometry, proxy or layout change.
+   * 灰化 pose for a slot occupied by a live iron-guard (钢铁卫士): the
+   * repair button multiplies its icon's vertex colors down to this flat
+   * gray and ignores presses until the guard falls and frees the slot.
+   * White (0xffffff) restores the stock look. Pure material colour write —
+   * no geometry, proxy or layout change.
    */
   blockedColor: 0x5d6168,
 };
 
 /**
  * Empty-slot pedestal pads: a permanent Ø0.38 × 0.04 m disc under every
- * defense slot (defense-pad.glb, npm run export-assets). Pure scenery —
- * no ray, no click path; the build buttons stay the build entry. A slot
- * with no live occupant breathes: DefensePadSystem raises that pad's own
- * material's emissiveIntensity sinusoidally — the GLB bakes the warm-gold
- * emissive colour at full strength, so the runtime writes one scalar per
- * pad; every empty pad pulses in lockstep (same phase accumulator).
+ * defense slot (defense-pad.glb, npm run export-assets). A slot with no
+ * live occupant breathes and doubles as the build entry: DefensePadSystem
+ * raises that pad's own material's emissiveIntensity sinusoidally — the GLB
+ * bakes the warm-gold emissive colour at full strength, so the runtime
+ * writes one scalar per pad; every empty pad pulses in lockstep (same phase
+ * accumulator). DefensePadInputSystem keeps RayInteractable on empty pads
+ * only and opens the build dock on press.
  */
 export const DEFENSE_PAD = {
   /** Pad height (m): the step every mounted unit stands on. */

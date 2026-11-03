@@ -19,6 +19,7 @@ import { ChiefDeathLightFxSystem } from './chief-death-light-fx-system.js';
 import { ChiefDeathLightSystem } from './chief-death-light-system.js';
 import { Billboard } from './components.js';
 import { DefenseButtonSystem } from './defense-button-system.js';
+import { DefensePadInputSystem } from './defense-pad-input-system.js';
 import { DefensePadSystem } from './defense-pad-system.js';
 import { DieBurstSystem } from './die-burst-system.js';
 import { EndlessPlannerSystem } from './endless-planner-system.js';
@@ -132,10 +133,13 @@ World.create(
   // otherwise the unit survives as a zero-health ghost. Pauses and outcomes
   // still freeze it like every other sim system.
   world.registerSystem(RepairSystem, { priority: 15 });
-  // Build/repair button commands: a sim-tier consumer of the transient
-  // Pressed tags; it opens the build panel through the director's BuildOpen
-  // tag and keeps the button visuals (shrunk pose, repair glow) current.
+  // Repair-button commands: a sim-tier consumer of the transient Pressed
+  // tags; it toggles Repairing on the slot's mounted unit and keeps the
+  // button visuals (shrunk pose, repair glow) current.
   world.registerSystem(DefenseButtonSystem, { priority: 16 });
+  // Pedestal-pad entry: keeps RayInteractable on empty slots only and opens
+  // the shared build dock on a press (BuildOpen on the director).
+  world.registerSystem(DefensePadInputSystem, { priority: 16 });
   // Empty-slot pad breathing: the pure visual over the battery registry —
   // one shared-material emissiveIntensity write per frame, no phase gate.
   world.registerSystem(DefensePadSystem, { priority: 17 });

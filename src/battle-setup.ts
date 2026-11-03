@@ -24,6 +24,7 @@ import {
   CannonAim,
   CannonFire,
   DefenseButton,
+  DefensePad,
   Destroyed,
   Health,
   HitCore,
@@ -33,7 +34,7 @@ import {
 } from './components.js';
 import { COMBAT, activeLevelList, DEFENSE_BUTTONS, DEFENSE_PAD, DEFENSE_SLOTS, DEFENDER_BAR_Y, OCEAN, WALL_CENTER_Z } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
-import { createDefenseButtonRig } from './defense-buttons.js';
+import { createRepairButtonRig } from './defense-buttons.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
@@ -402,13 +403,12 @@ export function startBattle(world: World): void {
           });
           cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
 
-          const [oceanGltf, wallGltf, cannonGltf, ironGuardGltf, buildButtonGltf, repairButtonGltf, padGltf] =
+          const [oceanGltf, wallGltf, cannonGltf, ironGuardGltf, repairButtonGltf, padGltf] =
             await Promise.all([
               AssetManager.loadGLTFById('ocean-body'),
               AssetManager.loadGLTFById('harbor-wall'),
               AssetManager.loadGLTFById('cannon'),
               AssetManager.loadGLTFById('iron-guard'),
-              AssetManager.loadGLTFById('defense-button-build'),
               AssetManager.loadGLTFById('defense-button-repair'),
               AssetManager.loadGLTFById('defense-pad'),
             ]);
@@ -476,9 +476,10 @@ export function startBattle(world: World): void {
           }
 
           // Empty-slot pedestal pads: one permanent disc per slot, standing
-          // on the wall top (pure scenery — no RayInteractable; the build
-          // buttons stay the only build entry). Each clone gets its own
-          // material instance so DefensePadSystem breathes only empty slots.
+          // on the wall top. Each clone gets its own material instance so
+          // DefensePadSystem breathes only empty slots; DefensePadInputSystem
+          // keeps RayInteractable on the pad only while the slot is empty and
+          // opens the build panel from a press.
           const padPrototype = padGltf.scene;
           for (
             let slotIndex = 0;
@@ -501,40 +502,31 @@ export function startBattle(world: World): void {
               defensePadMaterials[slotIndex] =
                 padMesh.material as MeshStandardMaterial;
             }
-            world.createTransformEntity(pad);
+            world
+              .createTransformEntity(pad)
+              .addComponent(DefensePad, { slot: slotIndex });
             battlefieldObjects.push(pad);
           }
 
-          // Build/repair buttons: two per slot on the wall's land face —
-          // build left, repair right. Persistent battlefield objects like the
-          // units (hidden on MAIN, revealed on re-entry); they keep serving
-          // destroyed slots so the player can rebuild from the panel.
+          // Repair button: one per slot on the wall's land face. Persistent
+          // battlefield objects like the units (hidden on MAIN, revealed on
+          // re-entry); the pedestal pad is the build entry now.
           for (
             let slotIndex = 0;
             slotIndex < DEFENSE_SLOTS.length;
             slotIndex++
           ) {
-            for (const kind of ['build', 'repair'] as const) {
-              const rig = createDefenseButtonRig(
-                kind,
-                kind === 'build'
-                  ? buildButtonGltf.scene
-                  : repairButtonGltf.scene,
-              );
-              rig.position.set(
-                DEFENSE_SLOTS[slotIndex].x +
-                  (kind === 'build'
-                    ? -DEFENSE_BUTTONS.spacingX
-                    : DEFENSE_BUTTONS.spacingX),
-                DEFENSE_BUTTONS.y,
-                DEFENSE_BUTTONS.z,
-              );
-              world
-                .createTransformEntity(rig)
-                .addComponent(RayInteractable)
-                .addComponent(DefenseButton, { slot: slotIndex, kind });
-              battlefieldObjects.push(rig);
-            }
+            const rig = createRepairButtonRig(repairButtonGltf.scene);
+            rig.position.set(
+              DEFENSE_SLOTS[slotIndex].x + DEFENSE_BUTTONS.spacingX,
+              DEFENSE_BUTTONS.y,
+              DEFENSE_BUTTONS.z,
+            );
+            world
+              .createTransformEntity(rig)
+              .addComponent(RayInteractable)
+              .addComponent(DefenseButton, { slot: slotIndex });
+            battlefieldObjects.push(rig);
           }
           battlefieldReady = true;
 
