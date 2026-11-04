@@ -728,6 +728,10 @@ export const TRAJECTORY_PREVIEW = {
   dotScaleNear: 0.4,
   /** Warm gold (sRGB hex) — the shared accent (defense pads). */
   color: 0xffc46a,
+  /** Hit tint: full-saturation, full-brightness cool green (hue ≈168°). */
+  hitColor: 0x00ffc8,
+  /** Seconds the guide stays green after the last frame a sample touched a core. */
+  hitHoldSec: 0.15,
 };
 
 /**
