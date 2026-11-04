@@ -140,7 +140,8 @@ export class ShellHitSystem extends createSystem({
         if (String(core.getValue(HitCore, 'faction')) === faction) continue;
         const position = this.corePositions.get(core.index);
         if (!position) continue;
-        const radius = Number(core.getValue(HitCore, 'radius'));
+        const radius =
+          Number(core.getValue(HitCore, 'radius')) * COMBAT.shellHitRadiusScale;
         const dx = sx - position.x;
         const dy = sy - position.y;
         const dz = sz - position.z;

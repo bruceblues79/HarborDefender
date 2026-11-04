@@ -54,6 +54,12 @@ import { COMBAT } from './level-config.js';
 const WIDTH = COMBAT.healthBarWidth;
 const HEIGHT = COMBAT.healthBarHeight;
 
+/**
+ * 每个单位血条 rig 的节点名——RepairButtonSystem 按名字找到它并把维修按钮
+ * 锚到血条左缘上方。
+ */
+export const HEALTH_BAR_RIG_NAME = 'health-bar';
+
 /** Shared back-plate geometry — a plain centred quad. */
 const backGeometry = new PlaneGeometry(WIDTH, HEIGHT);
 /**
@@ -129,7 +135,7 @@ export class HealthBarSystem extends createSystem({
       // armour parts. No bounding-box derivation: a deep child spawned
       // mid-frame reads a stale ancestor matrixWorld and floats the bar.
       const rig = new Object3D();
-      rig.name = 'health-bar';
+      rig.name = HEALTH_BAR_RIG_NAME;
       rig.position.y = Number(entity.getValue(Health, 'barY'));
       rig.scale.setScalar(
         defender ? COMBAT.healthBarDefenderScale : 1,

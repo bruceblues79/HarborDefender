@@ -20,8 +20,9 @@ import { getDefensePadMaterial, getDefenseSlotInfo } from './battle-setup.js';
  * emissiveIntensity scalar write per slot per frame — empty pads all share
  * the same phase accumulator and pulse in lockstep, occupied pads are
  * driven to zero. No phase gate: a waiting-start battery has no empty
- * slots, and a mid-battle knockout breathes immediately. The pads
- * themselves are scenery — this system never touches entities.
+ * slots, and a mid-battle knockout breathes immediately. The pads'
+ * interaction gate belongs to DefensePadInputSystem — this system only
+ * writes materials and never touches entities.
  */
 export class DefensePadSystem extends createSystem({
   directors: { required: [LevelDirector] },

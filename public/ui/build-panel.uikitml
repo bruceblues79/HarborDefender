@@ -1,7 +1,7 @@
 <!--
-  Build dock, opened by any defense slot's build button: a compact pill that
-  floats at one constant height above the clicked slot (BuildPanelSystem sets
-  x from the slot, y/z fixed) and yaws to the camera via Billboard(lockY).
+  Build dock, opened by an empty defense slot's pedestal pad: a compact pill
+  that floats at one constant height above the pressed slot (BuildPanelSystem
+  sets x from the slot, y/z fixed) and yaws to the camera via Billboard(lockY).
   The root is a transparent flex column: a small circular CLOSE button
   centered above a stadium-shaped bar — uniform border-radius = half the bar
   height rounds both side ends — holding one circular icon button per
@@ -32,35 +32,21 @@
   GlassMaterial) and washes mid-gray class backgrounds out to white —
   Container (button) renders the class color exactly; the bar itself keeps
   panel-material-class: glass over #ffffffaa to match the pause-menu surface.
-  BuildPanelSystem binds the clicks and drives a three-state
-  class per unit button: .dock-unit (default), .dock-unit-off (its price
-  above the current wallet — dimmed; the number itself is not shown) and
-  .dock-unit-hidden (the opened slot holds a live occupant — the whole
-  unit row hides, ammo takes the bar) — and rewrites the wallet badge every
-  frame while the dock is open, so gold spent or earned elsewhere shows live.
-  The ammo row — a global single-select
-  (AmmoSelected on the director, rows = AMMO_DEFS) applying to every
-  cannon's next shot — renders only over an occupied slot: an empty or
-  destroyed one swaps the rows to .ammo-hidden (display none), so build
-  and ammo never share the bar. Over an occupied slot the selected round's
-  circle keeps the 0.75 open pose and turns brick red #e2574c, while its
-  icon grows 4.5→6 (.ammo-icon-active) so the visible red rim around the
-  glyph halves to 0.75 — reads as "loaded", not hover. UIKitML stylesheets
-  take no descendant selectors, so BuildPanelSystem swaps the icon class
-  alongside the row class; v1 ships the free iron ball
-  only, so its click is a no-op and the selection never changes. Note
-  the stylesheet holds no comments: UIKitML rejects them as selectors.
+  BuildPanelSystem binds the clicks and drives a two-state class per unit
+  button: .dock-unit (default) and .dock-unit-off (its price above the
+  current wallet — dimmed; the number itself is not shown) — and rewrites
+  the wallet badge every frame while the dock is open, so gold spent or
+  earned elsewhere shows live.
+  The dock never opens over an occupied slot, so the bar always describes
+  a build.
   Runtime setProperties display would lose to the class layer, so every
   state change must be class-driven. Icons load through the <svg> tag's src
   (uikit Svg component: SVGLoader vector meshes, MeshBasicMaterial,
-  tone-mapped off): cannon from the game-icons set, the iron ball and iron
-  guard hand-drawn to the same pattern — one path, one #f2f4f7 fill, detail
-  cut in as opposite-winding holes. Multi-fill svgs (the old two-tone ball,
-  evenodd shield) flicker: each fill becomes its own coplanar mesh and the
-  billboard's sort order jitters between frames. State colour lives on the
-  disc behind the icon: selected ammo disc goes white #f2f4f7 and its icon
-  flips dark through the CSS color override (a white icon would vanish on
-  the white disc). Dock-icon srcs carry ?v=<package version> — nginx serves
+  tone-mapped off): cannon and iron guard hand-drawn to the same pattern —
+  one path, one #f2f4f7 fill, detail cut in as opposite-winding holes.
+  Multi-fill svgs (evenodd shield) flicker: each fill becomes its own
+  coplanar mesh and the billboard's sort order jitters between frames.
+  Dock-icon srcs carry ?v=<package version> — nginx serves
   ui/ with max-age immutable for a year, so icon edits must bump the query.
   Fills stay
   hardcoded #f2f4f7 because currentColor resolves to black in SVGLoader, and
@@ -183,50 +169,6 @@
     border-radius: 5;
   }
 
-  .dock-unit-hidden {
-    display: none;
-  }
-
-  .ammo-unit {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    width: 10;
-    height: 10;
-    background-color: #5d646d;
-    border-radius: 5;
-    cursor: pointer;
-  }
-
-  .ammo-unit:hover {
-    background-color: #6a717a;
-  }
-
-  .ammo-active {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    width: 7.5;
-    height: 7.5;
-    background-color: #f2f4f7;
-    border-radius: 5;
-    cursor: pointer;
-  }
-
-  .ammo-icon-active {
-    display: flex;
-    width: 6;
-    height: 6;
-    background-color: #00000000;
-    color: #2e3440;
-  }
-
-  .ammo-hidden {
-    display: none;
-  }
-
   .unit-icon {
     display: flex;
     width: 4.5;
@@ -248,9 +190,6 @@
     </button>
     <button id="row-iron-guard" class="dock-unit">
       <svg class="unit-icon" src="ui/icons/iron-guard.svg?v=0.1.297" ></svg>
-    </button>
-    <button id="ammo-ball-iron" class="ammo-active">
-      <svg id="ammo-icon-ball-iron" class="ammo-icon-active" src="ui/icons/ball-iron.svg?v=0.1.297" ></svg>
     </button>
   </Panel>
 </Panel>

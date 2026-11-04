@@ -15,7 +15,6 @@ import {
 } from '@iwsdk/core';
 import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
 import {
-  AmmoSelected,
   BossTurret,
   BuildOpen,
   ChiefDown,
@@ -215,9 +214,6 @@ export class LevelWaveSystem extends createSystem({
     // Player wallet rides the director; RepairSystem drains it per frame,
     // BuildPanelSystem deducts builds, this system resets it per run.
     director.addComponent(Wallet);
-    // Global ammo single-select rides the director too: the dock's ammo row
-    // writes it, every cannon's next shot reads it (default = iron ball).
-    director.addComponent(AmmoSelected);
     this.director = director;
 
     for (const [type, def] of Object.entries(UNIT_TYPES)) {

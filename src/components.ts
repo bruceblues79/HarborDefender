@@ -6,7 +6,7 @@
  */
 
 import { createComponent, defineComponents } from '@iwsdk/core';
-import { AMMO_DEFS, COMBAT, ECONOMY, ORNITHOPTER, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y, WAKE_RADIUS } from './level-config.js';
+import { COMBAT, ECONOMY, ORNITHOPTER, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y, WAKE_RADIUS } from './level-config.js';
 
 /** Marks the ocean body entity so OceanSystem can find it via query. */
 export const OceanTag = createComponent('OceanTag', {});
@@ -206,17 +206,6 @@ export const CannonFire = createComponent('CannonFire', {
    * ShellHitSystem can look the damage up in DAMAGE_MATRIX.
    */
   unitType: { type: 'String', default: '' },
-});
-
-/**
- * Global ammunition single-select, mounted on the director: the build dock's
- * ammo row writes it and every cannon's next shot loads the selected round
- * (one truth for the whole battery, not per slot). The default is the free
- * iron ball; with only that row in AMMO_DEFS its click is a no-op.
- */
-export const AmmoSelected = createComponent('AmmoSelected', {
-  /** Selected round id — one of AMMO_DEFS[].id. */
-  ammoId: { type: 'String', default: AMMO_DEFS[0].id },
 });
 
 /**
@@ -473,7 +462,7 @@ export const Wallet = createComponent('Wallet', {
  * Explicit tag: this defender is under active repair — health rises and
  * money drains until the pool is full, the wallet empties, the unit dies or
  * the player toggles the repair button again. Added/removed by
- * DefenseButtonSystem (the button command), drained by RepairSystem.
+ * RepairButtonSystem (the repair button command), drained by RepairSystem.
  */
 export const Repairing = createComponent('Repairing', {});
 
@@ -489,9 +478,9 @@ export const Taunt = createComponent('Taunt', {});
 
 /**
  * Explicit tag: the shared build panel is open, targeting the defense slot
- * in `slot`. Added/removed by DefenseButtonSystem (build button click:
- * open, switch slot, toggle close), removed by BuildPanelSystem (row
- * purchased) — its presence shrinks the open slot's build icon.
+ * in `slot`. Added/removed by DefensePadInputSystem (an empty slot's
+ * pedestal pad: open, switch slot, toggle close), removed by
+ * BuildPanelSystem (row purchased).
  */
 export const BuildOpen = createComponent('BuildOpen', {
   /** Index into DEFENSE_SLOTS the open panel builds into. */
@@ -499,18 +488,21 @@ export const BuildOpen = createComponent('BuildOpen', {
 });
 
 /**
- * One world-space build/repair button on the wall's land face: a flat
- * low-poly icon extrusion with an invisible enlarged hit proxy. Defense-
- * ButtonSystem owns the visuals (the repairing unit's repair icon shrinks
- * and glows, the open slot's build icon shrinks via icon scale); the press
- * itself is InputSystem's `Pressed` tag (mouse / touch / XR ray share the
- * path).
+ * Explicit tag: 一个守方炮台血条上方的维修按钮实体。RepairButtonSystem 创建
+ * 它、驱动它跟随血条，并把 InputSystem 的 `Pressed` 标签（鼠标 / 触摸 /
+ * XR 射线共享同一条路径）翻译成目标炮台的 `Repairing` 开关。
  */
-export const DefenseButton = createComponent('DefenseButton', {
-  /** Index into DEFENSE_SLOTS this button serves. */
+export const RepairButton = createComponent('RepairButton', {});
+
+/**
+ * One pedestal pad under a defense slot. DefensePadSystem drives the empty
+ * slot's breathing emissive; DefensePadInputSystem owns the pad's
+ * RayInteractable gate (present only while the slot is empty) and opens the
+ * shared build dock on press.
+ */
+export const DefensePad = createComponent('DefensePad', {
+  /** Index into DEFENSE_SLOTS this pad serves. */
   slot: { type: 'Int32', default: 0 },
-  /** 'build' | 'repair'. */
-  kind: { type: 'String', default: 'build' },
 });
 
 /**
@@ -823,7 +815,6 @@ export default defineComponents([
   ShellTag,
   StoneTag,
   CannonFire,
-  AmmoSelected,
   BallisticFlight,
   CannonAim,
   AimDragging,
@@ -843,7 +834,8 @@ export default defineComponents([
   DieBurst,
   Repairing,
   BuildOpen,
-  DefenseButton,
+  RepairButton,
+  DefensePad,
   HideHealthBar,
   BossTurret,
   LockTarget,

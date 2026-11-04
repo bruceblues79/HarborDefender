@@ -201,81 +201,47 @@ export const UNIQUE_UNITS: ReadonlySet<DefenseUnitId> = new Set([
 ]);
 
 /**
- * Ammunition the cannons load. The dock's ammo row is a global single
- * select over this table (AmmoSelected on the director) and applies to
- * every cannon's next shot. v1 ships one round only — a future round adds
- * a row here plus its hit-effect branch; the dock structure never changes.
+ * 维修按钮：挂在每个守方炮台血条的左缘上方，只在血量不满且可维修时出现。
+ * 图标是任务给定的白色 SVG path（运行时绘成 CanvasTexture），外圈是 dock
+ * 同款灰底圆钮；命中盒比圆钮大一圈，鼠标 / 触摸 / XR 射线都不必落在图标上。
+ * 维修中整组缩小、灰底换亮灰。
+ *
+ * 位置：按钮左缘对齐血条左缘，底缘离血条顶边 `gap` 米；尺寸是世界尺寸，
+ * 不随守方血条的 0.6 缩放变化。
  */
-export interface AmmoDef {
-  /** Stable ammo id (AmmoSelected.ammoId, dock row id `ammo-<id>`). */
-  id: string;
-  /** Dock icon path — resolved against the page base URL like every uikit svg. */
-  icon: string;
-  /** Gold charged per shot (0 = free). Deduction arrives with the next round. */
-  costPerShot: number;
-}
-
-export const AMMO_DEFS: AmmoDef[] = [
-  { id: 'ball-iron', icon: 'ui/icons/ball-iron.svg', costPerShot: 0 },
-];
-
-/**
- * Build/repair buttons, two per defense slot, mounted on the wall's land
- * (+Z) face below each unit: build on the left, repair on the right. Icons
- * are designed GLB assets (npm run export-assets) — flat mechanical glyphs
- * with colour zones baked into vertex colors — facing +Z, with an enlarged
- * invisible hit proxy over each, so a thumb or XR ray never has to hit the
- * glyph itself.
- */
-export const DEFENSE_BUTTONS = {
-  /** Button centre height — a small lift above the wall's land face (y 0.8). */
-  y: 0.65,
-  /** Button centre z — a hand's width off the wall's land face (z -1.1). */
-  z: -0.98,
-  /** Half-gap between the build and repair buttons around the slot centre. */
-  spacingX: 0.115,
+export const REPAIR_BUTTON = {
+  /** 圆钮直径（m）。 */
+  diameter: 0.1,
+  /** 图标平面边长（m）——白色 glyph 居中于圆钮。 */
+  iconSize: 0.0525,
+  /** 按钮底缘与血条顶边的间隙（m）。 */
+  gap: 0.02,
+  /** 维修中可见内容组的缩放（旧的缩小反馈）。 */
+  activeScale: 0.75,
+  /** dock 同款灰底圆钮。 */
+  background: 0x5d646d,
+  /** 维修中的亮灰底，替代旧的金色描边扳手。 */
+  activeBackground: 0x8f98a3,
   /**
-   * Invisible hit proxies (m), one per kind: tall boxes sized over the 1.2x
-   * glyphs (hammer wide, wrench narrow) and trimmed in X so the build/repair
-   * pair — and neighbouring slots — never overlap. The Z depth stays thin:
-   * just enough plane for ray detection, no thick invisible wall.
+   * 不可见命中盒（m）：比圆钮大一圈，Z 向保持薄片，只提供射线平面。
    */
-  proxyBuild: { x: 0.18, y: 0.2, z: 0.04 },
-  proxyRepair: { x: 0.11, y: 0.2, z: 0.04 },
+  proxy: { x: 0.1375, y: 0.1375, z: 0.04 },
   /**
-   * Build-icon scale while its slot's dock is open — the shrunk "open" pose
-   * (pure transform, materials and hit proxies never change). Pressing the
-   * shrunk icon again toggles the dock closed.
+   * 透明绘制顺序：血条底板 8 / 血量 9 之上，菜单与建造 dock（18/20）之下。
    */
-  openScale: 0.75,
-  /**
-   * Repair-active pose: the wrench shrinks to openScale (the same shrunk
-   * pose as the build button's open dock) and glows — its own material
-   * clone raises emissiveIntensity to repairGlow in repairGlowColor (the
-   * GLB bakes black emissive, so the runtime owns the colour). Same visual
-   * language as the empty-slot pads' warm-gold emissive. Deactivating the
-   * repair restores scale 1 and intensity 0.
-   */
-  repairGlowColor: 0xffc46a,
-  repairGlow: 0.6,
-  /**
-   * 灰化 pose for a slot occupied by a live iron-guard (钢铁卫士): both its
-   * buttons multiply their icon's vertex colors down to this flat gray and
-   * ignore presses until the guard falls and frees the slot. White
-   * (0xffffff) restores the stock look. Pure material colour write — no
-   * geometry, proxy or layout change.
-   */
-  blockedColor: 0x5d6168,
+  backgroundRenderOrder: 11,
+  iconRenderOrder: 12,
 };
 
 /**
  * Empty-slot pedestal pads: a permanent Ø0.38 × 0.04 m disc under every
- * defense slot (defense-pad.glb, npm run export-assets). Pure scenery —
- * no ray, no click path; the build buttons stay the build entry. A slot
- * with no live occupant breathes: DefensePadSystem raises that pad's own
- * material's emissiveIntensity sinusoidally — the GLB bakes the warm-gold
- * emissive colour at full strength, so the runtime writes one scalar per
- * pad; every empty pad pulses in lockstep (same phase accumulator).
+ * defense slot (defense-pad.glb, npm run export-assets). A slot with no
+ * live occupant breathes and doubles as the build entry: DefensePadSystem
+ * raises that pad's own material's emissiveIntensity sinusoidally — the GLB
+ * bakes the warm-gold emissive colour at full strength, so the runtime
+ * writes one scalar per pad; every empty pad pulses in lockstep (same phase
+ * accumulator). DefensePadInputSystem keeps RayInteractable on empty pads
+ * only and opens the build dock on press.
  */
 export const DEFENSE_PAD = {
   /** Pad height (m): the step every mounted unit stands on. */
@@ -627,6 +593,14 @@ export const COMBAT = {
   attackerCoreRadius: 0.5,
   defenderCoreRadius: 0.22,
   /**
+   * Shell precision: a shell consumes a core only inside
+   * `radius × shellHitRadiusScale`. The authored radii above stay the core's
+   * geometric extent; this is the volume a shell actually claims, so tighter
+   * aim is required without redefining the hull. TrajectoryPreviewSystem
+   * tests with the same factor, so the guide's tint matches the flight.
+   */
+  shellHitRadiusScale: 3 / 4,
+  /**
    * Normalised combat numbers: every unit's health pool is 100 points, and
    * all damage is a percentage of that pool — 20 = 20% of a hull.
    */
@@ -760,8 +734,12 @@ export const TRAJECTORY_PREVIEW = {
   dotSize: 0.054,
   /** Cube edge scale at the muzzle end (x dotSize); grows linearly to 1 at the water end. */
   dotScaleNear: 0.4,
-  /** Warm gold (sRGB hex) — the shared accent (defense pads / repair glow). */
+  /** Warm gold (sRGB hex) — the shared accent (defense pads). */
   color: 0xffc46a,
+  /** Hit tint: full-saturation, full-brightness cool green (hue ≈168°). */
+  hitColor: 0x00ffc8,
+  /** Seconds the guide stays green after the last frame a sample touched a core. */
+  hitHoldSec: 0.15,
 };
 
 /**
@@ -824,13 +802,14 @@ export const DAMAGE_MATRIX: Record<string, number> = {
 export const FLYER_Y = 2.857;
 
 /**
- * The bombardier's berth band: far out at -3.75 (2026-10-30 外推自 -3.1，
- * 给满层 6 机的停位带留出纵深), near end pulled back to -2.0 (2026-10-31
- * 近停点外移，不再贴墙). MIN < MAX keeps the ship constants' reading —
- * MIN far out, MAX against the wall.
+ * The bombardier's berth band: far out at -4.7, near end pulled back to -3.15
+ * (2026-11-04 远停自 -4.6 补到 -4.7，纵深 1.55 m，覆盖 STOP_MIN_GAP_Z = 1.5；
+ * 近停越靠前，炮口到目标的水平距离越短、仰角越陡：-2.0 时 66.5°，
+ * -2.9 时 51.3°，-3.15 约 48.5°). MIN < MAX keeps the ship constants'
+ * reading — MIN far out, MAX against the wall.
  */
-export const FLYER_STOP_Z_MIN = -3.75;
-export const FLYER_STOP_Z_MAX = -2.0;
+export const FLYER_STOP_Z_MIN = -4.7;
+export const FLYER_STOP_Z_MAX = -3.15;
 
 /**
  * Ornithopter flight envelope. The middle-air band sits below the
