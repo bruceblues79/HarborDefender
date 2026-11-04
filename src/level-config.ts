@@ -599,7 +599,7 @@ export const COMBAT = {
    * aim is required without redefining the hull. TrajectoryPreviewSystem
    * tests with the same factor, so the guide's tint matches the flight.
    */
-  shellHitRadiusScale: 2 / 3,
+  shellHitRadiusScale: 3 / 4,
   /**
    * Normalised combat numbers: every unit's health pool is 100 points, and
    * all damage is a percentage of that pool — 20 = 20% of a hull.
