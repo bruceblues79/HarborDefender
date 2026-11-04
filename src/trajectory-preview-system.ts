@@ -149,7 +149,10 @@ export class TrajectoryPreviewSystem extends createSystem({
         object?.children.find((child) => child.name === coreName) ??
         object?.getObjectByName(coreName);
       if (!node) return;
-      const radius = Number(entity.getValue(HitCore, 'radius'));
+      // Same consume volume as ShellHitSystem: the authored core radius
+      // scaled by the shared shell-precision factor.
+      const radius =
+        Number(entity.getValue(HitCore, 'radius')) * COMBAT.shellHitRadiusScale;
       this.targets.push({
         index: entity.index,
         node,
