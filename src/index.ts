@@ -133,7 +133,7 @@ World.create(
   // Health bars after the sim tier, so each frame's yaw cancels the unit's
   // freshest rotation.
   world.registerSystem(HealthBarSystem, { priority: 30 });
-  // 维修按钮：血条（30）之后的视图层，按钮对齐本帧血条左缘；同系统消费 Pressed 切换 Repairing 标签。
+  // 维修按钮：血条（30）之后的视图层，按钮对齐本帧血条左缘；Pressed 只记 RepairRequest，Repairing 由 RepairSystem 写。
   world.registerSystem(RepairButtonSystem, { priority: 31 });
   installXRButton(world);
 

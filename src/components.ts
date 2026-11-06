@@ -374,10 +374,12 @@ export const Wallet = createComponent('Wallet', {
 
 /**
  * Explicit tag: this defender is under active repair — health rises and money drains
- * until the pool is full, the wallet empties or the unit dies. Toggled by
- * RepairButtonSystem, drained by RepairSystem.
+ * until the pool is full, the wallet empties or the unit dies. Written only by
+ * RepairSystem.
  */
 export const Repairing = createComponent('Repairing', {});
+
+export const RepairRequest = createComponent('RepairRequest', {});
 
 /**
  * Explicit tag: 嘲讽 (taunt) — while one live carrier exists, every non-boss attacker
@@ -398,7 +400,7 @@ export const BuildOpen = createComponent('BuildOpen', {
 
 /**
  * Explicit tag: 一个守方炮台血条上方的维修按钮实体。RepairButtonSystem 创建并驱动它，
- * 并把 `Pressed` 标签翻译成目标炮台的 `Repairing` 开关。
+ * `Pressed` 只给目标炮台记一条 `RepairRequest`。
  */
 export const RepairButton = createComponent('RepairButton', {});
 
@@ -676,6 +678,7 @@ export default defineComponents([
   DieBurstTag,
   DieBurst,
   Repairing,
+  RepairRequest,
   BuildOpen,
   RepairButton,
   DefensePad,

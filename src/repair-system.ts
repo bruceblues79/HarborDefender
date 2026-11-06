@@ -14,6 +14,7 @@ import {
   Health,
   LevelDirector,
   Repairing,
+  RepairRequest,
   Wallet,
 } from './components.js';
 import { ECONOMY } from './level-config.js';
@@ -24,6 +25,7 @@ import { ECONOMY } from './level-config.js';
  */
 export class RepairSystem extends createSystem({
   repairing: { required: [Repairing, Health] },
+  requests: { required: [RepairRequest] },
   directors: { required: [LevelDirector] },
 }) {
   private walletEntity: Entity | null = null;
@@ -40,6 +42,7 @@ export class RepairSystem extends createSystem({
   }
 
   update(delta: number): void {
+    this.consumeRequests();
     for (const director of this.queries.directors.entities) {
       // Paused and over freeze the drain; tags mounted before a pause resume or peel afterwards.
       if (director.hasComponent(GamePaused)) return;
@@ -56,6 +59,12 @@ export class RepairSystem extends createSystem({
         entity.removeComponent(Repairing);
         continue;
       }
+      const max = entity.getValue(Health, 'max') as number;
+      const current = entity.getValue(Health, 'current') as number;
+      if (current >= max) {
+        entity.removeComponent(Repairing);
+        continue;
+      }
       const cost = ECONOMY.repairCostPerSecond * delta;
       if (money < cost) {
         // Out of money: peel the tag; the repair button's shrunk pose and glow go with it.
@@ -63,10 +72,8 @@ export class RepairSystem extends createSystem({
         continue;
       }
       money -= cost;
-      const max = entity.getValue(Health, 'max') as number;
       const healed = Math.min(
-        (entity.getValue(Health, 'current') as number) +
-          ECONOMY.repairHpPerSecond * delta,
+        current + ECONOMY.repairHpPerSecond * delta,
         max,
       );
       entity.setValue(Health, 'current', healed);
@@ -74,5 +81,32 @@ export class RepairSystem extends createSystem({
     }
 
     wallet.setValue(Wallet, 'money', money);
+  }
+
+  private consumeRequests(): void {
+    for (const entity of this.queries.requests.entities) {
+      entity.removeComponent(RepairRequest);
+      if (this.gated()) continue;
+      if (entity.hasComponent(Destroyed) || !entity.hasComponent(Health)) continue;
+      const current = entity.getValue(Health, 'current') as number;
+      const max = entity.getValue(Health, 'max') as number;
+      if (current >= max) continue;
+      if (entity.hasComponent(Repairing)) {
+        entity.removeComponent(Repairing);
+      } else {
+        entity.addComponent(Repairing);
+      }
+    }
+  }
+
+  private gated(): boolean {
+    for (const director of this.queries.directors.entities) {
+      return (
+        director.hasComponent(GamePaused) ||
+        director.hasComponent(GameOver) ||
+        String(director.getValue(LevelDirector, 'phase')) === 'waiting-start'
+      );
+    }
+    return false;
   }
 }

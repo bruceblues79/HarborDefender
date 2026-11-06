@@ -16,13 +16,11 @@ import {
 import type { Entity } from '@iwsdk/core';
 import {
   Destroyed,
-  GameOver,
-  GamePaused,
   Health,
   HitCore,
-  LevelDirector,
   RepairButton,
   Repairing,
+  RepairRequest,
 } from './components.js';
 import { createRepairButtonRig } from './repair-button.js';
 import { HEALTH_BAR_RIG_NAME } from './health-bar-system.js';
@@ -50,7 +48,6 @@ interface RepairButtonEntry {
 export class RepairButtonSystem extends createSystem({
   units: { required: [Health, HitCore] },
   pressed: { required: [RepairButton, Pressed] },
-  directors: { required: [LevelDirector] },
 }) {
   private readonly entries = new Map<number, RepairButtonEntry>();
   /** 供 Pressed 查询按按钮 index 直接定位。 */
@@ -99,7 +96,7 @@ export class RepairButtonSystem extends createSystem({
 
     this.queries.pressed.subscribe('qualify', (button) => {
       const entry = this.byButton.get(button.index);
-      if (entry) this.toggle(entry.unit);
+      if (entry) entry.unit.addComponent(RepairRequest);
     });
   }
 
@@ -168,42 +165,5 @@ export class RepairButtonSystem extends createSystem({
       entry.root.quaternion.copy(this.rigQuaternion);
     }
     entry.root.position.copy(this.worldCenter);
-  }
-
-  /** Pressed：切换目标的 Repairing；门禁与建造入口一致。 */
-  private toggle(unit: Entity): void {
-    if (this.paused() || this.over() || this.waitingStart()) return;
-    if (unit.hasComponent(Destroyed) || !unit.hasComponent(Health)) return;
-    const current = Number(unit.getValue(Health, 'current'));
-    const max = Number(unit.getValue(Health, 'max'));
-    if (current >= max) return;
-    if (unit.hasComponent(Repairing)) {
-      unit.removeComponent(Repairing);
-    } else {
-      unit.addComponent(Repairing);
-    }
-  }
-
-  private paused(): boolean {
-    for (const director of this.queries.directors.entities) {
-      return director.hasComponent(GamePaused);
-    }
-    return false;
-  }
-
-  private over(): boolean {
-    for (const director of this.queries.directors.entities) {
-      return director.hasComponent(GameOver);
-    }
-    return false;
-  }
-
-  private waitingStart(): boolean {
-    for (const director of this.queries.directors.entities) {
-      return (
-        String(director.getValue(LevelDirector, 'phase')) === 'waiting-start'
-      );
-    }
-    return false;
   }
 }

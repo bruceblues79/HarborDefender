@@ -28,7 +28,6 @@ import {
   Health,
   HitCore,
   OceanTag,
-  Repairing,
   Taunt,
 } from './components.js';
 import { COMBAT, activeLevelList, DEFENSE_PAD, DEFENSE_SLOTS, DEFENDER_BAR_Y, OCEAN, WALL_CENTER_Z } from './level-config.js';
@@ -193,7 +192,6 @@ export function removeDefenseUnit(world: World, slotIndex: number): void {
   entity.removeComponent(HitCore);
   entity.removeComponent(Health);
   entity.removeComponent(Destroyed);
-  entity.removeComponent(Repairing);
   const object3D = entity.object3D;
   if (object3D) {
     object3D.visible = false;
@@ -473,7 +471,6 @@ export function resetCannonAim(): void {
 export function restoreCannons(): void {
   for (const { entity } of defenseEntities) {
     entity.removeComponent(Destroyed);
-    entity.removeComponent(Repairing);
     if (entity.object3D) entity.object3D.visible = true;
     entity.setValue(Health, 'current', Number(entity.getValue(Health, 'max')));
   }
