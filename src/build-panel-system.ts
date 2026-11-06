@@ -37,6 +37,7 @@ import {
   hasLiveDefenseUnit,
   replaceDefenseUnit,
 } from './battle-setup.js';
+import { closeBuildDock } from './build-dock.js';
 
 /** Minimal shape of a uikit element's runtime class list (class layer). */
 type UiElement = Object3D & {
@@ -59,8 +60,9 @@ const BAR_ANCHOR = { y: 1.4, z: WALL_CENTER_Z + 0.1 };
 const PANEL_FACTORS = { xr: 1, flat: 1.8 };
 
 /**
- * The shared build dock: BuildOpen on the director reveals the billboarded
- * dock over that empty slot's pad; a pick mounts the unit, deducts and closes.
+ * The shared build dock and its owner: BuildOpen on the director reveals the
+ * billboarded dock over that empty slot's pad; a pick mounts the unit, deducts
+ * and closes. Every BuildOpen write goes through build-dock.ts.
  */
 export class BuildPanelSystem extends createSystem({
   directors: { required: [LevelDirector] },
@@ -250,7 +252,7 @@ export class BuildPanelSystem extends createSystem({
     if (!this.panel) {
       // The panel asset has not finished loading yet; drop the command —
       // the player simply presses the pad again.
-      director.removeComponent(BuildOpen);
+      closeBuildDock(director);
       return;
     }
     const slot = Number(director.getValue(BuildOpen, 'slot'));
@@ -262,7 +264,8 @@ export class BuildPanelSystem extends createSystem({
   }
 
   private closePanel(): void {
-    this.findOpenDirector()?.removeComponent(BuildOpen);
+    const director = this.findOpenDirector();
+    if (director) closeBuildDock(director);
     this.applyVisibility();
   }
 

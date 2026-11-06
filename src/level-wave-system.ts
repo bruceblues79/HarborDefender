@@ -16,7 +16,6 @@ import {
 import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
 import {
   BossTurret,
-  BuildOpen,
   ChiefDown,
   ChiefMount,
   Destroyed,
@@ -66,6 +65,7 @@ import {
 } from './level-config.js';
 import type { UnitTypeDef } from './level-config.js';
 import { syncBatteryToLevel } from './battle-setup.js';
+import { closeBuildDock } from './build-dock.js';
 
 /** Local z of the muzzle helper under a gun_rotate pivot (barrel -Z tip). */
 const MUZZLE_LOCAL_Z = -0.2;
@@ -217,7 +217,7 @@ export class LevelWaveSystem extends createSystem({
     this.disposeAttackers();
     this.director.removeComponent(GameStarted);
     this.director.removeComponent(GameOver);
-    this.director.removeComponent(BuildOpen);
+    closeBuildDock(this.director);
     this.director.removeComponent(ChiefDown);
     this.director.removeComponent(EndlessMode);
     this.director.removeComponent(NextWaveCommand);
@@ -237,7 +237,7 @@ export class LevelWaveSystem extends createSystem({
   restartLevel(): void {
     this.disposeAttackers();
     this.director.removeComponent(GameOver);
-    this.director.removeComponent(BuildOpen);
+    closeBuildDock(this.director);
     this.director.removeComponent(ChiefDown);
     this.director.removeComponent(NextWaveCommand);
     this.director.removeComponent(WaveIntermission);

@@ -128,6 +128,7 @@
 ## 已完成
 
 - **B1**：build panel 的单位行与 dismiss 监听改为具名闭包，注册与清理共用同一引用，`removeEventListener` 能真正摘除。
+- **E1**：`BuildOpen` 收口到 `src/build-dock.ts` 的 `toggleBuildDock` / `closeBuildDock`；pad 输入、重开清理与面板自身改走同一入口，`components.ts` 与 build panel 头注释改为事实。
 - **T0-A**：弹道阻力分支改用与预览同源的精确位移积分，复用同一个 `decay`。
 - **T0-B**：`RepairSystem` 优先级 12 → 15，移到死亡清扫之后，修掉零血炮台复活。
 

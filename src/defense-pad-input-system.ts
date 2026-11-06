@@ -7,8 +7,8 @@
 
 import { createSystem, Pressed, RayInteractable } from '@iwsdk/core';
 import type { Entity } from '@iwsdk/core';
+import { toggleBuildDock } from './build-dock.js';
 import {
-  BuildOpen,
   DefensePad,
   Destroyed,
   GameOver,
@@ -23,8 +23,8 @@ import { getDefenseSlotInfo } from './battle-setup.js';
  * RayInteractable; an occupied slot's pad drops it so the mounted cannon keeps its own
  * ray interaction. Otherwise the pad's look belongs to DefensePadSystem.
  *
- * Pressing an empty pad opens the shared build panel (BuildOpen + slot). Pressing while
- * a dock is open is toggle / switch: remove+add fires the panel's disqualify (hide)
+ * Pressing an empty pad opens the shared build panel through toggleBuildDock. Pressing
+ * while a dock is open is toggle / switch: remove+add fires the panel's disqualify (hide)
  * then qualify (reposition + reprice) inside one frame.
  *
  * Presses are ignored before START, while paused, and after an outcome.
@@ -83,13 +83,6 @@ export class DefensePadInputSystem extends createSystem({
     }
     const slot = Number(pad.getValue(DefensePad, 'slot'));
     if (!this.slotEmpty(slot)) return;
-
-    if (director.hasComponent(BuildOpen)) {
-      const openSlot = Number(director.getValue(BuildOpen, 'slot'));
-      director.removeComponent(BuildOpen);
-      if (openSlot !== slot) director.addComponent(BuildOpen, { slot });
-      return;
-    }
-    director.addComponent(BuildOpen, { slot });
+    toggleBuildDock(director, slot);
   }
 }

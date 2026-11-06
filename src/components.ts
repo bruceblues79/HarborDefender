@@ -388,7 +388,8 @@ export const Taunt = createComponent('Taunt', {});
 
 /**
  * Explicit tag: the shared build panel is open, targeting the defense slot in `slot`.
- * Opened/closed by DefensePadInputSystem, removed by BuildPanelSystem on purchase.
+ * Written only through src/build-dock.ts — the pad toggles it, a level reset and
+ * BuildPanelSystem itself close it.
  */
 export const BuildOpen = createComponent('BuildOpen', {
   /** Index into DEFENSE_SLOTS the open panel builds into. */
