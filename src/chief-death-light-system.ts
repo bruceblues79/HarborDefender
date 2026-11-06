@@ -26,32 +26,10 @@ const DEG2RAD = Math.PI / 180;
 const AIM_SNAP_RAD = 1.5 * DEG2RAD;
 
 /**
- * Chief death light (铁头死光) — the phase-two chief head's own attack,
- * task 03. ChiefDeathLight attaches when the rise completes (BossChiefSystem
- * mounts it at beatTimer 0); this system is its only writer:
- *
- * - Beat clock (state 'idle'): every DEATH_LIGHT.intervalSec a beat fires.
- *   Beats 1..3 fire a LIGHTNING bolt — an instant jagged segment between the
- *   chief's hit core and one random surviving defender core that deducts
- *   75% of the victim's MAX Health. The 4th beat (t = 12 s after the rise)
- *   starts the SWEEP instead.
- * - Sweep (aiming -> hold -> forming -> sweeping): the head yaws onto one
- *   end of the wall at aimTurnSpeedDeg, holds aimHoldSec, the red beam
- *   forms over formSec (no charge-up), then sweeps across ALL five defense
- *   slots over sweepSec — the beam tracks a point walking the wall's sea
- *   face between the two span ends while the head's yaw follows. Every live
- *   defender core the corridor crosses loses 50% of its MAX Health, once
- *   per unit per sweep (the claimed-set guard). When the sweep ends the
- *   beat count restarts: the next lightning comes intervalSec later.
- *
- * Only Health.current is written — what dying means stays single-truthed in
- * ShellHitSystem's death sweep (same-frame pickup, priority 14). The head
- * never moves for the lightning; only the sweep yaws it (rotation.y, the
- * beam's own arc — nothing else rotates the head). The bolt endpoints and
- * the sweep axis freeze into the component when they fire: the fx system
- * renders from those fields alone, never the live scene graph.
- *
- * Stateless system: no per-entity caches; every scratch is a class property.
+ * Chief death light (铁头死光): a beat clock fires lightning bolts and every
+ * sweepEveryBeats-th beat sweeps the beam across the wall. Only
+ * Health.current is written — dying stays in ShellHitSystem's death sweep
+ * (same frame). Bolt endpoints and the beam axis freeze into the component.
  */
 export class ChiefDeathLightSystem extends createSystem({
   chiefs: { required: [IslewrathChief, ChiefDeathLight] },
@@ -62,7 +40,6 @@ export class ChiefDeathLightSystem extends createSystem({
 }) {
   /** Chief hit-core world position scratch (bolt origin / sweep origin). */
   private readonly origin = new Vector3();
-  /** Rolled victim core world position scratch. */
   private readonly corePos = new Vector3();
   /** Frozen sweep endpoints, unfrozen per frame for the damage pass. */
   private readonly aimA = new Vector3();
@@ -105,9 +82,8 @@ export class ChiefDeathLightSystem extends createSystem({
   }
 
   /**
-   * Beat pacing: each elapse fires a lightning (beats 1..7) or, on the
-   * sweepEveryBeats-th beat, the sweep. timer 0 at attach fires the first
-   * bolt on the very next tick ("升起完毕立即开火").
+   * Beat pacing: each elapse fires a bolt, or the sweep once beatCount
+   * reaches sweepEveryBeats - 1. timer 0 at attach fires on the next tick.
    */
   private tickBeats(chief: Entity, delta: number): void {
     const timer = Number(chief.getValue(ChiefDeathLight, 'timer')) - delta;
@@ -132,11 +108,8 @@ export class ChiefDeathLightSystem extends createSystem({
   }
 
   /**
-   * Lightning: roll one surviving defender core (two passes, allocation
-   * free), freeze both endpoints (chief hit core -> victim core) and start
-   * the bolt visual, then deduct damageRatio of the victim's MAX Health.
-   * No live defender (the run is being lost anyway): skip the bolt, the
-   * beat clock just rolls on.
+   * Roll one surviving defender core, freeze both bolt endpoints, then
+   * deduct damageRatio of its MAX Health; no defender skips the bolt.
    */
   private fireBolt(chief: Entity): void {
     let defenderCount = 0;
@@ -171,10 +144,8 @@ export class ChiefDeathLightSystem extends createSystem({
   }
 
   /**
-   * Sweep start: freeze the beam origin (the chief's hit-core world
-   * position) and the two wall-face aim endpoints — direction rolls
-   * randomly left-to-right or right-to-left. State 'aiming' has no fixed
-   * duration: the yaw swing below decides when the hold opens.
+   * Freeze the beam origin and the two wall-face aim endpoints; direction
+   * rolls randomly. 'aiming' has no fixed duration — the yaw swing decides.
    */
   private beginSweep(chief: Entity): void {
     if (!this.resolveOrigin(chief)) return;
@@ -194,10 +165,8 @@ export class ChiefDeathLightSystem extends createSystem({
   }
 
   /**
-   * Yaw the head onto the start end (the beam's own arc — the head's only
-   * rotation). Shortest-arc step at aimTurnSpeedDeg; convergence snaps and
-   * opens the hold beat. The head is a bust on the drum: nothing else ever
-   * touches its rotation.
+   * Yaw the head onto the start end at aimTurnSpeedDeg; convergence snaps
+   * and opens the hold beat. Nothing else ever touches its rotation.
    */
   private tickAim(chief: Entity, delta: number): void {
     const object = chief.object3D;
@@ -217,7 +186,6 @@ export class ChiefDeathLightSystem extends createSystem({
     // is atan2(x, z).
     const targetYaw = Math.atan2(this.aim.x, this.aim.z);
     let err = targetYaw - object.rotation.y;
-    // Wrap to the shortest arc.
     err = Math.atan2(Math.sin(err), Math.cos(err));
     const step = DEATH_LIGHT.aimTurnSpeedDeg * DEG2RAD * delta;
     if (Math.abs(err) <= Math.max(step, AIM_SNAP_RAD)) {
@@ -229,7 +197,6 @@ export class ChiefDeathLightSystem extends createSystem({
     object.rotation.y += Math.sign(err) * step;
   }
 
-  /** Shared hold/form countdown: at zero the next state opens. */
   private tickCountdown(chief: Entity, delta: number): void {
     const timer = Number(chief.getValue(ChiefDeathLight, 'timer')) - delta;
     if (timer > 0) {
@@ -242,20 +209,16 @@ export class ChiefDeathLightSystem extends createSystem({
       chief.setValue(ChiefDeathLight, 'timer', DEATH_LIGHT.formSec);
       return;
     }
-    // Form complete: the sweep starts. The claimed set resets here — every
-    // unit gets exactly one bite per sweep.
+    // The claimed set resets here — every unit bites once per sweep.
     this.claimed.clear();
     chief.setValue(ChiefDeathLight, 'state', 'sweeping');
     chief.setValue(ChiefDeathLight, 'timer', DEATH_LIGHT.sweepSec);
   }
 
   /**
-   * The sweep proper: the beam tracks a point lerping between the frozen
-   * wall-face endpoints while the head's yaw follows. Each frame every live
-   * defender core inside the corridor (beam half-width + its own core
-   * radius around the origin->end segment) not yet claimed loses
-   * sweepDamageRatio of its MAX Health. At the end the beat clock restarts:
-   * beatCount 0, next lightning intervalSec after the sweep finishes.
+   * The beam tracks a point between the frozen endpoints while the head's
+   * yaw follows; each unclaimed defender core in the corridor loses
+   * sweepDamageRatio of its MAX Health, once per sweep.
    */
   private tickSweep(chief: Entity, delta: number): void {
     const timer = Number(chief.getValue(ChiefDeathLight, 'timer')) - delta;
@@ -286,7 +249,7 @@ export class ChiefDeathLightSystem extends createSystem({
     const aimDist = this.aim.length();
     if (aimDist < 1e-6) return;
     this.beamDir.copy(this.aim).divideScalar(aimDist);
-    // The head rides the beam's yaw — the y-axis sweep the spec asks for.
+    // The head rides the beam's yaw.
     if (chief.object3D) {
       chief.object3D.rotation.y = Math.atan2(this.beamDir.x, this.beamDir.z);
     }
@@ -309,14 +272,13 @@ export class ChiefDeathLightSystem extends createSystem({
         Number(core.getValue(Health, 'current')) -
         max * DEATH_LIGHT.sweepDamageRatio;
       core.setValue(Health, 'current', Math.max(0, hp));
-      // Same hit bloom as the lightning: the sweep bite reads on the field.
       this.spawnHitFlash(this.corePos, 1);
     }
   }
 
   /**
-   * Freeze the chief's hit-core world position into `origin`. The baked
-   * hit_core node rides the head clone; without it there is no attack.
+   * Freeze the chief's hit-core world position into `origin`; without the
+   * baked hit_core node there is no attack.
    */
   private resolveOrigin(chief: Entity): boolean {
     const node = chief.object3D?.getObjectByName(
@@ -327,13 +289,7 @@ export class ChiefDeathLightSystem extends createSystem({
     return true;
   }
 
-  /**
-   * Claim a free pooled hit bloom and land its starting state at the struck
-   * core's centre — identical to ShellHitSystem's spawn (same shared pool,
-   * same visual): position, start scale, visible, then the HitFlash tag
-   * that hands animation to HitFlashSystem. Pool empty: skip silently — a
-   * busy battle loses the odd bloom, never a hit.
-   */
+  /** Claim a pooled hit bloom for the struck core; same pool as ShellHitSystem. */
   private spawnHitFlash(position: Vector3, peakScale: number): void {
     for (const flash of this.queries.freeFlashes.entities) {
       if (this.claimedFlashes.has(flash.index)) continue;
@@ -364,7 +320,6 @@ export class ChiefDeathLightSystem extends createSystem({
     return false;
   }
 
-  /** True while the pause-menu tag sits on the director entity. */
   private paused(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GamePaused);
@@ -372,7 +327,6 @@ export class ChiefDeathLightSystem extends createSystem({
     return false;
   }
 
-  /** True once the run has ended (victory or defeat) — the beam holds. */
   private over(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GameOver);

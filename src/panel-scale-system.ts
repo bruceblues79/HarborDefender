@@ -9,9 +9,7 @@ import { createSystem } from '@iwsdk/core';
 import { PanelScaleAnim } from './components.js';
 
 /**
- * Eases an entity's uniform scale toward its target, so panels can grow in and
- * shrink out by volume. The owner sets `targetScale`; this system writes the
- * object transform each frame.
+ * Owners set `targetScale`; this system eases the object's uniform scale toward it each frame.
  */
 export class PanelScaleSystem extends createSystem({
   panels: { required: [PanelScaleAnim] },

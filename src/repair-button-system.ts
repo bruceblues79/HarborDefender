@@ -31,25 +31,17 @@ import { COMBAT, REPAIR_BUTTON } from './level-config.js';
 /**
  * 守方血条上的维修按钮。
  *
- * 只给守方炮台（faction `defender` / unitType `cannon`）建按钮——海盗船与
- * Boss 装甲件也有 Health，但维修它们等于花玩家金币给敌人回血；钢铁卫士沿用
- * 旧规则（不可维修，不出现按钮）。
+ * 只为守方炮台（faction `defender` / unitType `cannon`）建按钮；海盗船、Boss 装甲件
+ * 与钢铁卫士也有 Health，但维修它们等于花玩家金币给敌人回血。
  *
- * 按钮是一个独立的根级实体，每帧把自己的世界变换对齐到目标单位血条 rig 的
- * 左缘上方：这样它随血条一起 billboard，又不会嵌进单位实体的射线子树，按到
- * 按钮不会误触炮台开火或空槽底座。
- *
- * 血量、Destroyed、血条可见性全部复用 HealthBarSystem 的视图结果（rig
- * visible），本系统只负责按钮的显隐、跟随与 `Repairing` 开关；真正的回血和
- * 扣钱仍然只由 RepairSystem 处理。
+ * 按钮是独立的根级实体，每帧把自己的世界变换对齐到目标血条 rig 的左缘上方：
+ * 这样它随血条一起 billboard，又不会嵌进单位实体的射线子树（按按钮不会误触炮台）。
+ * 显隐复用 HealthBarSystem 的 rig 可见性；回血与扣钱仍归 RepairSystem。
  */
 interface RepairButtonEntry {
-  /** 按钮自身的实体（RayInteractable + RepairButton）。 */
   readonly button: Entity;
-  /** 按钮服务的炮台实体。 */
   readonly unit: Entity;
   readonly root: Object3D;
-  /** 维修状态反馈：整组缩小 + 灰底换亮灰。 */
   readonly setRepairing: (repairing: boolean) => void;
   /** 目标的血条 rig，第一次可见时按名字解析并缓存。 */
   rig: Object3D | null;
@@ -60,9 +52,8 @@ export class RepairButtonSystem extends createSystem({
   pressed: { required: [RepairButton, Pressed] },
   directors: { required: [LevelDirector] },
 }) {
-  /** 炮台实体 index → 按钮条目。 */
   private readonly entries = new Map<number, RepairButtonEntry>();
-  /** 按钮实体 index → 按钮条目，供 Pressed 查询直接定位。 */
+  /** 供 Pressed 查询按按钮 index 直接定位。 */
   private readonly byButton = new Map<number, RepairButtonEntry>();
 
   // update() 不分配：全部预分配。
@@ -142,12 +133,11 @@ export class RepairButtonSystem extends createSystem({
 
       this.alignToBar(entry, rig);
 
-      // 维修中：整组缩小 + 灰底换亮灰；命中盒尺寸不变。
       entry.setRepairing(unit.hasComponent(Repairing));
     }
   }
 
-  /** 把按钮的世界位置 / 朝向对齐到血条 rig 的左缘上方（世界尺寸固定）。 */
+  /** 对齐到血条 rig 左缘上方；世界尺寸固定，偏移按 rig 世界缩放折算。 */
   private alignToBar(entry: RepairButtonEntry, rig: Object3D): void {
     rig.getWorldPosition(this.rigPosition);
     rig.getWorldScale(this.rigScale);
@@ -180,7 +170,7 @@ export class RepairButtonSystem extends createSystem({
     entry.root.position.copy(this.worldCenter);
   }
 
-  /** Pressed：切换目标炮台的 Repairing，门禁与旧按钮一致。 */
+  /** Pressed：切换目标的 Repairing；门禁与建造入口一致。 */
   private toggle(unit: Entity): void {
     if (this.paused() || this.over() || this.waitingStart()) return;
     if (unit.hasComponent(Destroyed) || !unit.hasComponent(Health)) return;

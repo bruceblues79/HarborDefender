@@ -38,25 +38,9 @@ import {
 } from './level-config.js';
 
 /**
- * Distance-based hit resolution between airborne shells and combatants'
- * hit cores. A shell whose faction differs from a core's is consumed the
- * moment its centre comes within the core radius: flight and faction tags
- * are removed and the mesh hides, returning the shell to the shared pool
- * exactly like a splash-down — but no water ripple is spawned, because the
- * ball struck a solid target. Instead a pooled hit-flash sphere blooms at
- * the struck core's centre — not the contact point, which sits inside the
- * core radius and reads as a dented hull edge rather than a clean hit.
- *
- * The hit also deals damage to the core's Health, read from the
- * attacker->target damage matrix (DAMAGE_MATRIX, keyed by the shell's
- * attacker unit type and the core's unit type; unknown pairs read 0). At
- * zero the unit dies — an attacker sinks (entity disposed, a splash ripple
- * marks the spot on the surface) and a defender cannon is
- * tagged Destroyed (hidden, out of every combat query; LevelWaveSystem
- * reads the tags for defeat).
- *
- * Runs after BallisticSystem so each frame's motion is tested at its end
- * position. Hits are collected during the sweep and resolved afterwards.
+ * Distance-based hit resolution between shells and combatants' hit cores;
+ * runs after BallisticSystem so motion is tested at each frame's end
+ * position, and hits are collected during the sweep, resolved afterwards.
  */
 export class ShellHitSystem extends createSystem({
   shells: { required: [ShellTag, BallisticFlight, ShellFaction] },
@@ -75,7 +59,6 @@ export class ShellHitSystem extends createSystem({
   private readonly hitCores: Entity[] = [];
   /** Peak scale per `hit` entry: defender cores at base size, ships larger. */
   private readonly hitPeakScales: number[] = [];
-  /** Damage per `hit` entry, read from the shell's faction. */
   private readonly hitDamages: number[] = [];
   /** Flashes handed out this frame; the free-flash query refreshes next frame. */
   private readonly claimedFlashes = new Set<number>();
@@ -107,7 +90,6 @@ export class ShellHitSystem extends createSystem({
     });
   }
 
-  /** True while the pause-menu tag sits on the director entity. */
   private paused(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GamePaused);
@@ -173,10 +155,8 @@ export class ShellHitSystem extends createSystem({
       if (!shell.hasComponent(BallisticFlight)) continue;
       shell.removeComponent(BallisticFlight);
       shell.removeComponent(ShellFaction);
-      // Always consume the shell mesh. Two shells can strike one core in the
-      // same sweep; the first kill drops the core's cached position, and the
-      // overkill hit must still hide its ball or it freezes mid-air as a
-      // visible orphan no system ever touches again.
+      // Two shells can strike one core in the same sweep; the overkill hit
+      // must still hide its ball or it freezes mid-air as a visible orphan.
       if (shell.object3D) shell.object3D.visible = false;
       const core = this.hitCores[i];
       // No cached position = the core died earlier in this same loop (its
@@ -190,14 +170,9 @@ export class ShellHitSystem extends createSystem({
       this.applyDamage(core, this.hitDamages[i]);
     }
 
-    // Death sweep: any live core whose pool has run dry dies here — whatever
-    // wrote the last points (a shell above, the boss laser, the chief death
-    // light), the death path stays single-truthed in this system. Runs
-    // after the shell resolution so a same-frame shell kill is not doubled.
-    // The victims are snapshotted first: kill() disposes entities, which
-    // mutates the live query array mid-iteration. The position-cache guard
-    // then skips anything already killed this frame (its disqualify ran and
-    // cleared the cache).
+    // Death sweep: any live core whose pool has run dry dies here, whatever
+    // wrote the last points. Victims are snapshotted first because kill()
+    // disposes entities and mutates the live query array mid-iteration.
     this.dying.length = 0;
     for (const core of this.queries.cores.entities) {
       if (Number(core.getValue(Health, 'current')) <= 0) this.dying.push(core);
@@ -207,11 +182,7 @@ export class ShellHitSystem extends createSystem({
     }
   }
 
-  /**
-   * Charge one hit of damage. The pool is the single truth: reaching zero
-   * funnels into `kill`, exactly like any other lethal write (boss laser,
-   * chief death light) picked up by the death sweep.
-   */
+  /** Charge one hit; zero funnels into `kill`, the same death path as every other lethal write. */
   private applyDamage(core: Entity, damage: number): void {
     const hp = Number(core.getValue(Health, 'current')) - damage;
     core.setValue(Health, 'current', Math.max(0, hp));
@@ -219,21 +190,6 @@ export class ShellHitSystem extends createSystem({
     this.kill(core);
   }
 
-  /**
-   * Kill a core whose pool is empty. Four paths:
-   *
-   * - the phase-two pirate chief head (IslewrathChief, task 031) pays the
-   *   BossChief bounty, bursts at the citadel top (deck-bounce chunks, no
-   *   sink ripple — it dies aboard), disposes, and raises the ChiefDown thin
-   *   command: LevelWaveSystem then clears the field and wins the run.
-   * - a boss gun turret (BossTurret) pays the flat BOSS_BOUNTY, bursts into
-   *   a scaled-down chunk cloud on
-   *   the deck (no sink ripple — it dies aboard), and is disposed so the
-   *   turret mesh leaves the hull clone. Its ECS children (health bar) tear
-   *   down via disqualify. No revival.
-   * - any other attacker bursts at the waves, pays, sinks (dispose + ripple).
-   * - a defender cannon is tagged Destroyed and hidden.
-   */
   private kill(core: Entity): void {
     const at = this.corePositions.get(core.index);
     // One tier read per kill: the spawn site wrote the bounty class onto the
@@ -259,8 +215,6 @@ export class ShellHitSystem extends createSystem({
       return;
     }
     if (core.hasComponent(BossTurret)) {
-      // Kill bounty: the turret's flat BOSS_BOUNTY, paid into the director's
-      // wallet — each turret pays once on death.
       this.creditKillReward(reward);
       if (at) {
         this.spawnDieBurst(
@@ -277,8 +231,6 @@ export class ShellHitSystem extends createSystem({
       return;
     }
     if (String(core.getValue(HitCore, 'faction')) === 'attacker') {
-      // Kill bounty: the sunk attacker's reward tier (REWARD_TABLE), paid
-      // into the director's wallet — the same pool repairs and builds drain.
       this.creditKillReward(reward);
       if (at) {
         this.spawnDieBurst(
@@ -289,9 +241,6 @@ export class ShellHitSystem extends createSystem({
         );
         this.spawnSinkRipple(at.x, at.z);
       }
-      // Keep the shared prototype resources alive: ships are prototype
-      // clones, and the default resource sweep would free geometry/materials/
-      // textures every later spawn clones from.
       core.dispose({ disposeResources: false });
     } else {
       if (at) {
@@ -307,12 +256,6 @@ export class ShellHitSystem extends createSystem({
     }
   }
 
-  /**
-   * Pay the dying core's reward-tier bounty into the director's wallet.
-   * Runs on the death frame only (never per ship per frame); several kills
-   * in one sweep each pay. One flat REWARD_TABLE read per tier — no
-   * destruction-order or economy-linked pricing.
-   */
   private creditKillReward(tier: RewardTier): void {
     if (tier === RewardTier.None) return;
     const amount = REWARD_TABLE[tier];
@@ -324,16 +267,8 @@ export class ShellHitSystem extends createSystem({
   }
 
   /**
-   * Claim a free pooled burst and plant it at the dying unit's core:
-   * position, visible, then the `DieBurst` component that both hands
-   * animation to DieBurstSystem and (via its synchronous qualify callback)
-   * scatters the chunks. Burst behaviour is fully explicit — `sizeRatio`
-   * scales the cloud, `floorY` is the rest floor in the pooled mesh's LOCAL
-   * space (chunk matrices integrate there, so callers convert once at
-   * spawn: the wall top sits slightly below the core so chunks read as
-   * resting on the stone, the water line a bit below a sinking hull), and
-   * `floorBounce` is the rebound damping. Pool empty: skip silently — a
-   * busy battle loses the odd burst, never a hit.
+   * `floorY` is the rest floor in the pooled mesh's LOCAL space; callers
+   * convert once at spawn. Pool empty: skip silently.
    */
   private spawnDieBurst(
     position: Vector3,
@@ -361,12 +296,7 @@ export class ShellHitSystem extends createSystem({
     }
   }
 
-  /**
-   * Claim a free pooled flash and land its starting state at the struck
-   * core's centre: position, start scale, visible, then the HitFlash tag
-   * that hands animation to HitFlashSystem. Pool empty: skip silently — a
-   * busy battle loses the odd bloom, never a hit.
-   */
+  /** Claim a free pooled flash at the struck core's centre; pool empty skips silently. */
   private spawnHitFlash(position: Vector3, peakScale: number): void {
     for (const flash of this.queries.freeFlashes.entities) {
       if (this.claimedFlashes.has(flash.index)) continue;
@@ -388,9 +318,8 @@ export class ShellHitSystem extends createSystem({
   }
 
   /**
-   * Surface ripple where a ship went down — the same pooled-splash pattern
-   * BallisticSystem uses for splash-downs; SplashSystem owns the fade-out.
-   * The hull itself is disposed, so the ripple is the sinking's only trace.
+   * Ripple where a ship went down — the hull itself is disposed, so this is
+   * the sinking's only trace.
    */
   private spawnSinkRipple(x: number, z: number): void {
     const ripple = new Object3D();

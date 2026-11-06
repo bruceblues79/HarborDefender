@@ -28,19 +28,9 @@ import {
 import { COMBAT } from './level-config.js';
 
 /**
- * Owns the shared projectile pools and the cannons' fire rhythm.
- *
- * Pools: `COMBAT.shellPoolSize` cannonballs and `COMBAT.stonePoolSize`
- * ornithopter stones, all created synchronously at init. All copies share
- * geometry/materials and carry ShellTag; stones additionally carry
- * StoneTag, which routes them to their own free query so a ball-firing gun
- * can never grab a stone and vice versa.
- * A projectile is free exactly while it does not carry BallisticFlight.
- * Firing never allocates — it repositions a free projectile at the muzzle
- * and hands it to BallisticSystem by adding BallisticFlight.
- *
- * The muzzle is the `muzzle` child battle-setup hangs under each cannon's
- * gun_rotate pivot, so the launch direction always follows the current aim.
+ * Owns the shared projectile pools; a projectile is free while it lacks
+ * `BallisticFlight`. Stones carry StoneTag so a ball gun can never grab one.
+ * Muzzle is the `muzzle` child battle-setup hangs under gun_rotate.
  */
 export class CannonFireSystem extends createSystem({
   cannons: { required: [CannonFire], excluded: [Destroyed] },
@@ -51,11 +41,9 @@ export class CannonFireSystem extends createSystem({
   airborne: { required: [ShellTag, BallisticFlight] },
   directors: { required: [LevelDirector] },
 }) {
-  /** Muzzle object per cannon entity index, resolved once on qualify. */
   private readonly muzzles = new Map<number, Object3D>();
   /** Shells handed out this frame; the free-shell query only refreshes next frame. */
   private readonly claimed = new Set<number>();
-  /** Snapshot buffer for bulk recall; allocated once, reused per call. */
   private readonly retiring: Entity[] = [];
   private readonly muzzlePos = new Vector3();
   private readonly muzzleDir = new Vector3();
@@ -73,7 +61,6 @@ export class CannonFireSystem extends createSystem({
       shell.visible = false;
       this.world.createTransformEntity(shell).addComponent(ShellTag);
     }
-    // Stone pool: plain icosahedron rocks for the ornithopters, no glb wait.
     const stoneGeometry = new IcosahedronGeometry(COMBAT.stoneRadius, 0);
     const stoneMaterial = new MeshStandardMaterial({
       color: COMBAT.stoneColor,
@@ -98,24 +85,20 @@ export class CannonFireSystem extends createSystem({
   }
 
   update(delta: number): void {
-    // Hold fire until the START gate opens: LevelDirector.phase is the single
-    // truth for game flow. Cooldowns were rolled at mount time and tick only
-    // once the level begins. GamePaused freezes the rhythm without touching
-    // any cooldown value; GameOver holds it for good after the outcome.
+    // Hold fire until the START gate opens (LevelDirector.phase is the single
+    // flow truth); pause and game-over freeze cooldowns without changing them.
     if (this.paused() || this.over() || !this.gameRunning()) return;
     this.claimed.clear();
     for (const entity of this.queries.cannons.entities) {
       let cooldown = Number(entity.getValue(CannonFire, 'cooldown')) - delta;
       if (cooldown <= 0) {
-        // Pool empty: retry shortly instead of banking negative time, which
-        // would burst several shells out the moment one comes back.
+        // Pool empty: retry in 0.1 s instead of banking negative time.
         cooldown = this.fire(entity) ? this.rollInterval(entity) : 0.1;
       }
       entity.setValue(CannonFire, 'cooldown', cooldown);
     }
   }
 
-  /** Every cooldown is a fresh roll: the cannon's interval plus a jitter. */
   private rollInterval(cannon: Entity): number {
     return (
       Number(cannon.getValue(CannonFire, 'interval')) +
@@ -124,7 +107,7 @@ export class CannonFireSystem extends createSystem({
     );
   }
 
-  /** Launch one free projectile along the muzzle's world -Z. False when none is free. */
+  /** Launch one free projectile down the muzzle's -Z; false when the pool is empty. */
   private fire(cannon: Entity): boolean {
     const muzzle = this.muzzles.get(cannon.index);
     if (!muzzle) return false;
@@ -143,9 +126,8 @@ export class CannonFireSystem extends createSystem({
       vz: this.muzzleDir.z * COMBAT.shellSpeed,
       drag: COMBAT.shellDrag,
     });
-    // City batteries fight for the defender side; ShellHitSystem uses the
-    // faction to pick consumable cores and the unit type to pick the damage
-    // matrix row.
+    // City batteries fight for the defender side; ShellHitSystem reads both the
+    // faction and unitType.
     shell.addComponent(ShellFaction, {
       faction: 'defender',
       unitType: String(cannon.getValue(CannonFire, 'unitType')),
@@ -154,9 +136,8 @@ export class CannonFireSystem extends createSystem({
   }
 
   /**
-   * First pooled shell that is neither airborne nor already claimed this
-   * frame. The live hasComponent check also guards against PirateFireSystem
-   * claiming the same shell on this frame, since queries refresh next frame.
+   * First pooled shell neither airborne nor claimed this frame; the live
+   * hasComponent check also blocks PirateFireSystem, whose claim lands next frame.
    */
   private firstFreeShell(): Entity | undefined {
     for (const shell of this.queries.freeShells.entities) {
@@ -168,7 +149,6 @@ export class CannonFireSystem extends createSystem({
     return undefined;
   }
 
-  /** True once the START hand-off has moved the director past waiting-start. */
   private gameRunning(): boolean {
     for (const director of this.queries.directors.entities) {
       return (
@@ -178,7 +158,6 @@ export class CannonFireSystem extends createSystem({
     return false;
   }
 
-  /** True while the pause-menu tag sits on the director entity. */
   private paused(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GamePaused);
@@ -186,7 +165,6 @@ export class CannonFireSystem extends createSystem({
     return false;
   }
 
-  /** True once the run has ended (victory or defeat) — the guns fall silent. */
   private over(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GameOver);
@@ -194,11 +172,7 @@ export class CannonFireSystem extends createSystem({
     return false;
   }
 
-  /**
-   * Recall every airborne shell to the pool (RESTART / MAIN reset): hide the
-   * mesh and drop the flight + faction tags so the shell is free again. The
-   * pool itself is never rebuilt.
-   */
+  /** RESTART / MAIN reset: hide and free every airborne shell; the pool is never rebuilt. */
   recycleAirborneShells(): void {
     this.retiring.length = 0;
     for (const shell of this.queries.airborne.entities) {

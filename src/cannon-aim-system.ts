@@ -30,31 +30,13 @@ const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
 
 /**
- * Drag aiming for the cannons (browser drag / XR pinch-drag), built on
- * IWSDK's native ray interaction: the press itself is the InputSystem's
- * `Pressed` tag, so one gesture path covers mouse, touch and XR rays — no
- * hand-rolled gesture recognition.
- *
- * - Browser: once a press on a cannon anchors a pointer, that pointer owns
- *   the drag until pointerup (grab-the-barrel semantics — the drag survives
- *   sliding off the barrel, matching how a real grabbed object behaves).
- *   The whole mount is one hit target with no per-part zones: horizontal
- *   travel feeds yaw (mirrored, pull right swings the muzzle left) while
- *   vertical travel feeds pitch (pull down drops the muzzle) — both at once.
- * - XR: grabbing a hovered cannon while the trigger is held anchors that
- *   hand; the hand's world-space travel from the grab pose maps to the same
- *   dual-axis mapping (wrist displacement, not ray-plane geometry — turret
- *   rotation never feeds back into the mapping). The drag continues until
- *   that hand
- *   releases, so the barrel or the ray wandering off never drops the
- *   gesture. Starts key off `Hovered` rather than `Pressed`: InputSystem
- *   clears `Pressed` the moment the ray slides off the barrel (even
- *   mid-pinch) and never re-fires it without a fresh pinch, while `Hovered`
- *   returns as soon as the ray is back — a grazing pinch no longer loses
- *   the grab.
- *
- * `CannonAim` stays the single truth: this system applies it to the cannon
- * root's yaw and the gun_rotate pivot's pitch every frame, dragging or not.
+ * Drag aiming for the cannons (browser drag / XR wrist-drag) on top of IWSDK's
+ * native ray interaction:
+ * - browser: a press anchors one pointer until pointerup; the whole mount is
+ *   one hit target, horizontal travel feeds yaw and vertical feeds pitch;
+ * - XR: `Hovered` starts the drag, because `Pressed` is cleared the moment the
+ *   ray slides off the barrel, even mid-pinch.
+ * `CannonAim` stays the single truth; this system only applies yaw/pitch.
  */
 export class CannonAimSystem extends createSystem({
   cannons: { required: [CannonAim], excluded: [Destroyed] },
@@ -63,17 +45,16 @@ export class CannonAimSystem extends createSystem({
   hovered: { required: [CannonAim, Hovered], excluded: [Destroyed] },
   directors: { required: [LevelDirector] },
 }) {
-  /** gun_rotate pivot per cannon entity index, resolved once on qualify. */
   private readonly gunPivots = new Map<number, Object3D>();
 
-  // --- browser drag state (CameraOrbitSystem's pointer-tracking pattern) ---
+  // Browser drag state (CameraOrbitSystem's pointer-tracking pattern).
   private readonly pointers = new Map<number, { x: number; y: number }>();
   /** Pointer and cannon owning the active browser drag, once anchored. */
   private dragPointerId: number | null = null;
   private dragCannon: Entity | null = null;
   private readonly dragLast = { x: 0, y: 0 };
 
-  // --- XR drag state: one active drag, anchored to one hand's wrist travel ---
+  // XR drag state: one active drag, anchored to one hand's wrist travel.
   private xrDragCannon: number | null = null;
   /** Same session as xrDragCannon, kept for tag teardown on release. */
   private xrDragEntity: Entity | null = null;
@@ -152,14 +133,11 @@ export class CannonAimSystem extends createSystem({
   }
 
   update(): void {
-    // Pause freezes new drags and transform application; an in-flight drag is
-    // simply never updated further (its pointer-up cleanup still runs). The
-    // GameOver hold keeps the battery parked behind the result panel too.
+    // Pause/GameOver freeze new drags and transform application; an in-flight
+    // drag simply stops updating (its pointer-up cleanup still runs).
     if (this.paused() || this.over()) return;
-    // The START gate blocks new aim drags exactly like the fire rhythm is
-    // held: before beginLevel() the guns are scenery, not controls. The
-    // transform pass below still runs, so resetCannonAim() re-applies the
-    // levelled pose while the START panel is up.
+    // The START gate blocks new drags; the transform pass below still runs so
+    // resetCannonAim() re-applies the levelled pose.
     if (this.gameRunning()) {
       if (this.world.visibilityState.peek() === VisibilityState.NonImmersive) {
         this.updateBrowserDrag();
@@ -181,19 +159,15 @@ export class CannonAimSystem extends createSystem({
     }
   }
 
-  // ---------------------------------------------------------------- browser
-
   private updateBrowserDrag(): void {
     if (this.dragPointerId === null || !this.dragCannon) {
-      // Anchor only when a cannon is actually pressed; a press on open water
-      // belongs to the camera rig and must never start an aim drag.
+      // A press on open water belongs to the camera rig, never an aim drag.
       const cannon = this.firstPressedCannon();
       if (!cannon || this.pointers.size === 0) return;
       const [id, pos] = [...this.pointers.entries()][0];
       this.dragPointerId = id;
       this.dragCannon = cannon;
-      // Whole-gesture marker: survives sliding off the mount (unlike the
-      // transient Pressed tag), cleared on pointerup / pointercancel.
+      // Whole-gesture marker: survives sliding off the mount; cleared on pointerup.
       cannon.addComponent(AimDragging);
       this.dragLast.x = pos.x;
       this.dragLast.y = pos.y;
@@ -205,35 +179,29 @@ export class CannonAimSystem extends createSystem({
     const dy = pos.y - this.dragLast.y;
     this.dragLast.x = pos.x;
     this.dragLast.y = pos.y;
-    // One hit target, two axes at once — mirrored, pull right -> muzzle
-    // left; pitch keeps "pull down -> muzzle down".
+    // One hit target, two axes at once — mirrored: pull right -> muzzle left.
     const sensitivity = COMBAT.aimDegreesPerPixel;
     this.addAim(this.dragCannon, -dx * sensitivity, -dy * sensitivity);
   }
 
-  // -------------------------------------------------------------------- XR
-
   private updateXRDrag(): void {
     if (this.xrDragSpace === null) {
-      // Start: trigger held while the ray hovers a cannon. `Hovered` is the
-      // grab signal — it self-heals when a jittered ray slides off and back
-      // (InputSystem re-enters without a fresh pinch, unlike `Pressed`).
+      // Start: trigger held while the ray hovers a cannon. `Hovered` self-heals
+      // when a jittered ray slides off and back, unlike `Pressed`.
       const space = this.heldRaySpace();
       const cannon = space ? this.firstHoveredCannon() : undefined;
       if (!space || !cannon) return;
       this.xrDragCannon = cannon.index;
       this.xrDragEntity = cannon;
       this.xrDragSpace = space;
-      // Whole-gesture marker, mirroring the browser anchor: the trajectory
-      // guide tracks the tag, not the private drag state.
+      // Whole-gesture marker, mirroring the browser anchor; the guide tracks the tag.
       cannon.addComponent(AimDragging);
       space.getWorldPosition(this.xrHandStart);
       this.xrAimStartYaw = Number(cannon.getValue(CannonAim, 'yawDeg'));
       this.xrAimStartPitch = Number(cannon.getValue(CannonAim, 'pitchDeg'));
       return;
     }
-    // Continue with the anchoring hand only — releasing it is the sole exit,
-    // so the barrel rotating away or the ray wandering never drops the drag.
+    // Continue with the anchoring hand only; its release is the sole exit.
     if (!this.handTriggerHeld(this.xrDragSpace)) {
       this.xrDragEntity?.removeComponent(AimDragging);
       this.xrDragEntity = null;
@@ -253,8 +221,7 @@ export class CannonAimSystem extends createSystem({
       return;
     }
     this.xrDragSpace.getWorldPosition(this.xrHandPos);
-    // Wrist travel drives both axes, absolute from the grab pose, mirrored
-    // like the browser drag: hand right -> muzzle left, hand up -> muzzle up.
+    // Wrist travel from the grab pose drives both axes, mirrored like the browser drag.
     const handDx = this.xrHandPos.x - this.xrHandStart.x;
     const handDy = this.xrHandPos.y - this.xrHandStart.y;
     this.setAim(
@@ -264,7 +231,6 @@ export class CannonAimSystem extends createSystem({
     );
   }
 
-  /** Hand whose select (trigger / pinch) is currently held, right first. */
   private heldRaySpace(): Object3D | undefined {
     const raySpaces = this.world.player.raySpaces;
     if (this.handTriggerHeld(raySpaces.right)) return raySpaces.right;
@@ -272,7 +238,6 @@ export class CannonAimSystem extends createSystem({
     return undefined;
   }
 
-  /** Trigger state of the specific hand that owns `space`. */
   private handTriggerHeld(space: Object3D | undefined): boolean {
     if (!space) return false;
     const gamepads = this.world.input.xr.gamepads;
@@ -290,8 +255,6 @@ export class CannonAimSystem extends createSystem({
     for (const entity of this.queries.hovered.entities) return entity;
     return undefined;
   }
-
-  // ---------------------------------------------------------------- shared
 
   private firstPressedCannon(): Entity | undefined {
     for (const entity of this.queries.pressed.entities) return entity;
@@ -314,16 +277,14 @@ export class CannonAimSystem extends createSystem({
   }
 
   private setAim(cannon: Entity, yawDeg: number, pitchDeg: number): void {
-    // Traverse limits live on the entity like the elevation limits: cannons
-    // keep the stock ±45° via the component default.
+    // Traverse limits live on the entity; cannons keep the stock ±45° default.
     const yawRange = Number(cannon.getValue(CannonAim, 'yawRangeDeg'));
     cannon.setValue(
       CannonAim,
       'yawDeg',
       clamp(yawDeg, -yawRange, yawRange),
     );
-    // Elevation limits live on the entity: cannons get the stock 0-80 envelope
-    // via component defaults.
+    // Elevation limits live on the entity; cannons get the stock 0-80 envelope.
     cannon.setValue(
       CannonAim,
       'pitchDeg',

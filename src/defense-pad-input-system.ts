@@ -18,24 +18,16 @@ import {
 import { getDefenseSlotInfo } from './battle-setup.js';
 
 /**
- * Pedestal pads — the build entry, and the only writer of the pad's
- * interaction gate.
+ * Pedestal pads — the build entry and the only writer of the pad's interaction gate.
+ * An empty slot's pad (nothing mounted, or the unit carries Destroyed) holds
+ * RayInteractable; an occupied slot's pad drops it so the mounted cannon keeps its own
+ * ray interaction. Otherwise the pad's look belongs to DefensePadSystem.
  *
- * An empty slot's pad (nothing mounted, or the mounted unit carries
- * Destroyed) holds RayInteractable and takes a `Pressed` tag (mouse / touch
- * / XR ray); an occupied slot's pad drops RayInteractable so the mounted
- * cannon keeps its own ray interaction. The pad itself keeps breathing
- * through DefensePadSystem either way.
+ * Pressing an empty pad opens the shared build panel (BuildOpen + slot). Pressing while
+ * a dock is open is toggle / switch: remove+add fires the panel's disqualify (hide)
+ * then qualify (reposition + reprice) inside one frame.
  *
- * Pressing an empty pad opens the shared build panel on the director
- * (BuildOpen + slot). Pressing while a dock is already open is toggle /
- * switch, matching the retired wall build icon: the open slot's own pad
- * closes the dock, another empty pad's press closes the old dock and
- * reopens it over the new slot — remove+add fires the panel's disqualify
- * (hide) then qualify (reposition + reprice) inside one frame.
- *
- * Commands share the cannon-aim phase gate: before the START gate opens,
- * while paused or after an outcome the pads ignore presses.
+ * Presses are ignored before START, while paused, and after an outcome.
  */
 export class DefensePadInputSystem extends createSystem({
   pads: { required: [DefensePad] },
@@ -49,9 +41,8 @@ export class DefensePadInputSystem extends createSystem({
   }
 
   /**
-   * Mirror the battery registry onto the pads: an empty slot carries
-   * RayInteractable, an occupied one does not. The `hasComponent` guard
-   * makes this a no-op on frames where occupancy has not changed.
+   * Mirror the battery registry onto the pads: the `hasComponent` guard makes this a
+   * no-op on frames where occupancy has not changed.
    */
   update(): void {
     for (const pad of this.queries.pads.entities) {
@@ -64,7 +55,7 @@ export class DefensePadInputSystem extends createSystem({
     }
   }
 
-  /** Empty = nothing mounted, or the mounted unit was knocked out. */
+  /** A Destroyed mounted unit counts as empty. */
   private slotEmpty(slot: number): boolean {
     const info = getDefenseSlotInfo(slot);
     return !info || info.entity.hasComponent(Destroyed);

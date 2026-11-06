@@ -14,25 +14,18 @@ import { MAX_WAKE } from './scene-assets/ocean.scene-asset.js';
 const WAKE_BLEND_TIME = 0.3;
 
 /**
- * Drives the ocean surface shader clock for every entity tagged with
- * OceanTag, and feeds active WakeSource positions into the shader's
- * wake uniform array so ships and projectiles leave concentric ripples.
- *
- * Fade in/out: set `targetStrength` to 0 or 1; OceanSystem lerps the
- * running `strength` toward it each frame. Sources with strength < 0.001
- * are skipped so fully faded wakes don't waste shader uniform slots.
- *
- * Pausing: the wave clock keeps rolling (time comes from the world clock, so
- * the sea never freezes visually), but wake blending halts and the uniform
- * feed holds its last value — ripples stop animating, the swell keeps its
- * float, matching a frozen battlefield.
+ * Drives the ocean shader clock for OceanTag entities and feeds active WakeSource
+ * positions into the wake uniform arrays so ships and projectiles leave ripples.
+ * `targetStrength` 0/1 eases `strength`; sources below 0.001 are skipped so faded
+ * wakes do not occupy uniform slots. While paused the clock keeps running but wake
+ * blending and the uniform feed hold their last value.
  */
 export class OceanSystem extends createSystem({
   oceans: { required: [OceanTag] },
   wakes: { required: [WakeSource] },
   directors: { required: [LevelDirector] },
 }) {
-  /** Pre-allocated wake data; the shader uniform points into these arrays. */
+  /** Pre-allocated wake data, copied into the shader uniform arrays each frame. */
   private readonly wakePos = Array.from(
     { length: MAX_WAKE },
     () => new Vector3(),
@@ -45,10 +38,9 @@ export class OceanSystem extends createSystem({
   private readonly scratch = new Vector3();
 
   update(delta: number, time: number): void {
-    // Wake feed keeps its last frame's value while paused — no blending, no
-    // re-upload — and the clock keeps the sea visually alive.
+    // Paused: hold the last wake feed; the clock keeps the sea visually alive.
     if (this.paused()) return;
-    // --- collect active wake sources (pre-allocated, no allocation per frame) ---
+    // Pre-allocated; no allocation per frame.
     let count = 0;
     for (const entity of this.queries.wakes.entities) {
       if (count >= MAX_WAKE) break;
@@ -70,7 +62,6 @@ export class OceanSystem extends createSystem({
       count++;
     }
 
-    // --- update every ocean mesh ---
     for (const entity of this.queries.oceans.entities) {
       entity.object3D?.traverse((child) => {
         const mesh = child as Mesh;
@@ -95,10 +86,8 @@ export class OceanSystem extends createSystem({
   }
 
   /**
-   * Ease a running value toward its target at a fixed rate (full unit per
-   * WAKE_BLEND_TIME). Snaps exactly onto the target on arrival and, once the
-   * two agree, leaves the component untouched so settled sources cost no
-   * component writes.
+   * Ease toward the target at one unit per WAKE_BLEND_TIME; snaps exactly on arrival
+   * and writes nothing once the two agree.
    */
   private blend(
     entity: Entity,

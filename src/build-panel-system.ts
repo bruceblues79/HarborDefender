@@ -47,55 +47,37 @@ type UiElement = Object3D & {
 };
 
 /**
- * Fixed world anchor of the dock: x follows the opened slot
- * (DEFENSE_SLOTS[slot].x) and the height sits near the cannon health bar
- * (bar top ≈ 1.34 world) — the dock hangs just over the unit's bar instead
- * of floating clear of every defender. z runs a hair land-side (+z) of the
- * wall centre line so the billboarded glass layers in front of the bar
- * plane rather than slicing it. The Billboard(lockY) component on the dock
- * entity yaws it toward the viewer.
+ * Fixed world anchor of the dock: y sits near the cannon health bar top
+ * (≈ 1.34 world), z a hair land-side of the wall centre so the billboarded
+ * glass layers in front of the bar plane instead of slicing it.
  */
 const BAR_ANCHOR = { y: 1.4, z: WALL_CENTER_Z + 0.1 };
 /**
- * Per-environment scale over the dock's authored 0.33 × 0.205 m: XR runs
- * the authored size exactly, flat mode grows it 1.8x for readability across
- * the orbit camera's ~5 m stand-off (same pattern as the pause menu factors).
+ * Per-environment scale over the dock's authored 0.33 × 0.205 m: flat mode
+ * grows it 1.8x for the orbit camera's ~5 m stand-off.
  */
 const PANEL_FACTORS = { xr: 1, flat: 1.8 };
 
 /**
- * The shared build dock — the only writer of the BuildOpen lifecycle.
- *
- * A BuildOpen tag on the director (added by an empty slot's pedestal pad)
- * reveals the billboarded dock over that slot. The bar shows one circular
- * purchase button per placeable unit at the full book value — there is no
- * trade-in. A unit button whose price exceeds the wallet renders dimmed; the
- * top-row badge beside the close button shows the live gold. Picking a
- * button mounts the unit into the empty slot via replaceDefenseUnit, deducts
- * from the wallet and closes; the round close button above the bar dismisses
- * without spending. Pressing another empty pad moves the dock there,
- * pressing the open slot's own pad closes it. The dock never opens over an
- * occupied slot, so its rows always describe a build.
+ * The shared build dock: BuildOpen on the director reveals the billboarded
+ * dock over that empty slot's pad; a pick mounts the unit, deducts and closes.
  */
 export class BuildPanelSystem extends createSystem({
   directors: { required: [LevelDirector] },
   /**
-   * The open state needs its own query: BuildOpen mounts onto a director
-   * that has long since qualified the plain directors query, and adding a
-   * component to an already-qualifying entity does NOT re-fire 'qualify'
-   * there. This query qualifies exactly when BuildOpen mounts (panel opens)
-   * and disqualifies when it is removed (panel closes).
+   * BuildOpen mounts onto a director that already qualified the plain
+   * directors query, and adding a component does NOT re-fire 'qualify'
+   * there — so the open state needs its own query.
    */
   openDirectors: { required: [LevelDirector, BuildOpen] },
 }) {
   private panel: UIKitMLAsset | null = null;
   /** Environment the panel scale was last applied for; a flip re-applies. */
   private factorsEnvironment: boolean | null = null;
-  /** Live gold readout in the top-row badge, next to the close button. */
+  /** Live gold readout in the top-row badge. */
   private walletText: Text | null = null;
   /** Last badge string written; skips redundant Text writes while gold sits still. */
   private lastWalletText: string | null = null;
-  /** Unit buttons keyed by unit — driven through the two-state class below. */
   private readonly rows = new Map<DefenseUnitId, UiElement | null>();
   /** Class currently applied per unit button; guards redundant class swaps. */
   private readonly unitClasses = new Map<DefenseUnitId, string>();
@@ -127,12 +109,9 @@ export class BuildPanelSystem extends createSystem({
         // One interactable over the whole panel routes presses into the
         // UIKitML documents (same pattern as the scene-authored panels).
         panelEntity.addComponent(RayInteractable);
-        // The whole panel surface blocks the camera rig: rows, the scroll
-        // list, the header, the gaps between them — a drag anywhere on the
-        // glass must never orbit the flat camera. The ECS tag rides the
-        // same Hovered/Pressed route the cannon aim drags use, so it also
-        // holds for touch where synthetic pointerIds never match native
-        // ones (the per-element addUiBlocker path fails there).
+        // The whole panel surface blocks the camera rig; the tag rides the
+        // Hovered/Pressed route, so it also holds for touch where synthetic
+        // pointerIds never match native ones.
         panelEntity.addComponent(CameraBlocker);
 
         for (const unitId of PLACEABLE_UNITS) {
@@ -169,10 +148,8 @@ export class BuildPanelSystem extends createSystem({
   }
 
   /**
-   * UIKitML has no <text> element: static markup text children become Text
-   * components under their container. A dynamic readout is therefore a
-   * container with an id wrapping one text child — this finds that child so
-   * its `text` property can be rewritten.
+   * UIKitML has no <text> element: a dynamic readout is a container wrapping
+   * one Text child — this finds that child.
    */
   private resolveText(container: Object3D | null): Text | null {
     if (!container) return null;
@@ -183,7 +160,6 @@ export class BuildPanelSystem extends createSystem({
     return (child as Text | undefined) ?? null;
   }
 
-  /** The director currently holding BuildOpen, if any. */
   private findOpenDirector(): Entity | null {
     for (const director of this.queries.directors.entities) {
       if (director.hasComponent(BuildOpen)) return director;
@@ -209,18 +185,14 @@ export class BuildPanelSystem extends createSystem({
     this.panel.scale.setScalar(immersive ? PANEL_FACTORS.xr : PANEL_FACTORS.flat);
   }
 
-  /**
-   * Price for unitId: always the full book value — there is no trade-in.
-   */
+  /** Price for unitId: always the full book value — there is no trade-in. */
   private priceFor(unitId: DefenseUnitId): number {
     return ECONOMY.unitValues[unitId] ?? 0;
   }
 
   /**
-   * Drive every button's two-state class from live state: a price above the
-   * current wallet dims the button, the rest stay in the default style. The
-   * top-row badge mirrors the wallet, so gold spent or earned elsewhere shows
-   * live while the dock is open.
+   * Drive every button's two-state class from live state and mirror the
+   * wallet in the top-row badge.
    */
   private refreshRows(director: Entity): void {
     const money = director.hasComponent(Wallet)
@@ -243,9 +215,7 @@ export class BuildPanelSystem extends createSystem({
       let next: string;
       if (
         // UNIQUE_UNITS (全场唯一): a live carrier anywhere grays its row in
-        // every other slot's dock — same "cannot buy" look as an unmet
-        // price, zero new styles. Refreshes per frame, so building or
-        // losing the carrier flips every open dock live.
+        // every other slot's dock, same look as an unmet price.
         (UNIQUE_UNITS.has(unitId) && hasLiveDefenseUnit(unitId)) ||
         price > money
       ) {
@@ -258,9 +228,8 @@ export class BuildPanelSystem extends createSystem({
   }
 
   /**
-   * Toggle a unit button's class: runtime setProperties display writes the
-   * base property layer, which the markup's .dock-unit class layer outranks —
-   * only a class swap reliably toggles the state.
+   * Runtime setProperties writes the base property layer, which the markup's
+   * .dock-unit class layer outranks — only a class swap toggles the state.
    */
   private setUnitClass(
     unitId: DefenseUnitId,
@@ -275,10 +244,6 @@ export class BuildPanelSystem extends createSystem({
     this.unitClasses.set(unitId, next);
   }
 
-  /**
-   * BuildOpen mounted: move the dock over that slot (x follows the slot, y/z
-   * constant), reveal it and price the buttons.
-   */
   private openPanel(director: Entity): void {
     if (!this.panel) {
       // The panel asset has not finished loading yet; drop the command —

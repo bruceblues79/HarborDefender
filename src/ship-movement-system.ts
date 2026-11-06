@@ -20,22 +20,8 @@ import {
 } from './level-config.js';
 
 /**
- * Runs the shared march pattern (`default-ship` / `default-flyer`).
- *
- * Moving: sail the straight line from the spawn point to the rolled target at
- * the unit's own cruiseY — ships ride the waterline, the bombardier holds
- * FLYER_Y; a water unit keeps `stopDistance` behind a same-type water unit
- * ahead along its travel direction and waits for it to clear (airborne units
- * never queue — WakeSource presence marks water contact).
- * Stopped: hold at the target, wake eased down.
- *
- * The wake is bound to motion: WAKE_STRENGTH_MOVING while under way,
- * WAKE_STRENGTH_HALTED while stopped or waiting.
- * WakeSource targets are only rewritten when they change; OceanSystem eases
- * the running values toward them.
- *
- * Visual arrival (the hull materialising) belongs to SpawnFadeSystem and is
- * deliberately not a gate on movement.
+ * Runs the shared march pattern; visual arrival belongs to SpawnFadeSystem and
+ * is deliberately not a gate. Same-type water units queue (flyers never do).
  */
 export class ShipMovementSystem extends createSystem({
   // WakeSource is deliberately absent: flyers march the same line but churn
@@ -54,7 +40,6 @@ export class ShipMovementSystem extends createSystem({
     }
   }
 
-  /** True while the pause-menu tag sits on the director entity. */
   private paused(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GamePaused);
@@ -63,12 +48,8 @@ export class ShipMovementSystem extends createSystem({
   }
 
   /**
-   * Sail toward the target, yielding to a same-type ship ahead.
-   *
-   * Blocking is re-evaluated every frame and only skips that frame's step —
-   * `state` stays 'moving' and the rolled target is never rewritten, so as
-   * soon as the corridor ahead clears the ship resumes toward its own target
-   * point. The only thing that ends the run is arriving there.
+   * Blocking only skips this frame's step: `state` stays 'moving' and the
+   * target is never rewritten, so the ship resumes once the lane clears.
    */
   private advance(entity: Entity, object: Object3D, delta: number): void {
     const targetX = Number(entity.getValue(ShipMovement, 'targetX'));
@@ -88,9 +69,7 @@ export class ShipMovementSystem extends createSystem({
     }
     this.setWake(entity, WAKE_STRENGTH_MOVING, true);
 
-    // Altitude is per-unit: ships cruise at the waterline, the bombardier
-    // holds FLYER_Y. Read once per advance, applied to both arrival and
-    // in-flight positioning.
+    // Altitude is per-unit: ships at the waterline, the bombardier at FLYER_Y.
     const cruiseY = Number(entity.getValue(ShipMovement, 'cruiseY'));
     const step = Number(entity.getValue(ShipMovement, 'speed')) * delta;
     if (step >= remaining) {
@@ -106,10 +85,7 @@ export class ShipMovementSystem extends createSystem({
     );
   }
 
-  /**
-   * True while a same-type ship sits ahead within stopDistance — ahead means
-   * inside a corridor along this ship's travel direction (dx, dz).
-   */
+  /** True while a same-type ship sits inside the forward corridor within stopDistance. */
   private blockedAhead(
     entity: Entity,
     object: Object3D,
@@ -130,11 +106,8 @@ export class ShipMovementSystem extends createSystem({
       const otherObject = other.object3D;
       if (!otherObject || otherObject === object) continue;
       if (other.getValue(UnitTag, 'unitType') !== unitType) continue;
-      // Airborne units never queue: they march above the water where hulls
-      // cannot collide, and the corridor yield would only deadlock crossing
-      // routes (two simultaneous flyers blocking each other forever).
-      // WakeSource presence is the unit-sheet water-contact fact — flyers
-      // carry none (same unitType ⇒ same wake-ness, so one check covers both).
+      // Airborne units never queue: the corridor yield would deadlock two
+      // crossing flyers. WakeSource presence is the water-contact fact.
       if (!other.hasComponent(WakeSource)) continue;
       const ox = otherObject.position.x - object.position.x;
       const oz = otherObject.position.z - object.position.z;
@@ -148,13 +121,10 @@ export class ShipMovementSystem extends createSystem({
   }
 
   /**
-   * Retarget the wake; OceanSystem eases the running values over ~0.3 s.
-   * The radius swings between the hull's own base (ShipMovement.wakeRadius —
-   * ship-scaled for the boss) and half of it, matching the raider rule.
+   * Retarget the wake; OceanSystem eases it over ~0.3 s. Radius halves when stopped.
    */
   private setWake(entity: Entity, strength: number, moving: boolean): void {
-    // Flyers (and any future non-water unit) carry no WakeSource; the march
-    // stays shared and the water stays still.
+    // Non-water units carry no WakeSource; the shared march leaves water still.
     if (!entity.hasComponent(WakeSource)) return;
     const radius = moving
       ? Number(entity.getValue(ShipMovement, 'wakeRadius'))

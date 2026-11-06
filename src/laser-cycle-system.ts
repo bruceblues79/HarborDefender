@@ -27,28 +27,11 @@ const WAIT_TARGET_RETRY = 0.1;
 const FORWARD = new Vector3(0, 0, -1);
 
 /**
- * Laser main cannon fire state machine for every entity carrying
- * `LaserCycle` + `LockTarget` — the boss hull never needs to know its laser
- * exists. Each emission runs its own rhythm loop — turn onto the target
- * snapshot -> hold on the frozen axis -> charge (energy gathering) -> sweep
- * -> pause (jittered cooldown) -> next cycle — fully independent of the
- * four gun turrets.
- *
- * The axis freeze is the behavioural core: at aim convergence the muzzle's
- * world position, world -Z direction and the distance to the target
- * snapshot are written ONCE into the component, and charging/firing never
- * re-reads `LockTarget`. A target dying mid-charge never re-aims — the
- * cannon locks a defense-slot direction, and a FreeLockTargetSystem re-roll
- * of the slot is harmless until the next cooldown hands targeting back.
- *
- * Damage is a single pass at the firing transition: every live defender
- * core within the frozen segment's corridor loses `laserDamageRatio` of its
- * max Health. Only `Health.current` is written — what dying means stays
- * single-truthed in ShellHitSystem's death sweep.
- *
- * Stateless system: no per-entity caches. Pivot/muzzle are resolved from
- * the cannon's own subtree (`entity.object3D`) at each use; all beam-axis
- * truth lives on the component.
+ * Laser main cannon state machine: turn onto the target snapshot, hold,
+ * charge, fire, cooldown. At aim convergence the muzzle's world position,
+ * -Z direction and target distance freeze into the component; nothing
+ * re-reads LockTarget until the next cooldown. Only Health.current is
+ * written — dying stays in ShellHitSystem's death sweep.
  */
 export class LaserCycleSystem extends createSystem({
   lasers: { required: [LaserCycle] },
@@ -88,8 +71,8 @@ export class LaserCycleSystem extends createSystem({
       }
       const state = String(laser.getValue(LaserCycle, 'state'));
       if (state === 'cooldown') {
-        // Pause: the post-emission wait. When it runs out the cannon starts
-        // swinging onto whatever target the targeting system has rolled.
+        // Post-emission wait: when it runs out the cannon starts swinging onto
+        // whatever target the targeting system has rolled.
         let timer = Number(laser.getValue(LaserCycle, 'timer')) - delta;
         if (timer <= 0) {
           if (this.hasTarget(laser)) {
@@ -162,12 +145,10 @@ export class LaserCycleSystem extends createSystem({
     }
   }
 
-  /** Whether the targeting system has handed this cannon a live target slot. */
   private hasTarget(laser: Entity): boolean {
     return Number(laser.getValue(LockTarget, 'targetCoreIndex')) !== -1;
   }
 
-  /** Whether the hull carrying this cannon has parked at its berth. */
   private carrierStopped(laser: Entity): boolean {
     const carrier = Number(laser.getValue(LaserCycle, 'carrierIndex'));
     for (const hull of this.queries.carriers.entities) {
@@ -178,15 +159,10 @@ export class LaserCycleSystem extends createSystem({
   }
 
   /**
-   * Step the pivot's orientation toward the target and return the remaining
-   * angular error in radians. The muzzle sits off the pivot axis (baked
-   * local offset), so the aim direction is estimated from the MUZZLE —
-   * normalize(target - muzzle world pos) localized into the pivot's parent
-   * frame — and `rotateTowards` advances the current orientation along the
-   * shortest arc. Re-estimating every frame converges onto the exact
-   * fixed point where the beam ray passes through the target: the muzzle's
-   * orbital offset is ~0.3 m against a ~5 m shot, so the map contracts
-   * roughly 15x per radian of swing.
+   * Step the pivot toward the target and return the remaining angular error
+   * in radians. The muzzle sits off the pivot axis, so the aim direction is
+   * re-estimated from the MUZZLE every frame; the ~0.3 m offset against a
+   * ~5 m shot contracts the map roughly 15x per radian of swing.
    */
   private aimStep(laser: Entity, delta: number): number {
     const object = laser.object3D;
@@ -206,11 +182,8 @@ export class LaserCycleSystem extends createSystem({
       Number(laser.getValue(LockTarget, 'targetY')) - this.muzzlePos.y,
       Number(laser.getValue(LockTarget, 'targetZ')) - this.muzzlePos.z,
     );
-    // Flatter bearing: shrink the aim drop by laserPitchFlatten so the
-    // cannon keeps a level-ish line instead of nose-diving at the core.
-    // The converged beam still sweeps the damage corridor over the aimed
-    // core (see BOSS.laserPitchFlatten), and the fixed-point loop below is
-    // untouched — the flattening is a constant scale on the vertical term.
+    // Flatter bearing: BOSS.laserPitchFlatten scales the vertical term so the
+    // cannon does not nose-dive at the core.
     this.dirWorld.y *= 1 - BOSS.laserPitchFlatten;
     // Degenerate snapshot (target on the muzzle): nothing to solve.
     if (this.dirWorld.lengthSq() < 1e-8) return 0;
@@ -227,11 +200,8 @@ export class LaserCycleSystem extends createSystem({
   }
 
   /**
-   * Write the frozen beam axis into the component: origin = muzzle world
-   * position, dir = muzzle world -Z (unit length), length = distance to the
-   * target snapshot (the locked defense-slot direction). Everything the fx
-   * rig and the damage pass need is read from these scalars afterwards —
-   * never from the live scene graph.
+   * Write the frozen beam axis (origin, muzzle world -Z, target distance)
+   * into the component; the fx rig reads those scalars, never the live graph.
    */
   private freezeAxis(laser: Entity): void {
     const object = laser.object3D;
@@ -257,7 +227,6 @@ export class LaserCycleSystem extends createSystem({
     );
   }
 
-  /** Distance from the frozen origin to the locked target snapshot. */
   private originToTarget(laser: Entity): number {
     const dx =
       Number(laser.getValue(LockTarget, 'targetX')) -
@@ -272,14 +241,8 @@ export class LaserCycleSystem extends createSystem({
   }
 
   /**
-   * One damage pass at the firing transition: every live defender core
-   * whose centre lies within the corridor (beam half-width + its own core
-   * radius around the frozen origin->end segment) loses
-   * `BOSS.laserDamageRatio` of its max Health. Defenders never move and the
-   * axis is frozen, so one pass at emission start covers the whole sweep —
-   * a target that dies to something else mid-sweep simply has no Health
-   * left to take. Only `Health.current` is written; the death sweep in
-   * ShellHitSystem (priority 14, same frame) owns what dying means.
+   * One damage pass at the firing transition: every defender core in the
+   * frozen corridor loses BOSS.laserDamageRatio of its max Health.
    */
   private applyBeamDamage(laser: Entity): void {
     const origin = this.origin.set(
@@ -318,7 +281,6 @@ export class LaserCycleSystem extends createSystem({
     }
   }
 
-  /** Shared per-emission jitter (one truth for every gun in the game). */
   private rollJitter(): number {
     return (
       COMBAT.fireJitterMin +
@@ -336,7 +298,6 @@ export class LaserCycleSystem extends createSystem({
     return false;
   }
 
-  /** True while the pause-menu tag sits on the director entity. */
   private paused(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GamePaused);
@@ -344,7 +305,6 @@ export class LaserCycleSystem extends createSystem({
     return false;
   }
 
-  /** True once the run has ended (victory or defeat) — the beam holds. */
   private over(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GameOver);

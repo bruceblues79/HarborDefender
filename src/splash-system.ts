@@ -10,11 +10,9 @@ import type { Entity } from '@iwsdk/core';
 import { GamePaused, LevelDirector, SplashFade, WakeSource } from './components.js';
 
 /**
- * Fades splash ripples out and disposes them — the only owner of a splash
- * node's WakeSource strength. Strength and its target are written together so
- * OceanSystem's ease-toward-target blend leaves the value untouched (it
- * early-returns when the two agree), keeping WakeSource the single shader
- * feed for ships and splashes alike.
+ * Fades splash ripples out and disposes them — the only owner of a splash node's
+ * WakeSource strength. Strength and target are written together so OceanSystem's blend
+ * early-returns (it leaves the value untouched when the two agree).
  */
 export class SplashSystem extends createSystem({
   splashes: { required: [SplashFade, WakeSource] },
@@ -22,7 +20,7 @@ export class SplashSystem extends createSystem({
 }) {
   /** Ripples that reached zero this frame; disposed after the sweep. */
   private readonly expired: Entity[] = [];
-  /** Snapshot buffer for bulk disposal; allocated once, reused per call. */
+  /** Snapshot buffer for bulk disposal, allocated once. */
   private readonly retiring: Entity[] = [];
 
   update(delta: number): void {
@@ -37,9 +35,8 @@ export class SplashSystem extends createSystem({
       if (remaining <= 0) this.expired.push(entity);
       else entity.setValue(SplashFade, 'elapsed', elapsed);
     }
-    // dispose(), never destroy(): destroy leaks GPU memory. Resources stay
-    // shared with the splash prototype (pooled geometry/material cut draw
-    // calls), so the sweep must not free them — see disposeAll.
+    // dispose(), never destroy(): destroy leaks GPU memory. Resources stay shared with
+    // the pooled splash prototype, so they must not be freed here.
     for (const entity of this.expired) {
       entity.dispose({ disposeResources: false });
     }
@@ -53,10 +50,8 @@ export class SplashSystem extends createSystem({
     return false;
   }
 
-  /** Dispose every live splash node (RESTART / MAIN reset). The pooled
-   * geometry/material are shared with every future ripple, so this must run
-   * with disposeResources:false — a full sweep mass-frees those shared GPU
-   * resources right before the next round spawns from the same prototypes. */
+  /** Dispose every live splash node (RESTART / MAIN reset). The pooled geometry/material
+   * are shared with every future ripple, so this must run with disposeResources:false. */
   disposeAll(): void {
     this.retiring.length = 0;
     for (const entity of this.queries.splashes.entities) {

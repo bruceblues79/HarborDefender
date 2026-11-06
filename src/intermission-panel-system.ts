@@ -19,28 +19,20 @@ import {
 } from './components.js';
 import { endlessLevel } from './level-config.js';
 
-/** Panel anchor: the result panel's spot above the ocean's near edge — the
- *  two presentations never show at once, so they share the same stage. */
+/** Result panel's spot above the ocean's near edge; the two never show at once. */
 const PANEL_POSITION = { x: 0, y: 1.9, z: -2.1 };
 /** Panel is 1.5 m × 1 m; the hidden state is the small end of the scale. */
 const PANEL_SCALE = 1;
 const PANEL_HIDDEN_SCALE = 0.5;
 
-/** Title colour: the intermission is a go signal, so the victory green. */
+/** Victory green: the intermission reads as a go signal. */
 const TITLE_COLOR = '#1e6f34';
 
 type PanelPhase = 'idle' | 'appearing';
 
 /**
- * Endless wave intermission presentation (波间歇展示). While the director
- * carries `WaveIntermission` the panel stands over the battlefield reading
- * "WAVE <n> / GET READY FOR NEXT WAVE"; enterWave drops the tag and the
- * panel parks again. Pure display — the game keeps running and the player
- * may build, repair and aim right through it.
- *
- * The panel follows the result-panel pattern: fixed world anchor, Billboard,
- * PanelScaleAnim grow-in, RayInteractable + CameraBlocker so the window's
- * short life never hijacks a camera drag.
+ * Endless intermission panel: shows "WAVE <n> / GET READY" while the director
+ * carries `WaveIntermission`; pure display, the game keeps running.
  */
 export class IntermissionPanelSystem extends createSystem({
   gates: { required: [LevelDirector, WaveIntermission] },
@@ -63,9 +55,8 @@ export class IntermissionPanelSystem extends createSystem({
       .then((panel) => {
         panel.position.set(PANEL_POSITION.x, PANEL_POSITION.y, PANEL_POSITION.z);
         panel.scale.setScalar(PANEL_HIDDEN_SCALE);
-        // Loaded panels default to visible; park BEFORE mounting or the
-        // un-laid-out markup flashes for a frame (intermission-panel loading
-        // habit: visible=false first, mount second).
+        // Panels load visible; park before mounting or un-laid-out markup
+        // flashes for a frame.
         panel.visible = false;
 
         const entity = this.world.createTransformEntity(panel);
@@ -78,10 +69,8 @@ export class IntermissionPanelSystem extends createSystem({
 
         this.panel = panel;
         this.panelEntity = entity;
-        // The gate may have closed while the panel was still loading (the
-        // shortest window can beat a cold network): land in the state the
-        // gate is in RIGHT NOW, so a missed disqualify can never leave the
-        // panel stuck on screen.
+        // The gate may have closed while loading; land in the gate's current
+        // state so a missed disqualify never strands the panel on screen.
         if (this.queries.gates.entities.size > 0) this.apply();
       })
       .catch((err: unknown) =>
@@ -92,7 +81,6 @@ export class IntermissionPanelSystem extends createSystem({
       );
   }
 
-  /** Swap the copy for the upcoming wave and start the grow-in. */
   private apply(): void {
     if (!this.panel || !this.panelEntity) return;
     // The planner appends the wave before the tag lands, so the list length
@@ -108,13 +96,8 @@ export class IntermissionPanelSystem extends createSystem({
   }
 
   /**
-   * Intermission closed (enterWave): park the panel back in hiding. No
-   * phase guard — a disqualify may legitimately arrive while the panel is
-   * still loading (the shortest window vs a cold network); parking the
-   * not-yet-applied state here is exactly what keeps the panel from
-   * appearing after its window is already gone. Without an entity yet there
-   * is nothing to park — the load callback re-reads the gate and lands
-   * hidden on its own.
+   * No phase guard: a disqualify may arrive while the panel is still loading;
+   * parking early is what keeps it from appearing after its window is gone.
    */
   private hide(): void {
     if (!this.panelEntity) return;

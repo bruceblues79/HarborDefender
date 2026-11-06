@@ -33,22 +33,10 @@ import {
 } from './level-config.js';
 
 /**
- * Phase-two chief head (海盗头领) — task 031. Once every boss turret is gone
- * (the BossTurret query runs empty while the hull still floats) the pirate
- * warlord's head rises at the laser citadel: a Health + HitCore child entity
- * every defender shell can hit (matrix rows chip 2% per strike). The head's
- * own attack — the chief death light (lightning beats + the wall sweep) — is
- * NOT here: ChiefDeathLightSystem owns it, attached when the rise completes.
- *
- * Responsibilities stay small (TESS):
- * - the phase-two trigger, the 0.5 s beat, and the one-shot head mount
- *   (construction);
- * - the emerge rise animation (ChiefRise, pause-frozen scalar integration):
- *   the head starts sunk INSIDE the citadel drum and rises just proud of the
- *   rim — visually connected to the ship, never floating free.
- *
- * Death is NOT here: ShellHitSystem's kill() owns it (bounty, burst,
- * dispose, ChiefDown command).
+ * Phase-two chief head (海盗头领): once every BossTurret is gone while the hull
+ * still floats, the head rises at the laser citadel as a Health + HitCore child
+ * every defender shell can hit. Owns the phase trigger, the 0.5 s beat, the
+ * head mount and the emerge rise. Death belongs to ShellHitSystem's kill().
  */
 export class BossChiefSystem extends createSystem({
   bosses: { required: [UnitTag] },
@@ -58,7 +46,6 @@ export class BossChiefSystem extends createSystem({
   rising: { required: [IslewrathChief, ChiefRise] },
   directors: { required: [LevelDirector] },
 }) {
-  /** pirate-chief prototype loaded once in init; null until it arrives. */
   private chiefPrototype: Object3D | null = null;
 
   init(): void {
@@ -79,8 +66,7 @@ export class BossChiefSystem extends createSystem({
   }
 
   /**
-   * The 0.5 s beat between the last turret dying and the rise starting —
-   * a ChiefPending timer on the boss hull. At zero the head mounts.
+   * The 0.5 s beat between the last turret dying and the rise; at zero the head mounts.
    */
   private tickPending(delta: number): void {
     for (const boss of this.queries.pending.entities) {
@@ -100,9 +86,8 @@ export class BossChiefSystem extends createSystem({
   }
 
   /**
-   * Phase-two trigger: the boss hull is still on the water, every BossTurret
-   * part entity is gone, and no chief exists yet. Runs after the rise tick
-   * so a freshly mounted head never doubles.
+   * Phase-two trigger: hull afloat, every BossTurret gone, no chief yet; runs
+   * after the rise tick so a freshly mounted head never doubles.
    */
   private tryMountChief(): void {
     if (this.chiefPrototype === null) return;
@@ -114,8 +99,8 @@ export class BossChiefSystem extends createSystem({
       }
       if (!boss.object3D) return;
       if (!boss.hasComponent(ChiefMount)) {
-        // Assembly never captured the seat (missing pivot node) — surface it
-        // loudly instead of silently never entering phase two.
+        // Assembly never captured the seat (missing pivot node); surface it loudly
+        // instead of silently never entering phase two.
         console.error('BossChiefSystem: boss hull carries no ChiefMount seat');
         return;
       }
@@ -127,20 +112,12 @@ export class BossChiefSystem extends createSystem({
   }
 
   /**
-   * Construction, not behaviour: clone the head prototype, fade it in, seat
-   * it SUNK into the citadel drum (mount seat minus riseSink), and hand it
-   * its Health pool (bar pinned to the baked `hp_blood` crown mount) and hit
-   * core (defender shells resolve against it through the shared
-   * ShellHitSystem). No attack clock yet — ChiefDeathLight only attaches
-   * when the rise completes, so the first beat fires after the emerge.
-   *
-   * The seat comes from the ChiefMount component, captured while the boss
-   * turrets were assembled. It CANNOT be re-derived at phase-two time: the
-   * laser turret's death strips its whole subtree (the `gun_rotate_laser`
-   * pivot included) from the hull clone, so a lookup here finds nothing.
-   * The seat is hull-local (parent chain summed EXCLUDING the hull root —
-   * root.position is a world coordinate), which is exactly the space a
-   * child parented under the hull needs.
+   * Construction, not behaviour: clone the head, fade it in, seat it sunk into
+   * the citadel drum, and give it a Health pool (bar pinned to the baked
+   * `hp_blood` mount) plus a hit core. The seat comes from the ChiefMount
+   * component captured at assembly and cannot be re-derived here — the laser
+   * turret's death strips its whole subtree from the hull clone. It is
+   * hull-local, which is the space a child parented under the hull needs.
    */
   private mountChief(boss: Entity, mountX: number, mountY: number, mountZ: number): void {
     const prototype = this.chiefPrototype;
@@ -166,13 +143,11 @@ export class BossChiefSystem extends createSystem({
       faction: 'attacker',
       unitType: 'islewrath-chief',
       nodeName: 'hit_core',
-      // The chief pays its own BossChief bounty tier — a flat figure shared
-      // with the five turrets, independent of the stock economy.
+      // Own BossChief bounty tier, shared with the five turrets.
       reward: RewardTier.BossChief,
     });
-    // Emerge: start sunk into the drum, integrate up to just proud of the
-    // rim over riseSec. baseY snapshots the seat so the rise tick stays a
-    // pure scalar integrate with no parent lookup.
+    // Emerge: start sunk into the drum and integrate up to riseY over riseSec;
+    // baseY snapshots the seat so the tick needs no parent lookup.
     head.position.set(mountX, mountY - BOSS_CHIEF.riseSink, mountZ);
     entity.addComponent(ChiefRise, {
       elapsed: 0,
@@ -183,10 +158,8 @@ export class BossChiefSystem extends createSystem({
   }
 
   /**
-   * Pause-frozen scalar rise: y eases from seat-riseSink (sunk inside the
-   * drum) to seat+riseY (just proud of the rim). On completion the death
-   * light attaches at beatTimer 0 — the first lightning fires on the next
-   * tick, and ChiefDeathLightSystem owns everything after.
+   * Pause-frozen scalar rise from seat-riseSink to seat+riseY; on completion
+   * the death light attaches at beatTimer 0.
    */
   private tickRise(delta: number): void {
     for (const chief of this.queries.rising.entities) {
@@ -195,8 +168,7 @@ export class BossChiefSystem extends createSystem({
       const elapsed = Number(chief.getValue(ChiefRise, 'elapsed')) + delta;
       const duration = Number(chief.getValue(ChiefRise, 'duration'));
       const t = Math.min(1, elapsed / duration);
-      // Smoothstep ease — the emerge decelerates into its rest pose instead
-      // of stopping dead.
+      // Smoothstep ease — the emerge decelerates into its rest pose.
       const eased = t * t * (3 - 2 * t);
       const baseY = Number(chief.getValue(ChiefRise, 'baseY'));
       object.position.y =
@@ -211,11 +183,9 @@ export class BossChiefSystem extends createSystem({
   }
 
   /**
-   * Spawn-time material state for the head clone — per-clone material clones
-   * starting fully transparent, IBL re-linked from the prototype materials
-   * (clone() drops the reference), shadows off until SpawnFade solidifies.
-   * Mirrors LevelWaveSystem.prepareSpawnMaterials (kept local: that one is
-   * tuned for unit hulls and lives beside the spawn pipeline).
+   * Spawn-time material state for the head clone: per-clone transparent
+   * materials, envMap re-linked (clone() drops it), shadows off until
+   * SpawnFade solidifies. Mirrors LevelWaveSystem.prepareSpawnMaterials.
    */
   private prepareFadeMaterials(object: Object3D): void {
     object.traverse((child) => {

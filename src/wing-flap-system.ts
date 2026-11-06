@@ -16,27 +16,15 @@ import {
 } from './components.js';
 
 /**
- * Beats a flying unit's wings. Presence of `WingFlap` *is* the tag "this
- * unit has driven wings": on qualify the system resolves the model's
- * `wing_left` / `wing_right` flap pivots once and caches them
- * (PropellerSpinSystem's node-cache idiom), then each frame writes mirrored
- * `rotation.z` — the right wing rides `amplitude * sin(phase)`, the left
- * wing its negation, so both tips rise and fall together around the shared
- * shoulder axle. Pure scalar integration, no physics.
- *
- * A hovering flyer keeps flapping: motion state never gates the animation,
- * only the pause/hold tags do — the wings freeze while the game is paused
- * or over, exactly like every other simulation system.
+ * Drives `wing_left` / `wing_right` (resolved once on qualify) with mirrored
+ * rotation.z; only the pause/over tags gate the flap.
  */
 export class WingFlapSystem extends createSystem({
   flappers: { required: [WingFlap], excluded: [Destroyed] },
   directors: { required: [LevelDirector] },
 }) {
-  /** `wing_left` node per flapper entity index, resolved once on qualify. */
   private readonly leftWings = new Map<number, Object3D>();
-  /** `wing_right` node per flapper entity index, resolved once on qualify. */
   private readonly rightWings = new Map<number, Object3D>();
-  /** Flap phase per entity index, advanced by speed * delta. */
   private readonly phases = new Map<number, number>();
 
   init(): void {
@@ -68,7 +56,6 @@ export class WingFlapSystem extends createSystem({
     }
   }
 
-  /** True while the pause-menu tag sits on the director entity. */
   private paused(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GamePaused);
@@ -76,7 +63,6 @@ export class WingFlapSystem extends createSystem({
     return false;
   }
 
-  /** True while the run has ended (result panel up, battlefield frozen). */
   private over(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GameOver);

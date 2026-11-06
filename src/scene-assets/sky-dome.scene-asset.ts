@@ -8,21 +8,11 @@
 import { BackSide, Mesh, ShaderMaterial, SphereGeometry } from '@iwsdk/core';
 
 /**
- * Partial-immersion AR sky dome (部分沉浸穹顶). WebXR on Quest exposes no
- * passthrough-blend control, so this BackSide sphere restores one in
- * content — deliberately dumb: it unlit-pastes the shared sky HDR by view
- * direction (the HDR's own ocean below its horizon comes along for free and
- * meets the live ocean mesh at the far edge), masked to a DISC pointed at
- * the player's facing axis, world -z:
- *
- *   inside the disc       -> alpha `uMaxAlpha`, the HDR sky (and its ocean)
- *   approaching the rim   -> smoothstep across a `uFadeWidthDeg` band
- *   past `uEdgeDeg`       -> alpha 0, pure video see-through
- *
- * The rim band is broken up by STATIC procedural value noise (no animation)
- * so the boundary never reads as a clean geometric circle; both the band
- * width and the noise amplitude are inspector fields. Outside the rim the
- * mask collapses to exactly 0 — everything past the disc is passthrough.
+ * Partial-immersion AR sky dome (部分沉浸穹顶). WebXR exposes no passthrough-blend
+ * control, so this BackSide sphere unlit-pastes the shared sky HDR by view direction,
+ * masked to a DISC along world -z: alpha `uMaxAlpha` inside, a smoothstep band of
+ * `uFadeWidthDeg`, exactly 0 past `uEdgeDeg` (pure passthrough). STATIC value noise
+ * breaks up the rim so it never reads as a clean geometric circle.
  */
 
 export const SKY_DOME_RADIUS = 150;
@@ -64,9 +54,8 @@ float valueNoise(vec2 p) {
              u.y);
 }
 
-// Narkowicz ACES filmic approximation: rolls the HDR highlights off instead
-// of clipping them to white and keeps the shadows down, so the raw gamma
-// stretch no longer flattens the sky into a grey wash.
+// Narkowicz ACES filmic approximation: rolls off HDR highlights instead of clipping
+// them to white.
 vec3 acesFilm(vec3 x) {
   return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), vec3(0.0), vec3(1.0));
 }
@@ -79,16 +68,13 @@ void main() {
   // HDR not wired yet (or session gone): discard, passthrough stays clean.
   if (uEnvLoaded < 0.5) discard;
 
-  // View ray through this fragment: the dome hugs the world origin and the
-  // player stays within a few metres of it.
+  // View ray through this fragment; the dome hugs the world origin and the player
+  // stays within a few metres of it.
   vec3 dir = normalize(vWorldPosition - cameraPosition);
 
-  // Mask first, sample later — the fillrate guard. Fragments past the rim
-  // discard immediately (no cube fetch, no noise, no blend write), so the
-  // invisible majority of the sphere costs a dot and a smoothstep. Noise
-  // runs only inside the rim band; elsewhere it collapses to neutral 0.5
-  // and the mask is exact: uMaxAlpha inside, exactly 0 outside. The disc
-  // axis is world -z raised by pitchUpDeg: (0, uAxisY, uAxisZ).
+  // Mask first, sample later: fragments past the rim discard before any cube fetch
+  // or noise, so the invisible majority of the sphere costs a dot and a smoothstep.
+  // The disc axis is world -z raised by pitchUpDeg: (0, uAxisY, uAxisZ).
   float d = dot(dir, vec3(0.0, uAxisY, uAxisZ));
   float m = smoothstep(uEdgeCos, uFadeCos, d);
   if (m <= 0.001) discard;
@@ -131,9 +117,8 @@ export function createSkyDomeMaterial(): ShaderMaterial {
 
 export function createSkyDomeMesh(): Mesh {
   const mesh = new Mesh(new SphereGeometry(SKY_DOME_RADIUS, 48, 32), createSkyDomeMaterial());
-  // Backdrop: first in the transparent queue, depth-tested so every opaque
-  // and nearer transparent object stays in front; the camera lives inside
-  // the sphere, so culling is disabled.
+  // Backdrop: first in the transparent queue, depth-tested so nearer objects stay in
+  // front; the camera lives inside the sphere, so culling is disabled.
   mesh.renderOrder = -1e9;
   mesh.frustumCulled = false;
   mesh.castShadow = false;

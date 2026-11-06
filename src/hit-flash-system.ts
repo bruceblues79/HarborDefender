@@ -18,26 +18,14 @@ import { GamePaused, HitFlash, HitFlashTag, LevelDirector } from './components.j
 import { COMBAT } from './level-config.js';
 
 /**
- * Owns the shared hit-flash pool and animates every playing flash.
- *
- * Pool: `COMBAT.hitFlashPoolSize` spheres created once at init, all sharing
- * one geometry; a flash is free exactly while it does not carry `HitFlash`
- * (ShellHitSystem claims one by adding that component). Each sphere keeps its
- * own ShaderMaterial so the per-instance opacity fade never leaks between
- * concurrent flashes. Recycling removes the component and hides the mesh —
- * nothing is disposed, mirroring the shell pool.
- *
- * Animation: scale blooms from `hitFlashStartScale` (0.5) to 1.0 while
- * opacity falls 1 -> 0, both through an EaseOutCubic curve over
- * `hitFlashDuration` — fast bloom and fast initial fade, slow settle.
+ * Owns the shared hit-flash pool; free while lacking `HitFlash` (ShellHitSystem
+ * claims one). One ShaderMaterial per sphere so opacity fades never leak.
  */
 export class HitFlashSystem extends createSystem({
   flashes: { required: [HitFlash] },
   directors: { required: [LevelDirector] },
 }) {
-  /** Flashes that reached zero this frame; recycled after the sweep. */
   private readonly expired: Entity[] = [];
-  /** Snapshot buffer for bulk recall; allocated once, reused per call. */
   private readonly retiring: Entity[] = [];
 
   init(): void {
@@ -73,21 +61,14 @@ export class HitFlashSystem extends createSystem({
           uEdgeColor: { value: rawSrgbColor(COMBAT.hitFlashEdgeColor) },
         },
         transparent: true,
-        // Additive blending: the bloom adds light over the scene — the hot
-        // yellow centre flares, the dark-red rim contributes subtle heat
-        // instead of occluding, and overlapping flashes brighten into a
-        // sustained-fire look. No depth write, as any transient glow.
+        // Additive with no depth write: overlapping flashes brighten into sustained fire.
         blending: AdditiveBlending,
         depthWrite: false,
       });
       const mesh = new Mesh(geometry, material);
       mesh.visible = false;
-      // Draw after every default-order transparent object. Ships spawn with
-      // an alpha-blended hull (SpawnFade); three sorts transparents back to
-      // front and the flash sits at a hull's centre, so without this the
-      // hull can draw after the flash and wash it out. Additive after alpha
-      // keeps the bloom fully added on top; depthTest stays on so opaque
-      // walls still occlude it.
+      // Render after SpawnFade's alpha-blended hulls, which would otherwise
+      // draw over the flash and wash it out; depthTest keeps walls occluding.
       mesh.renderOrder = 10;
       this.world.createTransformEntity(mesh).addComponent(HitFlashTag);
     }
@@ -120,7 +101,6 @@ export class HitFlashSystem extends createSystem({
     }
   }
 
-  /** True while the pause-menu tag sits on the director entity. */
   private paused(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GamePaused);
@@ -128,7 +108,7 @@ export class HitFlashSystem extends createSystem({
     return false;
   }
 
-  /** Recall every playing flash to the pool (RESTART / MAIN reset). */
+  /** RESTART / MAIN reset: recall every playing flash to the pool. */
   recycleAll(): void {
     this.retiring.length = 0;
     for (const entity of this.queries.flashes.entities) {
@@ -142,11 +122,8 @@ export class HitFlashSystem extends createSystem({
 }
 
 /**
- * Build a Color straight from sRGB hex components, bypassing three's
- * sRGB->linear conversion. The custom shaders write gl_FragColor directly
- * with no output colour-space chunk, so raw sRGB values display exactly as
- * the hex constants read. Shared with the other custom-shader fx
- * (laser-fx-system).
+ * Raw sRGB hex, bypassing three's sRGB→linear conversion; the custom shaders
+ * write gl_FragColor directly. Shared with laser-fx-system.
  */
 export function rawSrgbColor(hex: number): Color {
   return new Color(

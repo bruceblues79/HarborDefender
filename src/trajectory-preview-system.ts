@@ -46,58 +46,28 @@ interface GuideTarget {
 }
 
 /**
- * Aim-drag trajectory guide: while a defense unit is being dragged, a guide
- * traces the shot its muzzle would launch right now — the sparse row of
- * small unlit cubes, tapered by instance scale alone — near-invisible at
- * the muzzle (dotScaleNear × dotSize), full size at the water end. No
- * alpha, no fade: the gradient lives in the same matrices already
- * rewritten every frame, so it costs nothing beyond the dots themselves.
- *
- * The sampling is the closed form of the live flight, not a re-simulation —
- * launch vector copied from CannonFireSystem.fire (muzzle world -Z scaled by
- * COMBAT.shellSpeed) flown under gravity plus COMBAT.shellDrag linear drag,
- * with the same two terminations BallisticSystem enforces (water splash,
- * ocean far-edge backstop). The arc is then resampled at a fixed spatial
- * step (TRAJECTORY_PREVIEW.stepDistance): dot gaps stay uniform from muzzle
- * to splash regardless of how the shell sheds speed.
- *
- * Rendering is one always-alive InstancedMesh (per frame at most maxDots
- * instance matrices + .count) — zero allocation, matching the
- * no-allocate-in-update rule. The trigger is CannonAimSystem's whole-gesture
- * `AimDragging` tag — no new input bookkeeping here — so the phase gating is
- * inherited for free: outside the running phase cannons cannot be dragged,
- * so the guide never appears. When two guns are somehow dragged at once (two
- * XR hands), the first query entry wins — one guide, deterministically.
- *
- * Hit tint: every march sample is a position the fired shell would really
- * occupy, so a sample inside an attacker hit core means the shot lands — the
- * whole guide flips from gold to a saturated cool green. All dots share one
- * material, so the flip is a single uniform write; it is held for
- * TRAJECTORY_PREVIEW.hitHoldSec after the last touching frame so the colour
- * does not strobe while the aim sweeps across a hull edge. Attacker cores
- * only, resolved exactly like ShellHitSystem so preview and flight agree on
- * what counts as a hit.
+ * Aim-drag trajectory guide: closed-form march of the shot the muzzle would
+ * launch, plus a hit tint. Trigger is CannonAimSystem's whole-gesture
+ * `AimDragging` tag; instance buffers are preallocated.
  */
 export class TrajectoryPreviewSystem extends createSystem({
   guides: { required: [TrajectoryPreview] },
   guns: { required: [CannonAim], excluded: [Destroyed] },
-  // CannonAimSystem stamps AimDragging at its drag-session anchors, so the
-  // guide tracks the whole gesture — pointer sliding off the mount mid-drag
-  // (browser) or a wandering ray (XR) never drops it, same as the drag.
+  // CannonAimSystem stamps AimDragging at its gesture anchors, so the guide
+  // tracks the whole drag even when the pointer or ray wanders off.
   aiming: { required: [CannonAim, AimDragging], excluded: [Destroyed] },
   cores: { required: [HitCore, Health], excluded: [Destroyed] },
   directors: { required: [LevelDirector] },
 }) {
-  /** Muzzle object per gun entity index, resolved once on qualify. */
+  /** Muzzle object per gun entity index, resolved on qualify. */
   private readonly muzzles = new Map<number, Object3D>();
   /**
-   * Attacker cores this arc can land on, rebuilt on qualify/disqualify only —
-   * update() walks this flat array so no Map iteration allocates per frame.
+   * Attacker cores this arc can land on; flat array so update() never
+   * allocates on Map iteration.
    */
   private readonly targets: GuideTarget[] = [];
-  /** Dot-row guide. */
   private mesh: InstancedMesh | null = null;
-  /** Shared material: the hit tint is one uniform write per state flip. */
+  /** Shared material: the hit tint is a single colour write. */
   private material: MeshBasicMaterial | null = null;
   /** True while the guide's last frame touched a core (or the hold runs). */
   private hot = false;
@@ -107,8 +77,7 @@ export class TrajectoryPreviewSystem extends createSystem({
   private readonly dummy = new Object3D();
   private readonly muzzlePos = new Vector3();
   private readonly muzzleDir = new Vector3();
-  /** Preallocated closed-form march buffers: xyz per sample plus the
-   * cumulative arc length at each sample, bridging the two passes. */
+  /** Preallocated march buffers: xyz per sample plus cumulative arc length. */
   private readonly pathPoints = new Float32Array(MAX_SAMPLES * 3);
   private readonly pathLens = new Float32Array(MAX_SAMPLES);
 
@@ -138,9 +107,8 @@ export class TrajectoryPreviewSystem extends createSystem({
       if (muzzle) this.muzzles.set(entity.index, muzzle);
     });
 
-    // Targets of a defender shot: attacker cores, resolved exactly like
-    // ShellHitSystem (direct child first, nodeName from the component) so the
-    // guide's notion of a hit matches what the flight will do.
+    // Attacker cores resolved exactly like ShellHitSystem (direct child,
+    // then nodeName), so preview and flight agree on what counts as a hit.
     this.queries.cores.subscribe('qualify', (entity) => {
       if (String(entity.getValue(HitCore, 'faction')) !== 'attacker') return;
       const object = entity.object3D;
@@ -149,8 +117,7 @@ export class TrajectoryPreviewSystem extends createSystem({
         object?.children.find((child) => child.name === coreName) ??
         object?.getObjectByName(coreName);
       if (!node) return;
-      // Same consume volume as ShellHitSystem: the authored core radius
-      // scaled by the shared shell-precision factor.
+      // Same consume volume as ShellHitSystem: core radius × shell-precision.
       const radius =
         Number(entity.getValue(HitCore, 'radius')) * COMBAT.shellHitRadiusScale;
       this.targets.push({
@@ -176,8 +143,7 @@ export class TrajectoryPreviewSystem extends createSystem({
       this.hide();
       return;
     }
-    // Two guns pressed at once (two XR hands): the first query entry wins —
-    // one guide, deterministically.
+    // Two guns dragged at once: the first query entry wins.
     let dragged: Entity | undefined;
     for (const entity of this.queries.aiming.entities) {
       dragged = entity;
@@ -190,8 +156,8 @@ export class TrajectoryPreviewSystem extends createSystem({
     }
 
     muzzle.getWorldPosition(this.muzzlePos);
-    // Object3D.getWorldDirection returns +Z; the barrel fires down its -Z
-    // (same convention as CannonFireSystem.fire).
+    // getWorldDirection returns +Z; the barrel fires down its -Z
+    // (CannonFireSystem.fire uses the same convention).
     muzzle.getWorldDirection(this.muzzleDir).negate();
     const speed = COMBAT.shellSpeed;
     const vx = this.muzzleDir.x * speed;
@@ -202,12 +168,9 @@ export class TrajectoryPreviewSystem extends createSystem({
     const dt = TRAJECTORY_PREVIEW.sampleStep;
     const splashY = OCEAN.surfaceY - COMBAT.splashMargin;
 
-    // Pass one marches the closed form at a fine fixed time step, storing
-    // each sample and the cumulative arc length up to it. Sample 0 is the
-    // muzzle itself (length 0). Terminations mirror BallisticSystem exactly —
-    // shells end at the water, and the far-edge backstop covers the rest.
-    // Closed form of the drag-loaded flight: (v/k)(1-e^(-kt)) horizontally,
-    // gravity's ((vy + g/k)/k)(1-e^(-kt)) - (g/k)·t vertically.
+    // Pass one marches the closed form at a fixed time step, storing samples
+    // and cumulative arc length. Sample 0 is the muzzle. Terminations mirror
+    // BallisticSystem: water splash, then the far-edge backstop.
     this.pathPoints[0] = this.muzzlePos.x;
     this.pathPoints[1] = this.muzzlePos.y;
     this.pathPoints[2] = this.muzzlePos.z;
@@ -238,12 +201,9 @@ export class TrajectoryPreviewSystem extends createSystem({
       samples++;
     }
 
-    // Hit state: every march sample is a shell position the flight really
-    // reaches, so a sample within a core radius is a hit. The loops invert —
-    // one core at a time, then the point sweep — because the answer is a
-    // boolean; the first touch exits both. Every sample above the water is
-    // tested, which is exactly the window ShellHitSystem sees: BallisticSystem
-    // recycles a shell the frame it crosses splashY, before the hit sweep runs.
+    // Any sample within a core radius is a hit. The tested window matches
+    // ShellHitSystem's: BallisticSystem recycles a shell the frame it crosses
+    // splashY, before the hit sweep runs.
     let touching = false;
     for (let c = 0; c < this.targets.length; c++) {
       const target = this.targets[c];
@@ -262,9 +222,7 @@ export class TrajectoryPreviewSystem extends createSystem({
       if (touching) break;
     }
 
-    // Anti-flicker hold: a touch refreshes the window and the guide keeps the
-    // tint until it has gone untouched for the whole window. The tint flips
-    // once, on the edge — no lerp, no per-frame colour write.
+    // Anti-flicker: a touch refreshes the hold; the tint flips once, on the edge.
     if (touching) this.hotHold = TRAJECTORY_PREVIEW.hitHoldSec;
     else if (this.hotHold > 0) this.hotHold -= delta;
     const hot = touching || this.hotHold > 0;
@@ -275,11 +233,8 @@ export class TrajectoryPreviewSystem extends createSystem({
       );
     }
 
-    // Pass two resamples the arc uniformly — one dot every stepDistance
-    // metres of path length, linearly interpolated between march samples —
-    // so gaps never bunch as the shell sheds speed. The size taper rides
-    // along: dotScaleNear at the muzzle growing linearly to full size at the
-    // water end. Scale-only, no alpha.
+    // Pass two resamples uniformly (one dot per stepDistance of arc length) and
+    // tapers scale only, from dotScaleNear at the muzzle to full size at the water.
     let count = Math.min(
       TRAJECTORY_PREVIEW.maxDots,
       Math.floor(this.pathLens[samples - 1] / TRAJECTORY_PREVIEW.stepDistance),
@@ -314,7 +269,6 @@ export class TrajectoryPreviewSystem extends createSystem({
     this.mesh.visible = count > 0;
   }
 
-  /** Drop the guide when no gun is being dragged (or while paused / over). */
   private hide(): void {
     if (this.mesh?.visible) this.mesh.visible = false;
     // Reset the tint with the guide, so the next drag never starts green.

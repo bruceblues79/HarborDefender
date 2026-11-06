@@ -9,19 +9,8 @@ import { VisibilityState } from '@iwsdk/core';
 import type { World } from '@iwsdk/core';
 
 /**
- * Classic three.js-style XR entry button as a DOM overlay pinned to the
- * top-center of the screen (the same role as three/examples VRButton).
- *
- * IWSDK does not ship a runtime DOM button: `xr.offer` relies on the
- * Horizon-Browser-only navigator.xr.offerSession(), which is a no-op on
- * desktop/mobile/PICO browsers. This element uses the standard
- * requestSession path via world.launchXR(), so it works on every
- * WebXR-capable platform (Quest, PICO, IWER emulation).
- *
- * Following the VRButton convention the button always renders: it stays
- * disabled and greyed out while the support probe runs and when WebXR or
- * the configured session mode is unavailable, keeping the same label
- * throughout.
+ * DOM overlay XR entry button; IWSDK's `xr.offer` relies on Horizon-only
+ * `navigator.xr.offerSession()`, so this uses world.launchXR() instead.
  */
 export function installXRButton(world: World): void {
   const button = document.createElement('button');
@@ -77,7 +66,6 @@ export function installXRButton(world: World): void {
     : Promise.resolve(false);
   probe
     .then((supported) => {
-      // Unsupported platforms keep the same label, just greyed out.
       if (supported) enable();
     })
     .catch(() => {

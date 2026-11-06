@@ -69,29 +69,16 @@ interface LaserFxRig {
 }
 
 /**
- * Visual rig for the boss laser main cannon — a pure derived view of the
- * `LaserCycle` state, never a writer of it:
- *
- * - charging: instanced energy shards spiral-converge onto the muzzle
- *   (scalar position math only — no physics), while a fresnel sphere swells
- *   and brightens at the muzzle (deep-blue rim, white-hot core);
- * - firing: a two-layer additive cylinder stretches along the FROZEN beam
- *   axis — inner white core (FrontSide) inside a deep-blue outer glow
- *   (BackSide, the inverted-normal look), both depthWrite-free.
- *
- * Every mesh hangs under the muzzle node in its LOCAL space: the beam
- * geometry is pre-rotated to span z ∈ [-1, 0], so `scale.z = length` points
- * it down the muzzle's -Z — which equals the frozen world direction, since
- * the hull is berthed and the pivot frozen when the axis locks. Qualify
- * builds the rig (one per laser entity), disqualify tears it down; only
- * per-entity cloned materials and instance buffers are disposed — the
- * shared geometry/templates survive for the next battle.
+ * Derived view of the `LaserCycle` state (never a writer of it): converging
+ * energy shards and a fresnel glow while charging, a two-layer additive beam
+ * along the frozen axis while firing. The rig hangs under the muzzle's local
+ * space — the beam geometry is pre-rotated to span z ∈ [-1, 0], and the frozen
+ * axis equals the muzzle -Z because the pivot is frozen when the axis locks.
  */
 export class LaserFxSystem extends createSystem({
   lasers: { required: [LaserCycle] },
   directors: { required: [LevelDirector] },
 }) {
-  /** fx rig per laser entity index; the muzzle node is its parent. */
   private readonly rigs = new Map<number, LaserFxRig>();
   // Shared geometry — created once, cloned from by every rig build.
   private particleGeometry!: TetrahedronGeometry;
@@ -112,7 +99,7 @@ export class LaserFxSystem extends createSystem({
   init(): void {
     this.particleGeometry = new TetrahedronGeometry(PARTICLE_SIZE);
     this.glowGeometry = new SphereGeometry(1, 16, 12);
-    // Unit cylinder pre-rotated onto -Z and shifted to span z ∈ [-1, 0]:
+    // Unit cylinder pre-rotated onto -Z and shifted to span z ∈ [-1, 0], so
     // scale.z stretches the beam from the muzzle along the frozen axis.
     this.beamGeometry = new CylinderGeometry(1, 1, 1, 10, 1, true);
     this.beamGeometry.rotateX(Math.PI / 2);
@@ -131,8 +118,8 @@ export class LaserFxSystem extends createSystem({
       depthWrite: false,
       toneMapped: false,
     });
-    // Inverted normals: BackSide renders the tube's inner surface, so the
-    // glow thickens toward the axis instead of shading off at grazing angles.
+    // Inverted normals: BackSide renders the tube's inner surface, so the glow
+    // thickens toward the axis instead of shading off at grazing angles.
     this.beamGlowMaterial = new MeshBasicMaterial({
       color: rawSrgbColor(EDGE_BLUE),
       side: BackSide,
@@ -141,8 +128,7 @@ export class LaserFxSystem extends createSystem({
       depthWrite: false,
       toneMapped: false,
     });
-    // Charge sphere: same fresnel trick as the hit flash, driven by
-    // uProgress instead of uOpacity — brightens and saturates as it swells.
+    // Charge sphere: the hit-flash fresnel trick, driven by uProgress.
     this.glowMaterialTemplate = new ShaderMaterial({
       vertexShader: /* glsl */ `
         varying vec3 vNormal;
@@ -187,18 +173,16 @@ export class LaserFxSystem extends createSystem({
       if (!muzzle) return;
       this.rigs.set(entity.index, this.buildRig(muzzle, entity));
     });
-    // The turret left the query (boss torn down or turret destroyed): drop
-    // the rig. Per-entity resources only — the muzzle node itself belongs to
-    // the prototype clone and must survive for the next battle.
+    // The turret left the query (boss torn down or turret destroyed): drop the
+    // rig. Per-entity resources only — the muzzle belongs to the prototype clone.
     this.queries.lasers.subscribe('disqualify', (entity) => {
       this.teardownRig(entity.index);
     });
   }
 
   /**
-   * Drop one rig: per-entity resources disposed, group unpinned from the
-   * muzzle, map entry cleared. The single teardown truth for both the
-   * disqualify subscriber and the reconcile sweep in update().
+   * Drop one rig: dispose per-entity resources, unpin the group, clear the map
+   * entry. Used by both the disqualify subscriber and the reconcile sweep.
    */
   private teardownRig(index: number): void {
     const rig = this.rigs.get(index);
@@ -209,14 +193,13 @@ export class LaserFxSystem extends createSystem({
     this.rigs.delete(index);
   }
 
-  /** Build the charge/beam rig under the given muzzle node. */
   private buildRig(muzzle: Object3D, entity: Entity): LaserFxRig {
     const group = new Object3D();
     group.name = 'laser-fx';
     group.visible = false;
 
-    // Converging energy shards: per-instance spawn direction, shell radius
-    // and loop stagger, frozen at build time — update() only integrates.
+    // Per-shard spawn direction, shell radius and loop stagger are frozen at
+    // build time — update() only integrates.
     const particles = new InstancedMesh(
       this.particleGeometry,
       this.particleMaterial,
@@ -266,21 +249,18 @@ export class LaserFxSystem extends createSystem({
   }
 
   update(delta: number): void {
-    // Reconcile: disqualify owns rig teardown, but elics dispatches the
-    // subscriber chain synchronously inside dispose — an earlier subscriber
-    // throwing aborts the rest, and the beam would outlive its cannon. Drop
-    // any rig whose owner entity is already dead, one frame late at worst.
+    // Reconcile: disqualify owns teardown, but elics dispatches subscribers
+    // synchronously inside dispose — a throwing subscriber aborts the chain and
+    // the beam outlives its cannon. Drop rigs of dead owners, one frame late at worst.
     for (const [index, rig] of this.rigs) {
       if (!rig.entity.active) this.teardownRig(index);
     }
-    // Settlement screen: the run is over — retire every rig instead of
-    // freezing a half-drawn beam or charge cloud behind the overlay.
+    // Settlement screen: retire every rig instead of freezing it behind the overlay.
     if (this.over()) {
       this.hideAll();
       return;
     }
-    // Same freeze discipline as the cycle system: pauses hold the fx exactly
-    // where the simulation stopped. State drives everything else.
+    // Pauses hold the fx exactly where the simulation stopped.
     if (this.paused()) return;
     for (const entity of this.queries.lasers.entities) {
       const rig = this.rigs.get(entity.index);
@@ -309,9 +289,8 @@ export class LaserFxSystem extends createSystem({
   }
 
   /**
-   * Charge beat: shards loop inward from their spawn shell (accelerating
-   * converge, shrinking as they fall in) while the fresnel sphere swells
-   * from a seed toward GLOW_RADIUS and brightens through uProgress.
+   * Charge beat: shards loop inward from their spawn shell (accelerating and
+   * shrinking) while the fresnel sphere swells toward GLOW_RADIUS.
    */
   private animateCharge(rig: LaserFxRig, t: number): void {
     rig.particles.visible = true;
@@ -344,9 +323,8 @@ export class LaserFxSystem extends createSystem({
   }
 
   /**
-   * Firing beat: stretch the two-layer beam along the frozen axis and wobble
-   * the radii with offset sines — a live sweep reads as plasma, a rigid tube
-   * reads as geometry. Length comes straight from the frozen component data.
+   * Firing beat: stretch the two-layer beam along the frozen axis; offset-sine
+   * radii wobble because a rigid tube reads as geometry.
    */
   private animateBeam(rig: LaserFxRig, elapsed: number, length: number): void {
     rig.particles.visible = false;
@@ -359,7 +337,6 @@ export class LaserFxSystem extends createSystem({
     rig.beamCore.scale.set(BEAM_CORE_RADIUS * coreFlicker, BEAM_CORE_RADIUS * coreFlicker, 1);
   }
 
-  /** Hide every rig's group (idempotent — skips already-hidden ones). */
   private hideAll(): void {
     for (const rig of this.rigs.values()) {
       if (rig.group.visible) rig.group.visible = false;

@@ -10,11 +10,8 @@ import { AssetType, defineAssets } from '@iwsdk/core';
 const publicAssetUrl = (filePath: string): string =>
   `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
 
-// UI documents are fetched by URL at runtime, and nginx sends no Cache-Control
-// for them, so a client may reuse a stale copy across deploys (seen on Huawei
-// Browser). Versioning the URL makes every deploy a fresh resource. Binary
-// assets keep unversioned URLs: glTF is renamed for incompatible swaps, and
-// the HDR is sniffed by key suffix.
+// UI documents are fetched by URL and nginx sends no Cache-Control for them, so
+// versioning the URL avoids stale copies across deploys; binary assets keep unversioned URLs.
 const uiAssetUrl = (filePath: string): string =>
   `${publicAssetUrl(filePath)}?v=${__BUILD_VERSION__}`;
 
@@ -67,9 +64,8 @@ export default defineAssets({
     name: 'Build Panel',
     priority: 'critical',
   },
-  // Key must end with ".hdr": IWSDK's EnvironmentSystem sniffs the file type
-  // from the raw src suffix BEFORE resolving manifest keys, so a key without
-  // the extension would be loaded as a plain (non-decodable) texture.
+  // Key must end with ".hdr": IWSDK's EnvironmentSystem sniffs the type from the raw
+  // src suffix before resolving manifest keys.
   'ocean-env.hdr': {
     url: publicAssetUrl('textures/kloofendal_partly_cloudy_puresky_1k.hdr'),
     type: AssetType.HDRTexture,

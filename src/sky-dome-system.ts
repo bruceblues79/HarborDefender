@@ -18,17 +18,16 @@ import { SkyDome } from './components.js';
 import { createSkyDomeMesh } from './scene-assets/sky-dome.scene-asset.js';
 
 const DEG2RAD = Math.PI / 180;
-/** Same HDR the ocean reflects — warm AssetManager cache, one shared world. */
+/** Same HDR the ocean reflects; AssetManager caches it, one shared world. */
 const DOME_HDR = 'ocean-env.hdr';
 
 type UniformMap = { [name: string]: { value: unknown } };
 
 /**
- * Owns the AR partial-immersion dome: creates the hidden mesh entity, wires
- * the HDR cubemap, and gates visibility to immersive-AR sessions. IWSDK's AR
- * policy nulls scene.background and hides authored gradient domes but has no
- * blend control — this system restores it in content. Uniform values mirror
- * the carrier's SkyDome fields every frame so the dome stays inspector-tunable.
+ * Owns the AR partial-immersion dome: hidden mesh entity, HDR cubemap, visibility
+ * gated to alpha-blend / additive sessions.
+ * IWSDK's AR policy nulls scene.background and hides gradient domes but has no blend
+ * control; SkyDome fields are mirrored into uniforms every frame for the inspector.
  */
 export class SkyDomeSystem extends createSystem({
   domes: { required: [SkyDome] },
@@ -70,7 +69,7 @@ export class SkyDomeSystem extends createSystem({
     if (!this.arActive) return;
     for (const entity of this.queries.domes.entities) {
       const maxAlpha = Number(entity.getValue(SkyDome, 'maxAlpha'));
-      // Rim angles collapse to cosines once here; the shader just smoothsteps.
+      // Rim angles collapse to cosines here; the shader only smoothsteps.
       const edgeCos = Math.cos(Number(entity.getValue(SkyDome, 'edgeDeg')) * DEG2RAD);
       const fadeCos = Math.cos(
         (Number(entity.getValue(SkyDome, 'edgeDeg')) -

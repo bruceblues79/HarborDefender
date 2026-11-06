@@ -5,42 +5,26 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-/**
- * Level authoring data — the single editable source of truth for the defence.
- *
- * Ordering is level -> wave -> unit: a level holds waves, a wave holds the
- * units sent out one at a time. Redesigning the defence means editing this
- * file only; no system code has to change.
- */
-
 /** Movement pattern ids understood by ShipMovementSystem. */
 export type MovementPattern = 'default-ship' | 'default-flyer';
 
-/** Side a unit fights for. The director only ever dispatches attackers. */
+/** The director only ever dispatches attackers. */
 export type Faction = 'attacker' | 'defender';
 
-/**
- * One unit type: what to spawn and how it behaves. The unit sheet is the
- * single truth the spawner reads — altitude, armament, rotor, wake and the
- * berth band are all designer data, never system hard-coding.
- */
 export interface UnitTypeDef {
   /** Asset manifest id instantiated for this unit (see src/assets.ts). */
   assetId: string;
   /** Uniform model scale applied to every spawned clone (1 keeps GLB size). */
   scale: number;
-  /** Movement behaviour applied when the unit spawns. */
   movement: MovementPattern;
-  /** Side this unit fights for. */
   faction: Faction;
   /** World y the unit holds while under way (its object-origin height). */
   cruiseY: number;
   /** Carries the deck-cannon ability (fires once anchored). */
   armed: boolean;
   /**
-   * Seconds between two shots for an armed unit, rolled into PirateCannon
-   * at spawn (PirateFireSystem re-rolls from the component, not a constant).
-   * Only meaningful when `armed` is true.
+   * Seconds between two shots for an armed unit, rolled into PirateCannon at
+   * spawn (PirateFireSystem re-rolls from the component). Only if `armed`.
    */
   fireInterval: number;
   /** Driven rotor node — PropellerSpinSystem spins `propellers` children. */
@@ -51,42 +35,18 @@ export interface UnitTypeDef {
   stone: boolean;
   /** Disturbs the ocean surface (WakeSource); flyers never touch water. */
   wake: boolean;
-  /**
-   * Ripple radius (m) this unit drags across the surface. Optional: falls
-   * back to the shared WAKE_RADIUS — only oversized hulls (the boss) set it.
-   */
+  /** Ripple radius (m); defaults to the shared WAKE_RADIUS, only oversized hulls override it. */
   wakeRadius?: number;
   /** Berth z bounds rolled for this unit's stop point (MIN far, MAX near). */
   stopZMin: number;
   stopZMax: number;
-  /**
-   * Boss-carrier flag: the spawn pipeline skips the generic root HitCore and
-   * Health (the boss's four gun turrets are assembled as independent combat
-   * parts instead; the hull itself is not a target). Carries no behaviour of
-   * its own.
-   */
+  /** Boss flag: spawn skips the generic root HitCore/Health; the gun turrets are separate parts. */
   boss?: boolean;
-  /**
-   * Fixed sail target (designer data): the unit runs a straight line to this
-   * point instead of a rolled berth-band stop. Absent: the berth cascade
-   * picks the stop like every other attacker.
-   */
+  /** Fixed sail target instead of a rolled berth stop (absent: normal berth cascade). */
   fixedTarget?: { x: number; z: number };
-  /**
-   * Explicit health-bar height in the carrier's LOCAL space (GLB units, so
-   * `scale` carries it naturally). Every Health-carrying unit must set it:
-   * measured GLB subtree top plus the shared bar margin — the bar system
-   * has no bounding-box fallback. Boss hulls carry no Health and skip it.
-   */
+  /** Health-bar height in carrier-LOCAL GLB units; required for every Health carrier (no bbox fallback). */
   barY?: number;
 }
-
-/**
- * Unit registry keyed by the unitType string used in level data. Declared
- * after the constants it reads (module const order is evaluation order).
- * Adding a new enemy (goblin flyer, boss) is one entry here plus its asset
- * manifest entry.
- */
 
 /** A wave sends its units out one at a time, in listed order. */
 export interface WaveSpec {
@@ -94,7 +54,6 @@ export interface WaveSpec {
   units: string[];
 }
 
-/** A level is a sequence of waves. */
 export interface LevelSpec {
   name: string;
   waves: WaveSpec[];
@@ -119,27 +78,16 @@ export const PACING = {
   postWaveDelay: 3.0,
   /** Gap after a level is cleared before the next level starts. */
   postLevelDelay: 5.0,
-  /**
-   * Concurrency cap per LAYER, not global: the director counts live
-   * attackers by unitType, and a unit may only spawn while its own layer
-   * holds fewer than this. Layers fill independently — 6 ships on the
-   * water never hold back a flyer's slot.
-   */
+  /** Concurrency cap per unitType LAYER, not global — 6 ships never hold back a flyer's slot. */
   maxConcurrentUnits: 6,
   /** Gap between dismissing the START panel and the first level. */
   postStartDelay: 1.0,
 };
 
-/**
- * Ocean body footprint in world space. Kept in step with the ocean GLB
- * placement in battle-setup.ts (10 m body centred at z = -6.5, lifted 0.55).
- */
+/** Ocean body footprint, kept in step with the ocean GLB placement in battle-setup.ts. */
 export const OCEAN = {
-  /** Body width along x (m). */
   width: 3,
-  /** Body length along z (m). */
   length: 10,
-  /** Body centre z (m). */
   centerZ: -6.5,
   /** Top-surface y (m): 0.55 lift + half of the 0.25 m thickness. */
   surfaceY: 0.675,
@@ -149,10 +97,8 @@ export const OCEAN = {
 export const OCEAN_FAR_Z: number = OCEAN.centerZ - OCEAN.length / 2;
 
 /**
- * Harbor wall placement — kept in step with `harbor-wall.glb` (a
- * 3.4 × 0.5 × 0.4 m block) and its transform in battle-setup.ts. The block is
- * only 0.4 m deep in z and straddles the water's edge: its seaward face sits
- * exactly on the ocean's near edge (z = -1.5), so beyond it there is only wall.
+ * Wall placement kept in step with `harbor-wall.glb` (3.4 × 0.5 × 0.4 m) and
+ * battle-setup.ts; the seaward face sits on the ocean's near edge.
  */
 export const WALL_CENTER_Z = -1.3;
 export const WALL_DEPTH_Z = 0.4;
@@ -160,26 +106,16 @@ export const WALL_SEA_FACE_Z: number = WALL_CENTER_Z - WALL_DEPTH_Z / 2;
 /** Land-side face; past it the wall no longer holds burst chunks up. */
 export const WALL_LAND_FACE_Z: number = WALL_CENTER_Z + WALL_DEPTH_Z / 2;
 
-/**
- * Defense slots — the fixed wall mounts (城防位) a defender unit can occupy.
- * Editing a slot's `unit` swaps what stands there; no system code changes.
- * x is the slot centre across the wall (m); every mount faces the sea (-Z).
- */
+/** Defense slots — the fixed wall mounts (城防位); every mount faces the sea (-Z). */
 export type DefenseUnitId = 'cannon' | 'iron-guard';
 
 export interface DefenseSlotDef {
-  /** Slot centre x across the wall (m). */
   x: number;
   /** Unit standing in the slot at battle entry; null = starts empty. */
   unit: DefenseUnitId | null;
 }
 
-/**
- * Five slots evenly spaced across the central 3 m of the 3.4 m wall
- * (0.2 m margin each side), matching the historical cannon row. The run
- * starts with three cannons; the two remaining slots open empty — the
- * player builds them up from the starting gold.
- */
+/** Five slots evenly spaced across the wall's central 3 m (0.2 m margin each side). */
 export const DEFENSE_SLOTS: DefenseSlotDef[] = [
   { x: -1.2, unit: null },
   { x: -0.6, unit: 'cannon' },
@@ -192,56 +128,40 @@ export const DEFENSE_SLOTS: DefenseSlotDef[] = [
 export const PLACEABLE_UNITS: DefenseUnitId[] = ['cannon', 'iron-guard'];
 
 /**
- * 全场唯一单位：这些 unit id 在任意槽位存活一只时，其余空槽一律禁建
- * （面板行置灰、点击拒绝），直到这只毁灭。唯一性是全局事实，不是每槽
- * 属性 —— 钢铁卫士的嘲讽由它独自承担，多只没有意义。
+ * 全场唯一单位：任意槽位存活一只时，其余空槽一律禁建（置灰并拒绝点击），
+ * 直到这只毁灭 —— 唯一性是全局事实，不是每槽属性。
  */
 export const UNIQUE_UNITS: ReadonlySet<DefenseUnitId> = new Set([
   'iron-guard',
 ]);
 
 /**
- * 维修按钮：挂在每个守方炮台血条的左缘上方，只在血量不满且可维修时出现。
- * 图标是任务给定的白色 SVG path（运行时绘成 CanvasTexture），外圈是 dock
- * 同款灰底圆钮；命中盒比圆钮大一圈，鼠标 / 触摸 / XR 射线都不必落在图标上。
- * 维修中整组缩小、灰底换亮灰。
- *
- * 位置：按钮左缘对齐血条左缘，底缘离血条顶边 `gap` 米；尺寸是世界尺寸，
- * 不随守方血条的 0.6 缩放变化。
+ * 维修按钮：挂在守方炮台血条左缘上方，仅血量不满且可维修时出现；尺寸是世界尺寸，
+ * 不随守方血条的 0.6 缩放变化；命中盒比圆钮大一圈，落在图标外也能命中。
  */
 export const REPAIR_BUTTON = {
-  /** 圆钮直径（m）。 */
   diameter: 0.1,
-  /** 图标平面边长（m）——白色 glyph 居中于圆钮。 */
+  /** 图标平面边长（m），白色 glyph 居中于圆钮。 */
   iconSize: 0.0525,
   /** 按钮底缘与血条顶边的间隙（m）。 */
   gap: 0.02,
-  /** 维修中可见内容组的缩放（旧的缩小反馈）。 */
+  /** 维修中可见内容组的缩放。 */
   activeScale: 0.75,
   /** dock 同款灰底圆钮。 */
   background: 0x5d646d,
-  /** 维修中的亮灰底，替代旧的金色描边扳手。 */
+  /** 维修中的亮灰底。 */
   activeBackground: 0x8f98a3,
-  /**
-   * 不可见命中盒（m）：比圆钮大一圈，Z 向保持薄片，只提供射线平面。
-   */
+  /** 不可见命中盒（m）：比圆钮大一圈，Z 向保持薄片，只提供射线平面。 */
   proxy: { x: 0.1375, y: 0.1375, z: 0.04 },
-  /**
-   * 透明绘制顺序：血条底板 8 / 血量 9 之上，菜单与建造 dock（18/20）之下。
-   */
+  /** 透明绘制顺序：血条底板 8 / 血量 9 之上，菜单与建造 dock（18/20）之下。 */
   backgroundRenderOrder: 11,
   iconRenderOrder: 12,
 };
 
 /**
- * Empty-slot pedestal pads: a permanent Ø0.38 × 0.04 m disc under every
- * defense slot (defense-pad.glb, npm run export-assets). A slot with no
- * live occupant breathes and doubles as the build entry: DefensePadSystem
- * raises that pad's own material's emissiveIntensity sinusoidally — the GLB
- * bakes the warm-gold emissive colour at full strength, so the runtime
- * writes one scalar per pad; every empty pad pulses in lockstep (same phase
- * accumulator). DefensePadInputSystem keeps RayInteractable on empty pads
- * only and opens the build dock on press.
+ * Empty-slot pedestal pads: a permanent Ø0.38 × 0.04 m disc under every defense
+ * slot. DefensePadSystem breathes the pad's emissiveIntensity; DefensePadInputSystem
+ * keeps RayInteractable on empty pads only and opens the build dock on press.
  */
 export const DEFENSE_PAD = {
   /** Pad height (m): the step every mounted unit stands on. */
@@ -252,11 +172,7 @@ export const DEFENSE_PAD = {
   breatheAmp: 0.3,
 };
 
-/**
- * Economy knobs: money the player starts with, kill bounties, repair
- * throughput/cost and unit book values. Mirrors docs/design/combat.md —
- * change both together.
- */
+/** Economy knobs: starting money, kill bounties, repair throughput/cost and unit book values. */
 export const ECONOMY = {
   /** Money the run starts (and every RESTART / MAIN re-entry) with. */
   startMoney: 200,
@@ -266,11 +182,7 @@ export const ECONOMY = {
   repairHpPerSecond: 10,
   /** Money drained per second while a unit repairs (修满 110 金). */
   repairCostPerSecond: 11,
-  /**
-   * Book value per unit id: the ONLY price knob — an empty or destroyed
-   * slot builds at full value. There is no trade-in: a live occupant's
-   * button simply stays hidden.
-   */
+  /** Book value per unit id — an empty or destroyed slot builds at full value; no trade-in. */
   unitValues: {
     cannon: 200,
     // 钢铁卫士：2500 金一只（嘲讽承伤坦位，boss 承伤 90% 减免）。
@@ -279,10 +191,8 @@ export const ECONOMY = {
 };
 
 /**
- * Kill-bounty tiers (击杀奖励档位): the ONLY reward knobs. Spawn writes one
- * tier onto each bounty-carrying HitCore; ShellHitSystem's kill site reads
- * the tier and pays the flat REWARD_TABLE cell — no per-branch price logic
- * anywhere. Defender cores default to None and never pay.
+ * Kill-bounty tiers (击杀奖励档位): spawn writes one tier per bounty-carrying
+ * HitCore, ShellHitSystem pays the flat REWARD_TABLE cell. Defender cores never pay.
  */
 export enum RewardTier {
   /** Not a bounty carrier (defender cores, decor). */
@@ -295,16 +205,7 @@ export enum RewardTier {
   BossChief = 'boss-chief',
 }
 
-/**
- * Flat Islewrath bounty (怒岛号悬赏): every gun turret, the laser main gun
- * and the phase-two chief head each pay this. Briefly zeroed (v0.1.264) to
- * cut the run's biggest income spike; restored to the original 800 after
- * the zero-bounty boss fight starved the defence's economy (2026-10-30
- * 实测拍板); 2026-11-01 下调到 200，同日回调到 400；2026-11-02 上调到 500。
- * The RewardTier tags
- * stay on the spawn sites so a future achievement system can still read
- * part kills.
- */
+/** Flat Islewrath bounty (怒岛号悬赏): every turret, the laser main gun and the chief head pay this. */
 export const BOSS_BOUNTY = 500;
 
 export const REWARD_TABLE: Record<RewardTier, number> = {
@@ -314,25 +215,15 @@ export const REWARD_TABLE: Record<RewardTier, number> = {
   [RewardTier.BossChief]: BOSS_BOUNTY,
 };
 
-/**
- * Pirate hull envelope is ~1.2 m long with the bow on local -Z, so the bow
- * reaches 0.6 m ahead of the ship's origin.
- */
+/** Pirate hull is ~1.2 m long with the bow on local -Z, so the bow leads by 0.6 m. */
 export const SHIP_LENGTH = 1.2;
 export const SHIP_HALF_LENGTH: number = SHIP_LENGTH / 2;
-/**
- * Clear water (m) kept between a stopped ship's bow and the wall's seaward
- * face — a full hull length of open water, so the wall never reads as a
- * bumping post. This is the knob to turn when attackers should close in.
- */
+/** Clear water (m) between a stopped ship's bow and the wall's seaward face. */
 export const SHIP_STOP_MARGIN: number = SHIP_LENGTH;
 
 /**
- * Attackers stop in the wall-side half of the ocean: from the midpoint
- * toward the wall, but with the bow kept just short of the wall. The stop
- * line has to be derived from the hull's own length — the wall is shallower
- * in z than half a hull, so any formula that measures from the wall's land
- * end would drive the bow clean through the wall block.
+ * Stop band: midpoint toward the wall, bow kept just short of it. Derived from
+ * hull length — measuring from the wall's land end would drive the bow through it.
  */
 export const SHIP_STOP_Z_MIN: number = OCEAN.centerZ;
 export const SHIP_STOP_Z_MAX: number =
@@ -343,10 +234,7 @@ export const SHIP_Y = 0.66;
 /** Spin of the bombardier's rotor nodes, radians per second. */
 export const PROPELLER_SPIN_RAD = 8;
 
-/**
- * Ripples a moving unit drags across the surface. Strength is the wake's
- * amplitude multiplier; the ship halves its radius while it is not under way.
- */
+/** Wake strength is the amplitude multiplier; a halted ship also halves its radius. */
 export const WAKE_STRENGTH_MOVING = 1.0;
 export const WAKE_STRENGTH_HALTED = 0.75;
 export const WAKE_RADIUS = 1.25;
@@ -355,43 +243,21 @@ export const WAKE_RADIUS = 1.25;
 export const SPAWN_FADE_DURATION = 0.9;
 
 /**
- * Separation a new stop must clear of every stop already claimed, measured as
- * an ellipse rather than a circle because a hull is about 0.4 m across but
- * 1.2 m long: 0.8 m across the beam, 1.5 m along the keel. An elliptical test
- * packs this small patch of water noticeably tighter than one isotropic radius.
- *
- * Note the stop zone is 2.4 m by 3.2 m, so six simultaneous stops at this
- * spacing is close to the limit — the last ships out will settle a little
- * inside the minimum, which is expected behaviour, not a fault. Loosen these
- * two numbers to let the fleet cluster more freely.
+ * Elliptical stop separation: 0.8 m across the beam, 1.5 m along the keel for a
+ * ~0.4 × 1.2 m hull. Six stops nearly fills the zone, so slight overlap is expected.
  */
 export const STOP_MIN_GAP_X = 0.8;
 export const STOP_MIN_GAP_Z = 1.5;
 
-/**
- * Random candidates rolled per dispatch. The roomiest one is kept, so more
- * tries means a better spread — and a denser fleet needs more of them.
- */
+/** Random candidates per dispatch; the roomiest wins, so more tries spread the fleet better. */
 export const STOP_ROLL_TRIES = 8;
 
-/**
- * Spawn-point best-candidate tries. The far edge is only 3 m wide, so a plain
- * random roll keeps landing new ships on top of ones that just emerged. Roll a
- * handful and keep the X furthest from every active attacker's current X —
- * same pattern as stop-point selection, one dimension simpler.
- */
+/** Spawn-point candidates: roll a handful and keep the X furthest from live attackers. */
 export const SPAWN_ROLL_TRIES = 6;
 
 /**
- * Designer's sandbox: one level, tuned by hand.
- *
- * The wave runs to completion: a longer wave would simply queue — the
- * director holds units until their own layer has room
- * (`PACING.maxConcurrentUnits` per unitType), which is what keeps the water
- * from flooding.
- *
- * Boss sandbox (task 028): the Islewrath comes down the centre line and the
- * battery starts fully crewed with deep pockets — a pure boss-fight stage.
+ * Designer's sandbox: one level, tuned by hand — the Islewrath comes down the
+ * centre line and the battery starts fully crewed with deep pockets.
  */
 export const designList: LevelSpec[] = [
   {
@@ -410,11 +276,8 @@ export const designList: LevelSpec[] = [
 export const gameLevels: LevelSpec[] = [];
 
 /**
- * Endless mode (动态难度 endless 关卡): three cannons and a 200 g purse, the
- * first wave fixed at three pirate ships. Waves 2+ are NOT authored here —
- * EndlessPlannerSystem appends one dynamically generated WaveSpec per
- * intermission, so this file's single entry is only the seed. `waves` is the
- * runtime truth of the endless run: waveIndex walks it forever.
+ * Endless mode seed: three cannons and a 200 g purse, first wave fixed at three
+ * ships; EndlessPlannerSystem appends later waves at runtime.
  */
 export const endlessLevel: LevelSpec = {
   name: 'endless',
@@ -437,10 +300,7 @@ export function setActiveLevelList(list: LevelSpec[]): void {
   activeLevelList = list;
 }
 
-/**
- * Endless dynamic-difficulty tuning (DDT 发兵调参). The planner reads this
- * block only — every knob a designer touches lives here.
- */
+/** Endless dynamic-difficulty tuning (DDT 发兵调参). */
 export const ENDLESS = {
   /** Seconds the GET READY intermission panel shows (纯展示，非暂停). */
   intermissionSec: 3,
@@ -448,7 +308,6 @@ export const ENDLESS = {
   baseBudgetWave2: 2,
   budgetPerWave: 0.75,
 
-  // — 压力曲线（和旧 pressureMin/pressureMax 同名兼容，语义变了） —
   /** Pressure 曲线下限 / 上限；power=3 时 pressure=pressureMax。 */
   pressureMin: 0.7,
   pressureMax: 1.15,
@@ -456,7 +315,6 @@ export const ENDLESS = {
   powerFull: 3,
   powerRatioMax: 2.5,
 
-  // — 卫士 & 续航 —
   /** iron-guard 的 power 权重：承伤不输出，按 1.5×当前血量比计入。 */
   guardPowerWeight: 1.5,
   /** 剩余钱（修完 + 建完之后）转 sustainFactor：1 + min(sustainMax, excess / sustainDiv) */
@@ -465,47 +323,28 @@ export const ENDLESS = {
   /** Boss 前一波额外 × 0.85，让玩家有机会修满/重建再进考场。 */
   preBossEase: 0.85,
 
-  // — 侵略性（只放大数量，不动伤害矩阵） —
   aggressionPerWave: 0.06,
   aggressionMax: 2.2,
 
-  // — 每层单位上限（随波次放开） —
   layerCapStart: 6,
   layerCapStep: 1,
   layerCapStepWaves: 3,
   layerCapMax: 12,
 
-  // — 总体硬上限 —
   /** Hard unit cap per generated wave (overflow waits out the layer caps). */
   maxUnitsPerWave: 36,
 
-  /**
-   * Purchase pool for a generated wave: unitType -> budget cost, equal-weight
-   * random picks among what the remaining budget affords. Keys are UNIT_TYPES
-   * ids — the boss is deliberately absent.
-   */
+  /** Purchase pool: unitType -> budget cost, equal-weight picks; the boss is absent. */
   cost: { 'pirate-ship': 1, bombardier: 0.9, ornithopter: 0.6 },
-  /**
-   * Boss cadence (6 波一 boss): every `bossEvery` waves IS a boss wave —
-   * one lone boss rolled from `bossPool`, no escorts, phases of its own.
-   * All other waves are budget-bought compositions.
-   */
+  /** Every `bossEvery` waves is a lone boss from `bossPool`; other waves are budget-bought. */
   bossEvery: 6,
   /** Boss pool: a boss wave rolls one at random. */
   bossPool: ['boss_islewrath'],
 };
 
-/**
- * Combat tuning: cannon fire, shell ballistics, splash ripples and aim drag.
- * Every knob a designer touches lives here; the combat systems hold no numbers.
- */
+/** Combat tuning: cannon fire, shell ballistics, splash ripples and aim drag. */
 export const COMBAT = {
-  /**
-   * Pooled shells shared by every cannon, player and (future) pirate alike.
-   * Sustained flight peaks at ~6 shells today and roughly triples once pirate
-   * ships return fire; 48 keeps ample headroom — idle shells are invisible
-   * meshes with shared geometry/material, so the pool costs nothing per frame.
-   */
+  /** Pooled shells shared by every cannon; idle shells are invisible and cost nothing per frame. */
   shellPoolSize: 48,
   /** Shell sphere radius (m) — reads as a ball for the 0.18 m-wide barrel. */
   shellRadius: 0.0375,
@@ -513,43 +352,22 @@ export const COMBAT = {
   shellColor: 0x222222,
   /** Seconds between two shots from one cannon — the base of every roll. */
   fireInterval: 2.5,
-  /**
-   * Per-shot jitter (s): each cannon re-rolls its cooldown as
-   * `fireInterval + [fireJitterMin, fireJitterMax]` after every shot, and the
-   * first volley rolls the same way at mount time — the battery drifts out
-   * of lockstep from the very first round.
-   */
+  /** Per-shot jitter (s): every cooldown, including the first, rolls `fireInterval + [min, max]`. */
   fireJitterMin: 0.2,
   fireJitterMax: 0.5,
   /**
-   * Gravity (m/s^2) for the parabolic flight — shared by every projectile:
-   * city shells, dragless attacker intercepts and stones. The intercept
-   * solver compensates exactly, so attacker arcs only steepen. 12.0 (feel
-   * test, from 9.8) drops shots harder and shortens carry to ~5.8 m @ 33°.
+   * Gravity (m/s^2) shared by every projectile; the intercept solver compensates,
+   * so attacker arcs only steepen. 12.0 drops shots harder and shortens carry to ~5.8 m @ 33°.
    */
   gravity: 12.0,
   /**
-   * Muzzle speed (m/s) — one gun fires everything. 12.0 rides with a heavy
-   * linear drag (shellDrag below): the ball leaves fast and visibly sheds
-   * speed, which layers the ranges the way a real throw feels — optimum
-   * carry ~30° (~7 m), 45° ~6.4 m, 60° ~4.9 m (reaches the farthest ship
-   * berth -6.5 on a mid arc), 80° lobs die at ~1.8 m, flat shots carry
-   * ~2.7 m. History: 7.45 → 9.0 (one-cannon plan) re-opened the flapper
-   * band but made every mid elevation land alike; 7.0 → 7.8 restored the
-   * layering while staying vacuum-flat (30-60° within 15%); 12.0 + drag
-   * breaks that flat top for good — raising the barrel past the optimum
-   * now monotonically shortens the shot; 10.0 (feel test) shrinks max
-   * carry to ~5.6 m @ 32° — ship berths past ~-5.5 fall out of reach;
-   * 11.0 + gravity 12.0 (feel test) keeps max carry ~5.8 m @ 33° — the
-   * far ship end -6.5 stays out of reach, the wall-side half hits.
+   * Muzzle speed (m/s) — one gun fires everything; with `shellDrag` the ball visibly
+   * sheds speed: ~30° ≈ 7 m carry, 60° ≈ 4.9 m, 80° lobs die at ~1.8 m.
    */
   shellSpeed: 11.0,
   /**
-   * Linear air drag (1/s) on defender shells only: dv/dt = -drag·v + g.
-   * Pirate and boss intercepts solve vacuum trajectories, so their shells
-   * launch with drag 0 (the BallisticFlight default) and stay
-   * guaranteed-hit. The trajectory guide samples the same closed form the
-   * integration follows, so preview and flight stay in lockstep.
+   * Linear air drag (1/s) on defender shells only: dv/dt = -drag·v + g. Pirate and
+   * boss intercepts solve vacuum trajectories (drag 0, guaranteed hit).
    */
   shellDrag: 1.0,
   /** Shells recycle this far (m) below the ocean surface. */
@@ -566,44 +384,25 @@ export const COMBAT = {
   /** Barrel elevation clamp, degrees — 80° lobs cover the flyer band's near half. */
   aimPitchMin: 0,
   aimPitchMax: 80,
-  /**
-   * Spawn/reset barrel elevation, degrees — guns enter the battle (and
-   * RESTART / MAIN re-entry) already part-raised, a quarter of the way
-   * through the 0–80 elevation travel, so the battery reads ready rather
-   * than parked.
-   */
+  /** Spawn/reset barrel elevation (degrees) — a quarter of the 0–80 travel, so guns read ready. */
   aimPitchDefault: 22.5,
   /** Aim degrees per dragged pixel in the browser — retune by feel. */
   aimDegreesPerPixel: 0.4,
-  /**
-   * Aim degrees per metre of horizontal (yaw) wrist travel in XR — retune by
-   * feel on device. 100 puts a full ±45° sweep at ~45 cm of hand travel;
-   * 1 cm ≈ 1°. Halved from 200 so coarse horizontal steering feels steadier.
-   */
+  /** Aim degrees per metre of yaw wrist travel in XR — 100 puts a full ±45° sweep at ~45 cm. */
   aimDegreesPerMeterYaw: 100,
   /** Aim degrees per metre of vertical (pitch) wrist travel in XR. */
   aimDegreesPerMeterPitch: 200,
   /**
-   * Hit-core radii (m): a shell within this 3D distance of an opposing
-   * faction's hit_core is consumed. The pirate core sits at bounding-box
-   * centre (hull + sail, ~0.38 m above the waterline), so 0.5 reaches down
-   * to the hull and most of its 1.25 m length; the defender core covers a
-   * city cannon's carriage-and-barrel half-diagonal (~0.22 m).
+   * Hit-core radii (m): a shell within this 3D distance of an opposing core is consumed.
+   * Attacker 0.5 covers the hull; defender 0.22 covers a cannon's carriage half-diagonal.
    */
   attackerCoreRadius: 0.5,
   defenderCoreRadius: 0.22,
   /**
-   * Shell precision: a shell consumes a core only inside
-   * `radius × shellHitRadiusScale`. The authored radii above stay the core's
-   * geometric extent; this is the volume a shell actually claims, so tighter
-   * aim is required without redefining the hull. TrajectoryPreviewSystem
-   * tests with the same factor, so the guide's tint matches the flight.
+   * A shell claims a core only inside `radius × shellHitRadiusScale`; the authored
+   * radii stay geometric. TrajectoryPreviewSystem uses the same factor.
    */
   shellHitRadiusScale: 3 / 4,
-  /**
-   * Normalised combat numbers: every unit's health pool is 100 points, and
-   * all damage is a percentage of that pool — 20 = 20% of a hull.
-   */
   /** City-cannon shell damage (20% of a 100-point health pool). */
   shellDamage: 20,
   /** Pirate-ship shell damage (15% of a 100-point health pool). */
@@ -616,29 +415,15 @@ export const COMBAT = {
   bombardierFireInterval: 2,
   /** Seconds between two stones from one ornithopter. */
   ornithopterFireInterval: 1.2,
-  /**
-   * Pool size for ornithopter stones (separate from the ball pool) — sized
-   * for a full flapper layer (6 concurrent at the per-layer cap) firing
-   * every ~1.4-1.7s with ~2s flights.
-   */
+  /** Stone pool (separate from balls) — sized for a full flapper layer firing every ~1.4-1.7 s. */
   stonePoolSize: 12,
   /** Stone projectile radius (m) — reads as a fist-sized hurled rock. */
   stoneRadius: 0.05,
   /** Grey stone tint (roughness 0.9 / metalness 0 dielectric). */
   stoneColor: 0x8a8a86,
-  /**
-   * Pirate shells keep a constant horizontal speed (m/s); flight time is
-   * distance / this and the vertical velocity is solved for an exact hit,
-   * so the arc stays flat (~0.2-0.35 m apex) while mathematically landing
-   * on the target core. Shares BallisticSystem's gravity.
-   */
+  /** Pirate shells keep a constant horizontal speed (m/s); the arc is solved flat for an exact hit. */
   pirateShellSpeed: 8,
-  /**
-   * Hit-flash pool shared by every impact: spheres bloom from `startScale`
-   * to full size while fading out with an EaseOut curve over `duration`.
-   * Pool entities share one geometry; each carries its own material so the
-   * opacity animation stays per-instance.
-   */
+  /** Hit-flash pool: spheres bloom while fading; each carries its own material for opacity. */
   hitFlashPoolSize: 8,
   /** Seconds for one hit flash to expand and fade. */
   hitFlashDuration: 0.5,
@@ -652,13 +437,7 @@ export const COMBAT = {
   hitFlashCenterColor: 0xffd84d,
   /** Fresnel rim colour (dark red, sRGB hex). */
   hitFlashEdgeColor: 0x8a1400,
-  /**
-   * Death-burst pool shared by every unit death: one pooled entity per
-   * burst, each an InstancedMesh of small wood-and-iron chunks that fly
-   * apart under gravity. Pool entities share one geometry AND one material
-   * — per-chunk colour comes from the mesh's instanceColor, so nothing is
-   * allocated per burst at play time.
-   */
+  /** Death-burst pool: each burst is an InstancedMesh of chunks sharing one geometry AND one material. */
   dieBurstPoolSize: 4,
   /** Chunks per burst: 8 wood + 4 iron. */
   dieBurstChunkCount: 12,
@@ -688,26 +467,13 @@ export const COMBAT = {
   dieBurstWoodColors: [0x8a5a2b, 0x6b4423],
   /** Iron block tints (sRGB hex), picked per chunk. */
   dieBurstIronColors: [0x3d4247, 0x2b2f33],
-  /**
-   * World-space health bar above every combat unit's head: a red back plate
-   * with a green fill quad that shrinks from the left edge as
-   * `Health.current / max` drops, exposing the red beneath. HealthBarSystem
-   * builds one rig per unit as a child of the unit's object so it follows
-   * for free, and yaws it toward the camera each frame (yaw-only billboard —
-   * bars stay upright under the orbiting browser camera and in XR).
-   */
   /** Bar back-plate width (m) — reads across both cannon and ship hulls. */
   healthBarWidth: 0.5,
   /** Bar height (m). */
   healthBarHeight: 0.06,
   /** Gap (m) between the unit's bounding-box top and the bar's bottom edge. */
   healthBarMarginY: 0.12,
-  /**
-   * Defender cannons draw a smaller bar (uniform rig scale — 0.6 puts the
-   * plate at 0.3 m against a 0.4 m carriage) floated higher: their bounding
-   * box tops out at the raised barrel tip, and the stock gap let the gun
-   * poke through the plate.
-   */
+  /** Defender cannons draw a smaller bar, floated higher — the raised barrel would poke through the stock gap. */
   healthBarDefenderScale: 0.6,
   healthBarDefenderMarginY: 0.28,
   /** Back-plate colour (sRGB hex) — the "missing health" showing through. */
@@ -717,11 +483,8 @@ export const COMBAT = {
 };
 
 /**
- * Aim-drag trajectory guide (TrajectoryPreviewSystem), redrawn every frame
- * while a defense unit is being dragged. Sampling mirrors the live flight
- * exactly — launch vector from CannonFireSystem.fire, gravity and
- * terminations from BallisticSystem — resampled at uniform arc-length
- * spacing, so dot gaps stay constant from muzzle to splash.
+ * Aim-drag trajectory guide (TrajectoryPreviewSystem): sampling mirrors the live
+ * flight (same launch, gravity, terminations) at uniform arc-length spacing.
  */
 export const TRAJECTORY_PREVIEW = {
   /** Metres between two guide dots — uniform along the arc, speed-blind. */
@@ -742,12 +505,7 @@ export const TRAJECTORY_PREVIEW = {
   hitHoldSec: 0.15,
 };
 
-/**
- * Explicit defender health-bar heights (carrier-local y, baked margin
- * included): measured GLB subtree top at the baked pose — cannon 0.186
- * (barrel level at rest) — plus the shared defender margin. The bar system
- * no longer derives heights from bounding boxes.
- */
+/** Explicit defender bar heights (carrier-local y, margin baked in), measured from the GLB at rest. */
 export const DEFENDER_BAR_Y: Record<DefenseUnitId, number> = {
   cannon: 0.186 + COMBAT.healthBarDefenderMarginY,
   // 钢铁卫士：静态雕塑剪影，实测导出顶点 0.345（0.75x 定稿后的盔顶冠羽），
@@ -757,10 +515,7 @@ export const DEFENDER_BAR_Y: Record<DefenseUnitId, number> = {
 
 /**
  * Attacker->target damage table, keyed `${attackerUnitType}->${targetUnitType}`:
- * one shot's damage as a percentage of the target's 100-point pool. Unknown
- * pairs read 0 — immunity is explicit data, never a guessed default. Mirrors
- * docs/design/combat.md; change both together. The two stock pairs stay on
- * their named COMBAT constants (shellDamage / pirateShellDamage).
+ * one shot as a percentage of the target's 100-point pool; unknown pairs read 0.
  */
 export const DAMAGE_MATRIX: Record<string, number> = {
   'cannon->pirate-ship': COMBAT.shellDamage,
@@ -769,16 +524,15 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   'pirate-ship->cannon': COMBAT.pirateShellDamage,
   'bombardier->cannon': 10,
   'ornithopter->cannon': 6,
-  // Boss Islewrath gun turrets (task 029). The `islewrath-turret` core
-  // unitType is a damage-matrix key, deliberately distinct from the
-  // UNIT_TYPES sheet key `boss_islewrath` (underscore) — never look rows up
-  // by the sheet key.
+  // Boss Islewrath gun turrets. The `islewrath-turret` core unitType is a
+  // damage-matrix key, deliberately distinct from the UNIT_TYPES sheet key
+  // `boss_islewrath` (underscore) — never look rows up by the sheet key.
   'islewrath-turret->cannon': 20,
-  // Boss Islewrath turret incoming rows (task 028/031): a city cannon shell
-  // chips a flat 2% of the turret's 100-point pool.
+  // Boss Islewrath turret incoming rows: a city cannon shell chips a flat
+  // 2% of the turret's 100-point pool.
   'cannon->islewrath-turret': 2,
-  // Pirate chief head (task 031): every defender shell chips a flat 2% of
-  // its 100-point pool.
+  // Pirate chief head: every defender shell chips a flat 2% of its 100-point
+  // pool.
   'cannon->islewrath-chief': 2,
   // 钢铁卫士（iron-guard）：普通攻击者承伤固定 2% —— 一发只扣 2%。
   // boss 炮塔单独一行 0.2（boss 伤害 90% 减免，2026-11-01；boss 本就无视
@@ -789,37 +543,16 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   'islewrath-turret->iron-guard': 0.2,
 };
 
-/**
- * Bombardier cruise altitude, explicit designer data (one-cannon plan,
- * 2026-10-30): previously derived from the cannon's 45° apex, which would
- * drift with the retuned shellSpeed — the flyer's berth band and firing
- * geometry are tuned against this plane, so it is pinned instead of
- * re-derived. Value equals the last derived runtime result (v0 7.45 era).
- * Under the drag-loaded v0 12 lob the band stays bracketed: the near stop
- * takes the steepest lobs, the far stop a comfortable ~40-52° arc through
- * the core.
- */
+/** Bombardier cruise altitude, pinned designer data — the berth band and firing arc are tuned to it. */
 export const FLYER_Y = 2.857;
 
-/**
- * The bombardier's berth band: far out at -4.7, near end pulled back to -3.15
- * (2026-11-04 远停自 -4.6 补到 -4.7，纵深 1.55 m，覆盖 STOP_MIN_GAP_Z = 1.5；
- * 近停越靠前，炮口到目标的水平距离越短、仰角越陡：-2.0 时 66.5°，
- * -2.9 时 51.3°，-3.15 约 48.5°). MIN < MAX keeps the ship constants'
- * reading — MIN far out, MAX against the wall.
- */
+/** Bombardier berth band: far -4.7, near -3.15 (1.55 m span, covers STOP_MIN_GAP_Z = 1.5). */
 export const FLYER_STOP_Z_MIN = -4.7;
 export const FLYER_STOP_Z_MAX = -3.15;
 
 /**
- * Ornithopter flight envelope. The middle-air band sits below the
- * bombardier's cruise plane but inside the city cannons' reach. Under the
- * drag-loaded v0 12 lob the band keeps a healthy mid-arc window (far stop
- * ≈ 22-35°, near stop ≈ 35-50°); high lobs no longer reach the outer
- * band — linear drag starves them of horizontal carry, the intended
- * "steep shots guard close in" behavior. The far edge 外推自 -4.9 至
- * -5.25，让满层 6 机可排 3 × 2, and the forward extension [-3.5, -3.3]
- * sits this side of it — still well inside cannon range.
+ * Ornithopter flight envelope: below the bombardier's cruise plane, inside cannon reach.
+ * Far edge -5.25 lets a full layer of 6 fly 3 × 2; near stop -3.3.
  */
 export const ORNITHOPTER = {
   /** Cruise altitude (m) — the unit's object-origin height. */
@@ -834,42 +567,23 @@ export const ORNITHOPTER = {
   flapAmplitude: 0.35,
 };
 
-/**
- * Boss Islewrath (怒岛号) — the island-ship warlord. Task 029 arms the four
- * gun turrets: each runs an independent fire cycle with its own targeting
- * slot. Task 030 arms the laser main cannon: aim -> charge -> beam -> pause,
- * locking a defense-slot direction at aim convergence (a target dying during
- * charge/fire never re-aims). Task 031 adds the phase-two chief head: once
- * every turret is gone, the chief rises at the laser pivot and attacks the
- * wall with the chief death light (see DEATH_LIGHT).
- */
+/** Boss Islewrath (怒岛号): four independent gun turrets, a laser main cannon and a phase-two chief head. */
 export const BOSS = {
   /** Straight-run berth point: centre line, one unit nearer the wall than
    * the ocean midpoint — the wake rings and broadside read better there. */
   targetX: 0,
   targetZ: OCEAN.centerZ + 1,
-  /**
-   * Ripple radius (m) of the boss's wake. The hull is 3-4x a raider's beam,
-   * so its wake dwarfs the shared WAKE_RADIUS (1.25 × 3 = 3.75); a radius
-   * wider than the ocean body is fine — the surface shader simply clips
-   * what it can't show.
-   */
+  /** Ripple radius (m) of the boss's wake — 3× the shared WAKE_RADIUS; the shader clips the excess. */
   wakeRadius: 3.75,
   /**
-   * Explicit bar heights (carrier-local y) for the armour-part wrappers'
-   * health bars. The turret subtrees are deterministic baked geometry, so
-   * the bars pin to known tops (gun barrel top 0.176, laser barrel top
-   * 0.465) plus the shared bar margin (0.12) instead of deriving from
-   * runtime bounding boxes — a deep child spawned mid-frame carries a stale
-   * ancestor matrix, and the bbox path would float the bar.
+   * Explicit bar heights (carrier-local y) for the armour-part wrappers: baked geometry
+   * tops + the shared margin — a bbox derivation floats the bar on mid-frame children.
    */
   turretBarY: 0.176 + COMBAT.healthBarMarginY,
   laserBarY: 0.465 + COMBAT.healthBarMarginY,
   /**
-   * Turret fire rhythm (task 029): each gun loops
-   * fire -> pause -> retarget/turn -> hold -> fire. Every shot is a
-   * guaranteed-hit intercept solved from the muzzle, exactly like the pirate
-   * deck guns; only the horizontal speed differs.
+   * Turret fire rhythm: fire -> pause -> retarget/turn -> hold -> fire, each shot a
+   * guaranteed-hit intercept from the muzzle.
    */
   /** Muzzle horizontal speed (m/s) — shared solver, flat arc. */
   shellSpeed: COMBAT.pirateShellSpeed,
@@ -882,34 +596,22 @@ export const BOSS = {
   /** Hold-beat seconds between "on target" and the shot (pause 2). */
   aimHoldSec: 0.35,
   /**
-   * Opening fanfare: base delay after berthing, plus a per-seat offset so
-   * the four guns open in a rolling ripple (t0, t0+0.45, t0+0.9, t0+1.35)
-   * instead of a salvo. Timers only tick once the hull has berthed, so the
-   * stagger survives the whole sail-in.
+   * Opening fanfare: base delay after berthing plus a per-seat stagger, so the four
+   * guns open as a ripple. Timers only tick once the hull has berthed.
    */
   openFireDelay: 0.8,
   openFireStagger: 0.45,
-  /**
-   * Per-shot jitter reuses COMBAT.fireJitterMin/Max — one jitter truth for
-   * every gun in the game, boss included.
-   */
   /** Hit-core radius (m) of a gun turret (baked hit_core helper). */
   turretCoreRadius: 0.35,
   /**
-   * Turret death burst: scaled-down shatter of the shared debris pool.
-   * turretBurstFloorY is a carrier-LOCAL rest height relative to the burst
-   * centre (same convention as the defender cannons' -0.085): chunks settle
-   * on the deck around the gone turret, and they rebound (wall-top bounce)
-   * instead of sinking.
+   * Turret death burst: scaled-down shatter of the shared debris pool; turretBurstFloorY
+   * is a carrier-LOCAL rest height, so chunks settle on the deck and rebound.
    */
   turretBurstRatio: 0.45,
   turretBurstFloorY: -0.15,
   /**
-   * Laser main cannon rhythm (task 030): each emission locks the beam axis
-   * at aim convergence, gathers energy for laserChargeSec, sweeps for
-   * laserFireSec, then waits laserCooldownSec (+ shared jitter) before the
-   * next cycle. Convergence uses its own tighter threshold — a hitscan beam
-   * has no shell radius to absorb residual aim error.
+   * Laser main cannon: lock the beam axis at aim convergence, charge, sweep, then
+   * cooldown. Its own tighter threshold because a hitscan beam has no shell radius.
    */
   laserChargeSec: 2,
   laserFireSec: 1,
@@ -918,48 +620,31 @@ export const BOSS = {
   laserTurnSpeedDeg: 120,
   /** Aim error under this (deg) ends the swing and freezes the beam axis. */
   laserTurnThresholdDeg: 0.75,
-  /**
-   * Hold at aim convergence before the charge beats in (s) — the axis is
-   * already frozen; the cannon pauses on target, then charge/fire run
-   * unchanged (mirrors the gun turrets' aimHoldSec beat).
-   */
+  /** Hold at aim convergence before the charge (s) — axis already frozen. */
   laserAimHoldSec: 0.5,
   /** Fraction of the victim's max Health deducted per beam emission. */
   laserDamageRatio: 0.6,
   /** Damage-corridor half-width (m) around the beam centre line. */
   laserDamageRadius: 0.35,
   /**
-   * Fraction of the natural aim drop removed for a flatter bearing. The
-   * muzzle sits ~0.9 m above a defender core at ~4.2 m (≈12° depression);
-   * 0.5 halves that to ≈6°, and the flattened beam still sweeps the damage
-   * corridor over the aimed core (passes ~0.45 m above it against a
-   * 0.22 + laserDamageRadius reach). 0 aims dead-on, 1 is fully level.
+   * Fraction of the natural aim drop removed. The muzzle sits ~0.9 m above the core
+   * at ~4.2 m; 0.5 halves that (0 dead-on, 1 fully level).
    */
   laserPitchFlatten: 0.5,
-  /**
-   * Beam reach multiplier over the locked target distance — the visual
-   * column overshoots the wall line instead of stopping at the core.
-   */
+  /** Beam reach multiplier over the locked target distance, so the column overshoots the wall line. */
   laserBeamLengthBoost: 1.44,
 };
 
 /**
- * Phase-two pirate chief (task 031). The head rises where the laser citadel
- * stood; it takes 2% per defender hit (DAMAGE_MATRIX rows) and attacks the
- * defence itself through the chief death light (DEATH_LIGHT below) — the
- * ChiefDeathLightSystem owns that state machine, BossChiefSystem only mounts
- * the head and runs its rise.
+ * Phase-two pirate chief: the head rises where the laser citadel stood; its attack is
+ * DEATH_LIGHT (ChiefDeathLightSystem owns the state machine, BossChiefSystem the rise).
  */
 export const BOSS_CHIEF = {
   /** Seconds between all turrets dying and the rise starting (0.5 s). */
   riseDelay: 0.5,
-  /** Hull-local depth the head starts SUNK into the citadel drum — a short
-   *  travel for the stocky bust: the helmet crest still peeks above the
-   *  rim at the start of the rise. */
+  /** Hull-local depth the head starts sunk into the citadel drum — the helmet crest still peeks out. */
   riseSink: 0.22,
-  /** Hull-local y at rest relative to the laser pivot seat — 0: the bust
-   *  sits DIRECTLY on the drum (no neck; the model's flange bottom leaves a
-   *  0.004 local gap so it never z-fights the drum cap). */
+  /** Hull-local y at rest relative to the laser pivot; 0 sits on the drum (flange leaves a 0.004 gap). */
   riseY: 0,
   /** Seconds the emerge-from-the-citadel rise takes. */
   riseSec: 1.2,
@@ -974,25 +659,10 @@ export const BOSS_CHIEF = {
 };
 
 /**
- * Chief death light (铁头死光, task 03) — the phase-two chief head's own
- * attack, run entirely by ChiefDeathLightSystem. The head never rotates for
- * it except the sweep's own yaw. Two attacks off one beat clock:
- *
- * - LIGHTNING (死光闪电): every `intervalSec` after the rise completes (the
- *   first beat fires at once), a jagged bolt snaps instantly between the
- *   chief's hit core and one random surviving defender core, deducting
- *   `damageRatio` of the victim's MAX Health. The bolt shows for
- *   `boltLifeSec` (pure fx — ChiefDeathLightFxSystem), no growth animation.
- * - SWEEP (死光扫射): every `sweepEveryBeats`-th beat (intervalSec x 4 = 12 s
- *   after the rise) replaces the lightning: the head yaws to one end of the
- *   wall, holds `aimHoldSec`, the red beam forms over `formSec` (no charge
- *   up), then sweeps across ALL five defense slots over `sweepSec` — a yaw
- *   arc tracking a point level with the mounted units' core centres (flat,
- *   barely dipping — the beam grazes the rampart line without digging into
- *   the wall). Every live defender core the beam crosses loses
- *   `sweepDamageRatio` of its MAX Health, once per unit per sweep. The beat
- *   count restarts when the sweep ends: the next lightning comes
- *   `intervalSec` after the sweep finishes.
+ * Chief death light (铁头死光), run by ChiefDeathLightSystem: every `intervalSec` a
+ * lightning bolt hits one random defender core for `damageRatio` of MAX Health;
+ * every `sweepEveryBeats`-th beat instead sweeps the beam across all five slots,
+ * damaging each live defender once. The beat count restarts after a sweep.
  */
 export const DEATH_LIGHT = {
   /** Seconds between two beats (lightning tempo). */
@@ -1015,23 +685,14 @@ export const DEATH_LIGHT = {
   sweepDamageRatio: 0.5,
   /** Damage-corridor half-width (m) around the sweeping beam's centre line. */
   sweepDamageRadius: 0.3,
-  /**
-   * Sweep aim line: the beam tracks a point on the wall's SEA face level
-   * with the mounted units' core centres — flat, barely dipping, so the
-   * graze never digs into the wall masonry — while its x walks the slot row
-   * past both end slots (x ±1.2 plus a margin).
-   */
+  /** Sweep aim line: flat across the wall's sea face at the mounted cores' level, x past both end slots. */
   sweepAimY: 1.05,
   sweepSpanX: 1.35,
-  /** Beam reach multiplier over the origin-to-aim distance (blows past the
-   *  wall face like the boss laser's own boost). */
+  /** Beam reach multiplier over the origin-to-aim distance (blows past the wall face). */
   beamLengthBoost: 1.2,
 };
 
-/**
- * Unit registry keyed by the unitType string used in level data. Adding a new
- * enemy (goblin flyer, boss) is one entry here plus its asset manifest entry.
- */
+/** Unit registry keyed by the unitType string used in level data; one entry per enemy plus its asset. */
 export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   'pirate-ship': {
     assetId: 'pirate-ship',
@@ -1090,15 +751,11 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     scale: 1,
     movement: 'default-ship',
     faction: 'attacker',
-    // Waterline seat (v0.1.180): two draft orders consolidated — the surface
-    // cuts the mesa at model +0.35, so the hull skirt is fully buried and
-    // the basalt mesa itself rises straight out of the sea, the floating-
-    // island read. Going deeper would drown the mesa base and the front
-    // gun seats, and sink the bow ram's visible tip below the waves.
+    // Waterline seat: the surface cuts the model at +0.35, so the mesa rises straight
+    // out of the sea while the hull skirt stays buried.
     cruiseY: OCEAN.surfaceY - 0.35,
-    // Unarmed at the sheet level: the boss systems drive the turrets, the
-    // shared PirateCannon deck-gun path never touches this hull. The turret
-    // cadence lives in BOSS's rhythm knobs, not the unit sheet.
+    // Unarmed at the sheet level: the boss systems drive the turrets, the shared
+    // PirateCannon deck-gun path never touches this hull.
     armed: false,
     fireInterval: 0,
     rotor: false,

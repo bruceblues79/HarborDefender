@@ -19,14 +19,8 @@ import {
 import { COMBAT, OCEAN, OCEAN_FAR_Z } from './level-config.js';
 
 /**
- * Flies airborne shells under gravity plus per-shell linear air drag and
- * splashes them into the ocean. The drag coefficient rides the shell
- * (BallisticFlight.drag): city shells launch with COMBAT.shellDrag, while
- * pirate and boss intercepts keep the 0 default and fly pure parabolas.
- * A shell that falls below `OCEAN.surfaceY - COMBAT.splashMargin` is
- * recycled into the pool (hidden, BallisticFlight removed) and leaves a
- * splash ripple node on the surface; SplashSystem owns that node's fade-out
- * and disposal.
+ * Flies shells under gravity + per-shell linear drag (`BallisticFlight.drag`),
+ * recycling them into SplashSystem-owned ripples. City shells carry COMBAT.shellDrag.
  */
 export class BallisticSystem extends createSystem({
   flying: { required: [ShellTag, BallisticFlight] },
@@ -42,13 +36,9 @@ export class BallisticSystem extends createSystem({
     for (const entity of this.queries.flying.entities) {
       const object = entity.object3D;
       if (!object) continue;
-      // Linear drag integrated exactly over the step: v' = v·e^(-k·dt) minus
-      // gravity's share (g/k)(1-e^(-k·dt)) on vy — the same closed form the
-      // trajectory guide samples. Position rides the same integral (pre-step
-      // velocity, exact displacement), so the flight lands exactly on the
-      // guide at any frame rate; semi-implicit Euler here would fall short of
-      // the preview by O(dt²) per step and drift with the frame rate.
-      // Dragless shells (drag 0) keep the plain Euler fall.
+      // Exact linear-drag integral shared with the trajectory guide: pre-step
+      // velocity and exact displacement, so the flight matches the preview at
+      // any frame rate (semi-implicit Euler would drift by O(dt²) per step).
       const k = Number(entity.getValue(BallisticFlight, 'drag'));
       let vx = Number(entity.getValue(BallisticFlight, 'vx'));
       let vy = Number(entity.getValue(BallisticFlight, 'vy'));
@@ -73,8 +63,7 @@ export class BallisticSystem extends createSystem({
       entity.setValue(BallisticFlight, 'vx', vx);
       entity.setValue(BallisticFlight, 'vy', vy);
       entity.setValue(BallisticFlight, 'vz', vz);
-      // Far-edge backstop: a shot still airborne past the ocean's far edge
-      // can never come down on anything — recycle it silently.
+      // Far-edge backstop: a shot past the ocean's far edge can never land; recycle silently.
       if (object.position.z <= OCEAN_FAR_Z) {
         this.retire(entity);
         continue;
@@ -84,7 +73,6 @@ export class BallisticSystem extends createSystem({
     for (const entity of this.landed) this.splashDown(entity);
   }
 
-  /** True while the pause-menu tag sits on the director entity. */
   private paused(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GamePaused);
@@ -92,7 +80,6 @@ export class BallisticSystem extends createSystem({
     return false;
   }
 
-  /** Recycle the shell: hide the mesh and drop flight + faction tags. */
   private retire(shell: Entity): void {
     const object = shell.object3D;
     if (!object) return;
@@ -102,7 +89,6 @@ export class BallisticSystem extends createSystem({
     object.visible = false;
   }
 
-  /** Recycle the shell and leave a fading ripple where it met the water. */
   private splashDown(shell: Entity): void {
     const object = shell.object3D;
     if (!object) return;

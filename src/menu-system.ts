@@ -36,18 +36,10 @@ const CALL_HIDDEN_SCALE = 0.001;
 const CALL_BUTTON_RADIUS = 0.11;
 /** Call button's visible scale relative to the rig (user-tuned +1/2 bigger). */
 const CALL_VISIBLE_SCALE = 1.5;
-/**
- * Uniform shrink of the whole menu rig (button + menu): the shared baseline
- * both environments start from. Cumulative user tuning: 1/3 then 1/4
- * smaller — 1 × 2/3 × 3/4 = 1/2 of original size.
- */
+/** Uniform shrink of the whole menu rig; the shared baseline both environments start from. */
 const MENU_SCALE = 1 / 2;
-/**
- * Per-environment factors on top of the baseline (user tuning v0.1.122 +
- * v0.1.124): XR shrinks the call button 1/3 then grows it 1/4 —
- * 1 × 2/3 × 5/4 = 5/6 — and keeps the menu size; flat mode grows the
- * button 1/3 and the menu by 2x of itself (x3 of baseline).
- */
+/** Per-environment factors over the shared baseline: XR trims the call button,
+ * flat mode enlarges both button and menu. */
 const MENU_FACTORS_XR = { call: 5 / 6, menu: 1 };
 const MENU_FACTORS_FLAT = { call: 4 / 3, menu: 3 };
 /** Pause-menu height, metres (150 × 100 UIKit units at scale 1). */
@@ -56,55 +48,22 @@ const MENU_HEIGHT = 1.0;
 const MENU_ANIM_TIME = 0.25;
 /** XR: anchor distance ahead of the head along head yaw, metres. */
 const MENU_XR_FORWARD = 2.5;
-/**
- * XR: anchor lift above head centre, metres. Was 0.85 (flat view's ~19°
- * elevation), then shrunk to 2/3 with the menu sizes, then nudged up
- * 0.015 + 0.03. Tunable by feel.
- */
+/** XR: anchor lift above head centre, metres. Tunable by feel. */
 const MENU_XR_LIFT = 0.612;
-/**
- * Flat mode: fixed world anchor over the water, ahead of the wall, high
- * enough that the default battle view projects it near the DOM ENTER-XR
- * button's screen spot (upper edge of the frame). The orbit camera moves on
- * every pitch change, so a camera-relative anchor made the menu bob
- * vertically; a world anchor + Billboard(lockY) keeps it perfectly still
- * while still facing the camera.
- */
+/** Flat mode: fixed world anchor over the water. A camera-relative anchor
+ * would bob with the orbit camera's pitch changes, so Billboard(lockY) handles facing. */
 const MENU_FLAT_ANCHOR = { x: 0, y: 3.495, z: -3.5 };
 
 type MenuMode = 'closed' | 'opening' | 'open' | 'closing';
 
 /**
- * Pause-menu orchestrator. Owns two runtime panels that load once and live
- * under one rig anchored to the player's head:
- *
- * - Call button: a small circular hamburger that appears once the START gate
- *   opens (GameStarted) and hides while the menu is open.
- * - Pause menu: 1.5 m × 1 m at rig scale 1 (rig runs a uniform ×1/2 shrink;
- *   per-environment factors then resize button and menu — XR: button 5/6,
- *   menu as-is; flat: button 4/3, menu 3x), expanding downward from the call
- *   button with three column buttons — MAIN (back to welcome), RESTART
- *   (rerun the level), RESUME (unpause).
- *
- * Placement follows the spatial-UI guidance for compact global UI: a
- * world-space `Follower` holds the rig at a stable anchor — head-relative
- * in immersive XR (2.5 m ahead, lifted clearly above the gaze line), a fixed
- * world spot in flat desktop mode (the orbit camera moves with pitch,
- * so a camera-derived anchor would make the menu bob). The rig's own
- * Billboard(lockY) yaw keeps the panels faced toward the viewer in both
- * modes; the menu never head-locks.
- *
- * Pausing is the `GamePaused` tag on the director entity: every simulation
- * system early-returns while it is present (added on open, removed on MAIN /
- * RESTART / RESUME). UI, camera, billboard and follower systems ignore the
- * tag, so the menu keeps animating and stays interactive — pausing never
- * blocks input.
+ * Pause-menu orchestrator: one rig (call button + pause menu) anchored via
+ * Follower + Billboard. Pausing is the `GamePaused` tag on the director; UI,
+ * camera, billboard and follower systems ignore it, so the menu stays interactive.
  */
 export class MenuSystem extends createSystem({
   directors: { required: [LevelDirector] },
-  /** Fires qualify/dismiss exactly when GameStarted is added/removed. */
   started: { required: [LevelDirector, GameStarted] },
-  /** Fires qualify/dismiss exactly when GameOver is added/removed. */
   over: { required: [LevelDirector, GameOver] },
 }) {
   private mode: MenuMode = 'closed';
@@ -123,18 +82,15 @@ export class MenuSystem extends createSystem({
   private readonly headQuat = new Quaternion();
 
   init(): void {
-    // The call button and menu track GameStarted on the director entity.
     this.queries.started.subscribe('qualify', () => this.onGameStart());
     this.queries.started.subscribe('disqualify', () => this.onGameEnd());
-    // An outcome hides the pause UI for good; a fresh RESTART (GameOver
-    // dismissed while GameStarted is still on the director) brings it back.
+    // A RESTART dismisses GameOver with GameStarted still on the director.
     this.queries.over.subscribe('qualify', () => this.onOutcome());
     this.queries.over.subscribe('disqualify', (entity) =>
       this.onOutcomeDismissed(entity),
     );
 
-    // Load both panels once; they stay in the world (invisible when closed),
-    // repositioned next to the player's head on every open.
+    // Panels load once and are repositioned on every open.
     this.loadPanels();
   }
 
@@ -147,11 +103,8 @@ export class MenuSystem extends createSystem({
         this.callButton = callButton;
         this.menuPanel = menuPanel;
 
-        // One rig under the Follower so both panels move and face together.
-        // Uniform baseline shrink; the per-environment button/menu factors
-        // (menuFactors) ride on the panels' own rig-local scales, so the
-        // downward expansion stays proportional per environment
-        // (CALL_BUTTON_RADIUS / MENU_HEIGHT are rig-local).
+        // One rig under the Follower so both panels move and face together; the
+        // per-environment factors ride on the panels' own rig-local scales.
         const rig = new Object3D();
         rig.name = 'MenuRig';
         rig.scale.setScalar(MENU_SCALE);
@@ -161,10 +114,8 @@ export class MenuSystem extends createSystem({
         this.panelRig = rig;
 
         this.panelEntity = this.world.createTransformEntity(rig);
-        // Native position follow: MenuSystem drives anchorObject each frame
-        // (head-relative in XR, fixed world spot in flat mode); FollowSystem
-        // eases the rig toward it with mild smoothing, so the panels float
-        // in space instead of head-locking. Rotation is Billboard's job.
+        // FollowSystem eases the rig toward the anchor so panels float in space
+        // instead of head-locking; rotation is Billboard's job.
         this.panelEntity.addComponent(Follower, {
           target: this.anchorObject,
           behavior: FollowBehavior.NoRotation,
@@ -175,17 +126,13 @@ export class MenuSystem extends createSystem({
         });
         this.panelEntity.addComponent(Billboard, { lockY: true });
         // One interactable covering both child panels: InputSystem ray-tests
-        // the rig and its descendants, routing clicks into the UIKitML
-        // documents (same pattern as the scene-authored welcome panel).
+        // the rig's descendants and routes clicks into the UIKitML documents.
         this.panelEntity.addComponent(RayInteractable);
-        // Presses anywhere on the rig (call button, menu panel, gaps) belong
-        // to the menu — the flat camera rig must never orbit them. The ECS
-        // tag rides Hovered/Pressed, so it also holds for touch where the
+        // Presses anywhere on the rig belong to the menu, so the flat camera rig
+        // must never orbit them; the tag also holds for touch, where the
         // per-element addUiBlocker path's pointerId match fails.
         this.panelEntity.addComponent(CameraBlocker);
 
-        // Panels load while the welcome screen is still up; park them closed
-        // until the START gate opens.
         menuPanel.visible = false;
         this.setPanelScales(this.menuFactors().call, CALL_HIDDEN_SCALE);
 
@@ -224,7 +171,6 @@ export class MenuSystem extends createSystem({
     bind(menuResume, () => this.closeMenu());
   }
 
-  /** START gate opened: reveal the rig with only the call button visible. */
   private onGameStart(): void {
     if (!this.panelRig) return;
     this.panelRig.visible = true;
@@ -232,7 +178,6 @@ export class MenuSystem extends createSystem({
     this.mode = 'closed';
   }
 
-  /** Game left (MAIN hand-off): drop pause, hide everything, reset mode. */
   private onGameEnd(): void {
     this.setPaused(false);
     this.mode = 'closed';
@@ -243,12 +188,7 @@ export class MenuSystem extends createSystem({
     this.setPanelScales(this.menuFactors().call, CALL_HIDDEN_SCALE);
   }
 
-  /**
-   * Run ended (victory / defeat): park the pause UI entirely — the result
-   * panel takes over, so the call button must not invite a pause on top of
-   * it. The simulation cannot be mid-pause here (pausing halts it), but the
-   * tag is dropped defensively anyway.
-   */
+  /** Run ended: park the pause UI; the result panel takes over. */
   private onOutcome(): void {
     this.setPaused(false);
     this.mode = 'closed';
@@ -259,11 +199,7 @@ export class MenuSystem extends createSystem({
     this.setPanelScales(this.menuFactors().call, CALL_HIDDEN_SCALE);
   }
 
-  /**
-   * GameOver dismissed: a RESTART keeps GameStarted on the director, so the
-   * call-button state comes back; a MAIN hand-off has already dropped
-   * GameStarted and its own dismissal hides everything — do nothing there.
-   */
+  /** GameOver dismissed: re-show the call button only if GameStarted is still on. */
   private onOutcomeDismissed(director: Entity): void {
     if (!director.hasComponent(GameStarted)) return;
     this.mode = 'closed';
@@ -284,9 +220,8 @@ export class MenuSystem extends createSystem({
   private closeMenu(): void {
     if (this.mode !== 'open') return;
     this.mode = 'closing';
-    // Unpause immediately: RESUME resumes play behind the shrink animation,
-    // and MAIN / RESTART run their resets there too — the simulation is
-    // never held behind UI teardown.
+    // Unpause immediately: RESUME resumes behind the shrink animation, and
+    // MAIN / RESTART run their resets there too.
     this.setPaused(false);
   }
 
@@ -324,14 +259,8 @@ export class MenuSystem extends createSystem({
   }
 
   /**
-   * Drive the follow anchor. Immersive XR: the tracked head's pose — the
-   * anchor sits `MENU_XR_FORWARD` ahead along head yaw (flattened, so pitch
-   * never swings it into the ground) at `MENU_XR_LIFT` above head centre,
-   * matching the flat view's elevation so the menu never reads as eye level.
-   * Flat desktop mode: a fixed world anchor — the orbit
-   * camera changes position on every pitch, so deriving the anchor from the
-   * camera made the menu bob vertically; Billboard(lockY) alone keeps it
-   * faced toward the camera there.
+   * Drive the follow anchor. XR: `MENU_XR_FORWARD` ahead along flattened head
+   * yaw, `MENU_XR_LIFT` above head centre. Flat: the fixed world anchor.
    */
   private updateAnchor(): void {
     const immersive =
@@ -358,19 +287,15 @@ export class MenuSystem extends createSystem({
   }
 
   /**
-   * Expand / collapse animation. t = 0 fully closed, t = 1 fully open. The
-   * menu grows downward from the call button: its scale goes 0.001 -> 1
-   * while its centre slides from the button's bottom edge down to the open
-   * position, so the menu's top edge stays pinned under the button. The
-   * call button shrinks away as the menu takes over. EaseOutCubic.
+   * Expand / collapse animation (EaseOutCubic): t = 0 closed, t = 1 open. The
+   * menu grows downward while its top edge stays pinned under the call button.
    */
   private applyMenuScale(t: number): void {
     const eased = 1 - (1 - t) ** 3;
     const factors = this.menuFactors();
     if (this.menuPanel) {
-      // The menu grows downward from the call button: its top edge stays
-      // pinned under the button while its centre slides down by its own
-      // (factor-scaled) half height.
+      // The menu's top edge stays pinned under the button while its centre
+      // slides down by its own (factor-scaled) half height.
       this.menuPanel.scale.setScalar(
         Math.max(CALL_HIDDEN_SCALE, eased * factors.menu),
       );
@@ -384,7 +309,6 @@ export class MenuSystem extends createSystem({
     }
   }
 
-  /** Per-environment button/menu scale factors over the shared baseline. */
   private menuFactors(): { call: number; menu: number } {
     const immersive =
       this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
@@ -392,11 +316,8 @@ export class MenuSystem extends createSystem({
   }
 
   /**
-   * React to an environment flip mid-game (XR <-> flat): the discrete
-   * moments that read menuFactors() (game start, menu open/close) already
-   * pick up the new factors, but a static closed button or an open menu
-   * would otherwise keep the old environment's size until touched again.
-   * Animating states self-correct — applyMenuScale re-reads every frame.
+   * React to an XR <-> flat flip mid-game: static states would keep the old
+   * environment's size until touched; animating states self-correct.
    */
   private updateEnvironmentFactors(): void {
     const immersive =
@@ -420,8 +341,8 @@ export class MenuSystem extends createSystem({
   }
 
   /**
-   * MAIN: reset the director to the welcome gate and swap back the welcome
-   * UI. Public: the result panel's MAIN button runs the same hand-off.
+   * MAIN: reset the director to the welcome gate and swap back the welcome UI.
+   * Public: the result panel's MAIN button runs the same hand-off.
    */
   runMain(): void {
     recycleCombatEffects(this.world);
@@ -431,10 +352,8 @@ export class MenuSystem extends createSystem({
   }
 
   /**
-   * RESTART: clear the field, re-crew the battery to the level's initial
-   * layout, rerun the current level. Public: the result panel's RESTART
-   * button runs the same reset. (restoreCannons / resetCannonAim ride
-   * inside restartLevel's syncBatteryToLevel — no separate pass here.)
+   * RESTART: clear the field, re-crew the battery and rerun the current level.
+   * Public: the result panel's RESTART button runs the same reset.
    */
   runRestart(): void {
     recycleCombatEffects(this.world);

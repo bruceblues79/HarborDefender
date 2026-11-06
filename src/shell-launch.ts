@@ -8,13 +8,8 @@
 import { Vector3 } from '@iwsdk/core';
 
 /**
- * Closed-form intercept for a guaranteed-hit lobbed shell, shared by every
- * attacker gun (pirate deck cannon, boss turrets): with constant horizontal
- * speed v, flight time tau = d / v and
- *   vy = (ty - my) / tau + 0.5 * g * tau
- * makes the shell arrive exactly at (tx, ty, tz) under BallisticSystem's
- * gravity. Writes the velocity into `out` and returns the flight time, or
- * -1 when the muzzle sits directly over the target (no direction to solve).
+ * Ballistic intercept shared by every attacker gun; writes velocity into `out`
+ * and returns flight time, or -1 when the muzzle sits directly over the target.
  */
 export function solveIntercept(
   muzzlePos: Vector3,

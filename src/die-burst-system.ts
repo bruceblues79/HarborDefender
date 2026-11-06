@@ -22,32 +22,8 @@ import { DieBurst, DieBurstTag, GamePaused, LevelDirector } from './components.j
 import { COMBAT, OCEAN, WALL_LAND_FACE_Z, WALL_SEA_FACE_Z } from './level-config.js';
 
 /**
- * Owns the shared death-burst pool and animates every playing burst.
- *
- * Pool: `COMBAT.dieBurstPoolSize` InstancedMeshes created once at init, all
- * sharing one box geometry AND one MeshStandardMaterial — per-chunk colour
- * lives in each mesh's `instanceColor`, so a burst claims a whole mesh and
- * nothing is allocated per play. A burst is free exactly while it does not
- * carry `DieBurst` (ShellHitSystem claims one by adding that component).
- * Recycling removes the component and hides the mesh — nothing is disposed,
- * mirroring the hit-flash and shell pools.
- *
- * Per-chunk state (position, velocity, angular velocity, base scale, euler
- * angles, alive/grounded flag) lives in system-side typed arrays allocated
- * here at init and indexed by pool slot — `update()` never allocates.
- *
- * Claim → randomize: adding `DieBurst` fires this system's `qualify`
- * callback synchronously; that callback scatters the slots' chunks (launch
- * velocity, spin, size, tint) and writes the initial instance matrices, so
- * the spawner stays a thin command.
- *
- * Animation: chunks fly out under reduced gravity, tumbling. The launch
- * impulse scales with `sizeRatio`, so a cannon (0.8) pops more gently than
- * a ship (1.0). A bouncing floor (`floorBounce > 0`) is only a floor over
- * the harbour wall — cannon chunks that clear the wall's sea face free-fall
- * to just under the water line and are deleted the moment they touch, like
- * a sinking ship's chunks. The last `dieBurstShrinkTail` seconds shrink
- * every remaining chunk to nothing so the burst always ends clean.
+ * Owns the shared death-burst pool; a burst is free while it lacks `DieBurst`
+ * (ShellHitSystem claims one by adding it). Recycling never disposes.
  */
 const CHUNK_FLOATS = 15; // pos3 + vel3 + angVel3 + scale3 + euler3 per chunk
 const POS = 0;
@@ -68,13 +44,9 @@ export class DieBurstSystem extends createSystem({
   private readonly chunkAlive = new Uint8Array(
     COMBAT.dieBurstPoolSize * COMBAT.dieBurstChunkCount,
   );
-  /** Pool slot per pooled entity index, resolved once at init. */
   private readonly slots = new Map<number, number>();
-  /** Bursts that reached zero this frame; recycled after the sweep. */
   private readonly expired: Entity[] = [];
-  /** Snapshot buffer for bulk recall; allocated once, reused per call. */
   private readonly retiring: Entity[] = [];
-  // Scratch objects, allocated once — never inside update().
   private readonly matrix = new Matrix4();
   private readonly quaternion = new Quaternion();
   private readonly euler = new Euler();
@@ -84,8 +56,7 @@ export class DieBurstSystem extends createSystem({
 
   init(): void {
     const geometry = new BoxGeometry(1, 1, 1);
-    // One material for the whole pool: instanceColor carries the per-chunk
-    // tint, the base colour stays white like every procedural asset here.
+    // One shared material; per-chunk tint rides instanceColor, base stays white.
     const material = new MeshStandardMaterial({ roughness: 0.85 });
     for (let slot = 0; slot < COMBAT.dieBurstPoolSize; slot++) {
       const mesh = new InstancedMesh(
@@ -99,9 +70,8 @@ export class DieBurstSystem extends createSystem({
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.visible = false;
-      // Create the instanceColor attribute up front: building it after the
-      // first render would skip the material's colour-program recompile and
-      // silently drop every tint.
+      // Build instanceColor before the first render, or the colour-program
+      // recompile is skipped and every tint is silently dropped.
       for (let chunk = 0; chunk < COMBAT.dieBurstChunkCount; chunk++) {
         mesh.setColorAt(chunk, this.color.setHex(0xffffff));
       }
@@ -109,18 +79,13 @@ export class DieBurstSystem extends createSystem({
       this.slots.set(entity.index, slot);
       entity.addComponent(DieBurstTag);
     }
-    // Claim time: the spawner's addComponent(DieBurst) lands here
-    // synchronously, so scattering happens the very frame the burst spawns.
+    // addComponent(DieBurst) fires this synchronously, so the burst scatters
+    // on its spawn frame.
     this.queries.bursts.subscribe('qualify', (entity) => {
       this.scatterBurst(entity);
     });
   }
 
-  /**
-   * Randomise one claimed burst's per-chunk state and write the initial
-   * instance matrices and tints. Runs on `qualify`, so the burst is fully
-   * posed before its first update tick.
-   */
   private scatterBurst(entity: Entity): void {
     const slot = this.slots.get(entity.index);
     if (slot === undefined) return;
@@ -131,9 +96,8 @@ export class DieBurstSystem extends createSystem({
     for (let chunk = 0; chunk < COMBAT.dieBurstChunkCount; chunk++) {
       const f = base + chunk * CHUNK_FLOATS;
       const state = this.chunkState;
-      // Launch: random horizontal direction, extra upward bias. The whole
-      // impulse scales with sizeRatio — a cannon's blast throws softer
-      // than a ship's.
+      // The launch impulse scales with sizeRatio: a cannon (0.8) throws softer
+      // than a ship (1.0).
       const angle = Math.random() * Math.PI * 2;
       const speed =
         COMBAT.dieBurstSpeedMin +
@@ -144,11 +108,10 @@ export class DieBurstSystem extends createSystem({
           Math.random() * (COMBAT.dieBurstUpBiasMax - COMBAT.dieBurstUpBiasMin)) *
         sizeRatio;
       state[f + VEL + 2] = Math.sin(angle) * speed * sizeRatio;
-      // Tumble: random spin per axis.
       for (let a = 0; a < 3; a++) {
         state[f + ANG + a] = (Math.random() * 2 - 1) * COMBAT.dieBurstSpin;
       }
-      // Size: wood chunks stretch into planks, iron stays blocky.
+      // First 8 chunks are stretched wood planks; the rest stay blocky iron.
       const size =
         COMBAT.dieBurstChunkMin +
         Math.random() * (COMBAT.dieBurstChunkMax - COMBAT.dieBurstChunkMin);
@@ -161,7 +124,6 @@ export class DieBurstSystem extends createSystem({
         state[f + SCALE + 1] = size;
         state[f + SCALE + 2] = size;
       }
-      // Rest scatter: start each chunk on a small random offset and pose.
       state[f + POS] = (Math.random() * 2 - 1) * 0.05 * sizeRatio;
       state[f + POS + 1] = Math.random() * 0.05 * sizeRatio;
       state[f + POS + 2] = (Math.random() * 2 - 1) * 0.05 * sizeRatio;
@@ -169,7 +131,6 @@ export class DieBurstSystem extends createSystem({
         state[f + EUL + a] = Math.random() * Math.PI * 2;
       }
       this.chunkAlive[slot * COMBAT.dieBurstChunkCount + chunk] = 1;
-      // Wood browns for the first 8, iron greys for the rest.
       const palette =
         chunk < 8 ? COMBAT.dieBurstWoodColors : COMBAT.dieBurstIronColors;
       mesh.setColorAt(
@@ -182,7 +143,6 @@ export class DieBurstSystem extends createSystem({
     mesh.instanceMatrix.needsUpdate = true;
   }
 
-  /** Compose and upload one chunk's instance matrix (zero scale if hidden). */
   private writeChunkMatrix(
     mesh: InstancedMesh,
     slot: number,
@@ -227,7 +187,6 @@ export class DieBurstSystem extends createSystem({
       const sizeRatio = Number(entity.getValue(DieBurst, 'sizeRatio'));
       const floorY = Number(entity.getValue(DieBurst, 'floorY'));
       const bounce = Number(entity.getValue(DieBurst, 'floorBounce'));
-      // Final tail: shrink every remaining chunk to nothing.
       const remaining = duration - elapsed;
       const globalScale =
         remaining < COMBAT.dieBurstShrinkTail
@@ -240,7 +199,6 @@ export class DieBurstSystem extends createSystem({
         if (this.chunkAlive[aliveIndex] === 0) continue;
         const f = base + chunk * CHUNK_FLOATS;
         if (this.chunkAlive[aliveIndex] === 2) {
-          // Grounded: rest on the floor, friction eats speed and spin.
           state[f + POS + 1] = floorY;
           const friction = Math.max(0, 1 - 5 * delta);
           state[f + VEL] *= friction;
@@ -251,11 +209,9 @@ export class DieBurstSystem extends createSystem({
           state[f + POS] += state[f + VEL] * delta;
           state[f + POS + 1] += state[f + VEL + 1] * delta;
           state[f + POS + 2] += state[f + VEL + 2] * delta;
-          // Resolve this chunk's floor: the bouncing floor only holds over
-          // the wall itself. Past its sea face the chunk free-falls to just
-          // under the water line; past its land face there is no ground at
-          // all, so it free-falls and dies at the same height — both read
-          // as "fell off the wall". (Local floor = world floor − origin y.)
+          // The bounce floor only covers the wall; past its sea or land face
+          // the chunk free-falls to just under the water line. Local floor =
+          // world floor − origin y.
           let floor = floorY;
           let rebound = bounce;
           if (bounce > 0) {
@@ -276,13 +232,11 @@ export class DieBurstSystem extends createSystem({
                 state[f + VEL + 1] = 0;
                 this.chunkAlive[aliveIndex] = 2;
               } else {
-                // Each rebound sheds horizontal speed and spin too.
                 state[f + VEL] *= 0.7;
                 state[f + VEL + 2] *= 0.7;
                 for (let a = 0; a < 3; a++) state[f + ANG + a] *= 0.7;
               }
             } else {
-              // Zero-bounce floor: the chunk sinks out of sight for good.
               this.chunkAlive[aliveIndex] = 0;
               this.matrix.makeScale(0, 0, 0);
               object.setMatrixAt(chunk, this.matrix);
@@ -304,7 +258,6 @@ export class DieBurstSystem extends createSystem({
     }
   }
 
-  /** True while the pause-menu tag sits on the director entity. */
   private paused(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GamePaused);

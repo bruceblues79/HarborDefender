@@ -14,8 +14,7 @@ import type { Entity, UIKitMLAsset } from '@iwsdk/core';
 import { Billboard, GameOver, LevelDirector, PanelScaleAnim } from './components.js';
 import { MenuSystem } from './menu-system.js';
 
-/** Panel anchor: the START panel's spot above the ocean's near edge — free
- * again by the time an outcome lands, and centred over the battle. */
+/** START panel's spot above the ocean's near edge, free again by outcome time. */
 const PANEL_POSITION = { x: 0, y: 1.9, z: -2.1 };
 /** Panel is 1.5 m × 1 m; the hidden state is the small end of the scale. */
 const PANEL_SCALE = 1;
@@ -38,15 +37,8 @@ const OUTCOMES: Record<string, { title: string; color: string; subtitle: string 
 type ResultPhase = 'idle' | 'appearing' | 'ready';
 
 /**
- * Owns the end-of-run result panel. It qualifies on the GameOver tag the
- * LevelWaveSystem writes when the phase flips to 'game-cleared' (every wave
- * of the last level cleared) or 'defeated' (the whole battery knocked out),
- * grows in over the battlefield and offers RESTART / MAIN — the exact reset
- * sequences MenuSystem.runRestart / runMain run from the pause menu.
- *
- * The panel follows the START-panel pattern: fixed world anchor, Billboard,
- * PanelScaleAnim grow-in, RayInteractable for browser and XR rays alike.
- * Dismissing GameOver (either button) hides it again.
+ * End-of-run result panel: qualifies on GameOver, grows in over the battlefield
+ * and offers RESTART / MAIN via MenuSystem's shared reset sequences.
  */
 export class ResultPanelSystem extends createSystem({
   over: { required: [LevelDirector, GameOver] },
@@ -60,7 +52,6 @@ export class ResultPanelSystem extends createSystem({
     this.queries.over.subscribe('disqualify', () => this.hide());
   }
 
-  /** Grow the panel in, presented for the phase the director just flipped to. */
   private showOutcome(director: Entity): void {
     const outcome = OUTCOMES[String(director.getValue(LevelDirector, 'phase'))];
     if (!outcome) return;
@@ -115,7 +106,6 @@ export class ResultPanelSystem extends createSystem({
       );
   }
 
-  /** Swap the copy for the outcome and start the grow-in. */
   private applyOutcome(outcome: {
     title: string;
     color: string;

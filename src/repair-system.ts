@@ -19,16 +19,8 @@ import {
 import { ECONOMY } from './level-config.js';
 
 /**
- * Repair drain — the only per-frame writer of the wallet. Every entity
- * carrying Repairing pulls ECONOMY.repairHpPerSecond of health out of
- * ECONOMY.repairCostPerSecond of money per second; the pool or the wallet
- * ends the state (repairing stops of its own accord when either runs out).
- * Full-health targets are peeled by the qualify guard: an entity can only
- * qualify while damaged, so clicking repair on an intact unit does nothing.
- *
- * Paused and over phases stay out of the way via the standard tag gate —
- * MenuSystem refuses repair commands then anyway, but tags mounted before a
- * pause would otherwise keep draining.
+ * Repair drain — the only per-frame writer of the wallet. Drains the ECONOMY rates
+ * while Repairing; full-health units and paused/over states never drain.
  */
 export class RepairSystem extends createSystem({
   repairing: { required: [Repairing, Health] },
@@ -37,11 +29,10 @@ export class RepairSystem extends createSystem({
   private walletEntity: Entity | null = null;
 
   init(): void {
-    // The wallet rides the director; resolve it lazily each frame until it
-    // exists (LevelWaveSystem creates the director entity with the wallet).
+    // Wallet rides the director, which LevelWaveSystem creates later; resolve it
+    // lazily each frame until it exists.
     this.queries.repairing.subscribe('qualify', (entity) => {
-      // Intact units never enter the drain — the state is unreachable for
-      // them and clicking repair on a full-health unit is a no-op.
+      // Full-health units leave immediately, so clicking repair on an intact unit is a no-op.
       const health = entity.getValue(Health, 'current') as number;
       const max = entity.getValue(Health, 'max') as number;
       if (health >= max) entity.removeComponent(Repairing);
@@ -50,9 +41,7 @@ export class RepairSystem extends createSystem({
 
   update(delta: number): void {
     for (const director of this.queries.directors.entities) {
-      // Paused (pause menu) and over (victory/defeat) freeze the drain like
-      // every other sim system; mounted Repairing tags survive both and
-      // resume or peel afterwards.
+      // Paused and over freeze the drain; tags mounted before a pause resume or peel afterwards.
       if (director.hasComponent(GamePaused)) return;
       if (director.hasComponent(GameOver)) return;
       this.walletEntity = director.hasComponent(Wallet) ? director : null;
@@ -69,8 +58,7 @@ export class RepairSystem extends createSystem({
       }
       const cost = ECONOMY.repairCostPerSecond * delta;
       if (money < cost) {
-        // Out of money: stop here — the state peels for everyone and the
-        // buttons' shrunk pose and glow die with the tags.
+        // Out of money: peel the tag; the repair button's shrunk pose and glow go with it.
         entity.removeComponent(Repairing);
         continue;
       }

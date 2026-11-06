@@ -26,34 +26,10 @@ import { COMBAT } from './level-config.js';
 import { solveIntercept } from './shell-launch.js';
 
 /**
- * Attacker fire (pirate ships, the bombardier and the ornithopter share the
- * ability). Firing permission is a positional fact owned by this attack
- * ability, deliberately separate from ShipMovement's termination: the moment
- * a unit crosses its own fire line — PirateCannon.fireLineZ, the far edge of
- * its berth band (ships SHIP_STOP_Z_MIN, the bombardier FLYER_STOP_Z_MIN,
- * the ornithopter ORNITHOPTER.stopZMin) — it may shoot, it does not need to
- * have stopped yet. Once in range and the battle has started it:
- *
- * 1. picks one random defender hit core (a city cannon, or the taunting
- *    iron-guard while one lives — its Taunt tag hijacks the whole roll) and
- *    snapshots its world position as the target — mounted defenders never
- *    move; a locked target
- *    that gets knocked out is re-acquired the same way on the next frame, and
- *    with no survivor the unit holds fire until the defeat outcome lands;
- * 2. yaws onto the target: units with a cannon_mount pivot (ships) swing the
- *    whole deck gun — carriage plus barrel — and keep the hull heading; the
- *    pivotless flyers (bombardier, ornithopter) yaw the entire hull, which
- *    also swings their belly muzzle nose-forward for the drop;
- * 3. the first shot leaves immediately when permission is granted (cooldown
- *    starts at 0); later shots follow a jittered cooldown.
- *
- * Every shot is a mathematically guaranteed hit: horizontal velocity is
- * distance / flight time and vertical velocity is solved against
- * BallisticSystem's gravity, so at t = flightTime the shell is exactly at
- * the target core. The arc stays flat because the horizontal speed is high
- * (COMBAT.pirateShellSpeed); no second flight model exists. Units with
- * PirateCannon.stone (the ornithopter) draw from the stone pool instead of
- * the ball pool; the closed-form intercept is identical.
+ * Attacker fire: permission is a positional fact (crossing the unit's own
+ * PirateCannon.fireLineZ), independent of ShipMovement's stop. Shots are
+ * closed-form guaranteed hits solved by shell-launch.ts; the ornithopter
+ * draws stones from the stone pool with the same solver.
  */
 export class PirateFireSystem extends createSystem({
   ships: { required: [UnitTag, ShipMovement, PirateCannon] },
@@ -100,9 +76,8 @@ export class PirateFireSystem extends createSystem({
   }
 
   update(delta: number): void {
-    // Same START gate as the city battery, plus the pause tag and the
-    // GameOver hold: no shots before the game runs, while the pause menu
-    // holds the game, or after the run has ended.
+    // Same START gate as the city battery: no shots before the game runs,
+    // while paused, or after the run has ended.
     if (this.paused() || this.over() || !this.gameRunning()) return;
     this.claimed.clear();
     for (const ship of this.queries.ships.entities) {
@@ -115,14 +90,9 @@ export class PirateFireSystem extends createSystem({
       ) {
         continue;
       }
-      // Re-validate the locked target every frame: the cores query drops
-      // Destroyed cannons, so a missing index means the target died and the
-      // gun re-acquires — and a Taunt carrier on the field hijacks every
-      // lock onto a non-carrier, so raiders already mid-battle swing onto
-      // the iron-guard the frame it appears (or re-aims away from it the
-      // frame it falls). With no survivor at all the ship simply holds fire
-      // — LevelWaveSystem's defeat check settles the run (GameOver flips
-      // every consumer silent) on the same frame.
+      // Re-validate every frame: the cores query drops Destroyed cannons, so
+      // a missing index means the target died; a Taunt carrier hijacks every
+      // lock. No survivor: hold fire, LevelWaveSystem settles the defeat.
       if (ship.getValue(PirateCannon, 'hasTarget')) {
         if (!this.targetAlive(ship) || this.tauntHijacked(ship)) {
           ship.setValue(PirateCannon, 'hasTarget', false);
@@ -131,8 +101,7 @@ export class PirateFireSystem extends createSystem({
       if (!ship.getValue(PirateCannon, 'hasTarget')) {
         if (!this.acquireTarget(ship)) continue;
       }
-      // The gun — or the whole hull for pivotless units — tracks the target
-      // from permission on.
+      // The gun (or the whole hull, pivotless) tracks the target from permission on.
       this.aimCannon(ship);
       let cooldown = Number(ship.getValue(PirateCannon, 'cooldown')) - delta;
       if (cooldown <= 0) {
@@ -145,9 +114,7 @@ export class PirateFireSystem extends createSystem({
 
   /**
    * Pick one random defender core and snapshot it. 嘲讽 hijacks the roll:
-   * while any live defender carries the Taunt tag, the pick runs exclusively
-   * over carriers — every raider shells the iron-guard instead of a random
-   * cannon. Without carriers the roll stays the old uniform random. The
+   * while a live Taunt carrier exists the pick runs over carriers only. The
    * boss's own targeting (FreeLockTargetSystem) never reads the tag.
    */
   private acquireTarget(ship: Entity): boolean {
@@ -186,10 +153,8 @@ export class PirateFireSystem extends createSystem({
   }
 
   /**
-   * 嘲讽劫持判定：场上存在存活的 Taunt 载体、而本船当前锁定的是非载体
-   * （或锁定已丢失）时为 true —— 已在战斗中的单位因此同帧弃标重锁，而不是
-   * 只影响新出生/丢标后重新索敌的单位。无载体时恒 false，循环零额外开销
-   * 之外的每船一次 cores 遍历（cores ≤ 5，无分配）。
+   * 嘲讽劫持：场上存在存活的 Taunt 载体、而本船锁定的是非载体（或锁定已丢失）
+   * 时为 true，已交战的单位因此同帧弃标重锁。
    */
   private tauntHijacked(ship: Entity): boolean {
     if (!this.hasTauntCarrier()) return false;
@@ -202,7 +167,6 @@ export class PirateFireSystem extends createSystem({
     return true;
   }
 
-  /** Whether any live defender core currently carries the Taunt tag. */
   private hasTauntCarrier(): boolean {
     for (const core of this.queries.cores.entities) {
       if (core.getValue(HitCore, 'faction') !== 'defender') continue;
@@ -213,9 +177,7 @@ export class PirateFireSystem extends createSystem({
 
   /**
    * Whether the cannon this ship locked still exists among live defender
-   * cores. The query's Destroyed exclusion does the real work: the frame
-   * ShellHitSystem tags the cannon, it leaves the query and every ship
-   * aiming at it re-acquires on the next update.
+   * cores; the query's Destroyed exclusion does the real work.
    */
   private targetAlive(ship: Entity): boolean {
     const locked = Number(ship.getValue(PirateCannon, 'targetCoreIndex'));
@@ -227,14 +189,9 @@ export class PirateFireSystem extends createSystem({
   }
 
   /**
-   * Yaw the unit's aim onto the target. Ships swing the cannon_mount pivot
-   * (carriage + barrel as one rigid unit): the target yaw is computed in
-   * world space (pivot origin -> target, same atan2(-dx, -dz) convention as
-   * the city guns) and converted to the pivot's local frame by subtracting
-   * the hull's world yaw, so the gun tracks while the ship keeps sailing on
-   * its own heading. The pivotless flyers (bombardier, ornithopter) yaw the
-   * whole hull, which also swings their belly muzzle nose-forward for the
-   * drop.
+   * Yaw the aim onto the target: the cannon_mount pivot is driven in the
+   * hull's local frame (world yaw minus the hull's world yaw), so the gun
+   * tracks while the ship keeps sailing. Pivotless flyers yaw the hull.
    */
   private aimCannon(ship: Entity): void {
     const object = ship.object3D;
@@ -249,10 +206,7 @@ export class PirateFireSystem extends createSystem({
     else object.rotation.y = worldYaw;
   }
 
-  /**
-   * Launch one free shell on the closed-form intercept solved by the shared
-   * solver (shell-launch.ts) — the same math every attacker gun uses.
-   */
+  /** Launch one free shell on the shared solver's closed-form intercept. */
   private fire(ship: Entity): boolean {
     const muzzle = this.muzzles.get(ship.index);
     const wantsStone = Boolean(ship.getValue(PirateCannon, 'stone'));
@@ -286,7 +240,6 @@ export class PirateFireSystem extends createSystem({
     return true;
   }
 
-  /** Every cooldown is a fresh roll: the unit's own interval plus the shared jitter. */
   private rollInterval(ship: Entity): number {
     return (
       Number(ship.getValue(PirateCannon, 'interval')) +
@@ -307,7 +260,6 @@ export class PirateFireSystem extends createSystem({
     return undefined;
   }
 
-  /** Same discipline as firstFreeShell, over the stone pool. */
   private firstFreeStone(): Entity | undefined {
     for (const stone of this.queries.freeStones.entities) {
       if (this.claimed.has(stone.index)) continue;
@@ -328,7 +280,6 @@ export class PirateFireSystem extends createSystem({
     return false;
   }
 
-  /** True while the pause-menu tag sits on the director entity. */
   private paused(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GamePaused);
@@ -336,7 +287,6 @@ export class PirateFireSystem extends createSystem({
     return false;
   }
 
-  /** True once the run has ended (victory or defeat) — the raiders hold fire. */
   private over(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GameOver);

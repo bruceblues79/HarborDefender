@@ -9,12 +9,9 @@ import { createSystem, Vector3 } from '@iwsdk/core';
 import { Billboard } from './components.js';
 
 /**
- * Turns billboard entities so their +Z face looks at the viewer, without
- * moving them. UIKitML panels are single-sided and face +Z, so the yaw that
- * aims one at the camera is `atan2(dx, dz)` with no 180° term.
- *
- * Runs after the camera systems (registered at a higher priority) so the pane
- * tracks the current frame's viewpoint in both browser and immersive modes.
+ * Yaws billboard entities so their +Z face looks at the viewer, without moving them.
+ * UIKitML panels are single-sided and face +Z, so `atan2(dx, dz)` needs no 180° term.
+ * Registered in the UI tier after the camera update, so it tracks this frame's viewpoint.
  */
 export class BillboardSystem extends createSystem({
   billboards: { required: [Billboard] },

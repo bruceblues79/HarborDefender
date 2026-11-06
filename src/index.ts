@@ -53,10 +53,8 @@ World.create(
   document.getElementById('scene-container') as HTMLDivElement,
   projectOptions,
 ).then((world) => {
-  // XR far-ray: show whenever the hand is tracked, not only while hovering an
-  // interactable (IWSDK defaults to VisibleOnIntersection). The RayPointer
-  // visual sits behind a private field with no public toggle, so use a narrow
-  // structural access. Tracking loss / near-pointer takeover still hide it.
+  // XR far-ray: visible whenever the hand is tracked (IWSDK defaults to
+  // VisibleOnIntersection); RayPointer.visual is private, hence the cast.
   for (const hand of ['left', 'right'] as const) {
     const rayVisual = (
       world.input.xr.multiPointers[hand] as unknown as {
@@ -72,54 +70,38 @@ World.create(
 
   world.registerSystem(CameraOrbitSystem);
   world.registerSystem(OceanSystem);
-  // AR partial-immersion dome: hidden on desktop, a pasted seaward half-dome
-  // of sky over passthrough only while an immersive-AR session is live.
+  // AR partial-immersion dome: seaward half-dome over passthrough only in AR.
   world.registerSystem(SkyDomeSystem);
-  // Simulation tier: the director paces dispatch, movement runs the ships in
-  // while the fade system materialises their hulls in parallel. The endless
-  // planner rides the same tier, one step after the director: its
-  // NextWaveCommand consumption appends the generated wave before any
-  // same-frame reader (intermission panel) looks at the wave list.
+  // Simulation tier: the director (5) paces dispatch; the endless planner (6)
+  // appends the new wave before any same-frame reader sees the list.
   world.registerSystem(LevelWaveSystem, { priority: 5 });
   world.registerSystem(EndlessPlannerSystem, { priority: 6 });
   world.registerSystem(CannonAimSystem, { priority: 8 });
-  // Trajectory guide: one tier after the aim pass, so each frame's sampling
-  // reads the muzzle transform the drag just wrote.
+  // Trajectory guide one tier after the aim pass, so it samples the muzzle
+  // transform the drag just wrote.
   world.registerSystem(TrajectoryPreviewSystem, { priority: 9 });
   world.registerSystem(ShipMovementSystem, { priority: 10 });
-  // Rotor spin rides the simulation tier: same march cadence as movement,
-  // frozen by the same pause/hold tags. Wing flap keeps the ornithopter's
-  // canvas beating on the same tier.
+  // Rotor spin and wing flap ride the movement tier and the same pause tags.
   world.registerSystem(PropellerSpinSystem, { priority: 10 });
   world.registerSystem(WingFlapSystem, { priority: 10 });
-  // Both fire systems draw from one shell pool at the same priority; pirate
-  // is registered second and its live hasComponent guard keeps the two from
-  // ever handing out the same shell in a frame.
+  // Both fire systems draw one shell pool at the same priority; the live
+  // hasComponent guard stops them handing out the same shell in a frame.
   world.registerSystem(CannonFireSystem, { priority: 11 });
   world.registerSystem(PirateFireSystem, { priority: 11 });
-  // Free gun pipeline: the independent targeting system rolls each gun's
-  // LockTarget slot (registered first so a slot cleared by a shot this frame
-  // is refilled the same frame), then every per-gun fire state machine runs.
-  // All fire systems share the ball pool on the same tier; the claimed-set
-  // guard (and its live hasComponent check) keeps them from ever handing out
-  // the same shell in a frame.
+  // Free gun pipeline: targeting (11) runs before the per-gun fire state
+  // machines, so a slot cleared this frame is refilled now; all share the pool.
   world.registerSystem(FreeLockTargetSystem, { priority: 11 });
   world.registerSystem(GunCycleSystem, { priority: 11 });
-  // Boss laser main cannon: the state machine settles on the same
-  // simulation tier as the guns — its damage writes land before
-  // ShellHitSystem's death sweep (14) picks them up the same frame. The fx
-  // rig mirrors the frozen state one tier later, after the settle.
+  // Boss laser settles at 11 so its damage lands before ShellHitSystem's
+  // death sweep (14); the fx rig (12) mirrors the frozen state.
   world.registerSystem(LaserCycleSystem, { priority: 11 });
   world.registerSystem(LaserFxSystem, { priority: 12 });
-  // Boss phase two (task 031/03): the chief-head mount runs on the
-  // simulation tier; its death light (lightning beats + wall sweep) writes
-  // Health before ShellHitSystem's death sweep (14) picks kills up the same
-  // frame, and the fx rig renders from the frozen state after it.
+  // Chief-head mount (11) writes Health before ShellHitSystem's sweep (14);
+  // its death light settles at 13 and the fx rig renders at 15.
   world.registerSystem(BossChiefSystem, { priority: 11 });
   world.registerSystem(ChiefDeathLightSystem, { priority: 13 });
   world.registerSystem(ChiefDeathLightFxSystem, { priority: 15 });
-  // SpawnFade materialises hulls after the movement tier; ShellHitSystem
-  // (14) sweeps every death.
+  // SpawnFade materialises hulls after the movement tier.
   world.registerSystem(SpawnFadeSystem, { priority: 12 });
   // Move first, then consume solid-target hits, then handle water splashes.
   world.registerSystem(BallisticSystem, { priority: 13 });
@@ -127,17 +109,13 @@ World.create(
   world.registerSystem(HitFlashSystem, { priority: 15 });
   world.registerSystem(DieBurstSystem, { priority: 15 });
   world.registerSystem(SplashSystem, { priority: 15 });
-  // Repair drain: the only per-frame wallet writer. Registered after
-  // ShellHitSystem's death sweep (14) on purpose — a laser or death-light that
-  // lands exactly on 0 HP must be dead before repair can tick it back above 0,
-  // otherwise the unit survives as a zero-health ghost. Pauses and outcomes
-  // still freeze it like every other sim system.
+  // Repair (15) after the death sweep (14): a lethal hit must be dead before
+  // repair ticks it above 0, or the unit survives as a zero-health ghost.
   world.registerSystem(RepairSystem, { priority: 15 });
-  // Pedestal-pad entry: keeps RayInteractable on empty slots only and opens
-  // the shared build dock on a press (BuildOpen on the director).
+  // Pedestal pads: RayInteractable on empty slots only; a press opens the
+  // shared build dock (BuildOpen).
   world.registerSystem(DefensePadInputSystem, { priority: 16 });
-  // Empty-slot pad breathing: the pure visual over the battery registry —
-  // one shared-material emissiveIntensity write per frame, no phase gate.
+  // Empty-slot pad breathing: one shared-material emissiveIntensity write per frame.
   world.registerSystem(DefensePadSystem, { priority: 17 });
   // UI tier, after the camera updates so billboards track this frame's view.
   world.registerSystem(PanelScaleSystem, { priority: 30 });
@@ -145,26 +123,20 @@ World.create(
   // Pause-menu orchestrator: watches GameStarted, owns the pause tag and the
   // head-following call button / menu panels.
   world.registerSystem(MenuSystem, { priority: 32 });
-  // End-of-run result panel: qualifies on GameOver (victory / defeat) and
-  // hands RESTART / MAIN to MenuSystem's shared reset sequences.
+  // End-of-run result panel: on GameOver, offers RESTART / MAIN via MenuSystem.
   world.registerSystem(ResultPanelSystem, { priority: 33 });
-  // Endless wave intermission: qualifies on WaveIntermission, shows the
-  // GET READY panel while the shortest window counts down.
+  // Endless intermission: shows GET READY while the shortest wave window counts down.
   world.registerSystem(IntermissionPanelSystem, { priority: 33 });
-  // Shared build panel: qualifies on the director's BuildOpen tag, owns the
-  // row prices / wallet readout and the structural unit swaps.
+  // Shared build panel: qualifies on BuildOpen, owns prices, wallet and unit swaps.
   world.registerSystem(BuildPanelSystem, { priority: 34 });
   world.registerSystem(BillboardSystem, { priority: 31 });
-  // Health bars: after the simulation tier so each frame's yaw cancels the
-  // unit's freshest rotation; keeps billboarding through pauses like the
-  // other viewer-facing systems.
+  // Health bars after the sim tier, so each frame's yaw cancels the unit's
+  // freshest rotation.
   world.registerSystem(HealthBarSystem, { priority: 30 });
-  // 维修按钮：血条（30）之后的视图 + 命令层，按钮对齐本帧的血条左缘上方；
-  // 同一个系统消费 Pressed 并切换目标炮台的 Repairing 标签。
+  // 维修按钮：血条（30）之后的视图层，按钮对齐本帧血条左缘；同系统消费 Pressed 切换 Repairing 标签。
   world.registerSystem(RepairButtonSystem, { priority: 31 });
   installXRButton(world);
 
-  // Keep the welcome panel turned toward the viewer in browser and XR alike.
   world.getSceneEntity('welcome-panel')?.addComponent(Billboard);
 
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');

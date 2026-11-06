@@ -17,17 +17,12 @@ import {
 } from './components.js';
 
 /**
- * Free random targeting (自由索敌) for every gun entity that carries a
- * `LockTarget` slot — the boss hull never needs to know its guns exist.
- * While the fight runs, any gun whose slot is empty or whose locked core has
- * died gets a uniform-random roll over the surviving defender cores. A roll
- * may legitimately land on the same core — especially when only one defender
- * is left — which is the requested "never locked forever, but repeats are
- * fine" behaviour.
+ * Free random targeting (自由索敌) for every gun that carries a `LockTarget` slot; the
+ * boss hull never needs to know its guns exist. While the fight runs, a gun whose slot
+ * is empty or whose locked core died rolls a uniform-random surviving defender core —
+ * repeats are allowed, which is the intended "never locked forever" behaviour.
  *
- * The fire cycle (GunCycleSystem) never writes targets: after a shot it
- * clears the slot, and this system refills it — that clear is what re-rolls
- * the target after every shot.
+ * GunCycleSystem clears the slot after each shot; that clear is what re-rolls the target.
  */
 export class FreeLockTargetSystem extends createSystem({
   guns: { required: [LockTarget] },
@@ -45,7 +40,6 @@ export class FreeLockTargetSystem extends createSystem({
     }
   }
 
-  /** Whether `index` is still a surviving defender core in the live query. */
   private isLiveDefender(index: number): boolean {
     for (const core of this.queries.cores.entities) {
       if (core.getValue(HitCore, 'faction') !== 'defender') continue;
@@ -55,9 +49,8 @@ export class FreeLockTargetSystem extends createSystem({
   }
 
   /**
-   * Roll one uniform-random live defender core and snapshot its hit_core
-   * world position into the gun's slot. Two passes over the query (count,
-   * then pick) keep the roll allocation-free.
+   * Snapshot the chosen core's hit_core world position into the gun's slot. Two passes
+   * over the query (count, then pick) keep the roll allocation-free.
    */
   private rollTarget(gun: Entity): void {
     let defenderCount = 0;
@@ -85,7 +78,6 @@ export class FreeLockTargetSystem extends createSystem({
     }
   }
 
-  /** True once the START hand-off has moved the director past waiting-start. */
   private gameRunning(): boolean {
     for (const director of this.queries.directors.entities) {
       return (
@@ -103,7 +95,6 @@ export class FreeLockTargetSystem extends createSystem({
     return false;
   }
 
-  /** True once the run has ended (victory or defeat) — targeting stops. */
   private over(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GameOver);

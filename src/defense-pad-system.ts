@@ -12,22 +12,14 @@ import { getDefensePadMaterial, getDefenseSlotInfo } from './battle-setup.js';
 
 /**
  * Empty-slot pad breathing — the pure view over the battery registry.
- *
- * A slot with no live occupant (nothing mounted, or the mounted unit
- * carries Destroyed) is "empty": its pedestal pad glows with a slow
- * warm-gold breath. The GLB bakes the emissive colour at full strength and
- * each pad has its own material clone, so the effect is one
- * emissiveIntensity scalar write per slot per frame — empty pads all share
- * the same phase accumulator and pulse in lockstep, occupied pads are
- * driven to zero. No phase gate: a waiting-start battery has no empty
- * slots, and a mid-battle knockout breathes immediately. The pads'
- * interaction gate belongs to DefensePadInputSystem — this system only
- * writes materials and never touches entities.
+ * A slot with no live occupant (nothing mounted, or Destroyed) pulses on one shared
+ * phase accumulator: one emissiveIntensity write per pad per frame (each pad owns its
+ * material clone), occupied pads are driven to zero. Interaction gating belongs to
+ * DefensePadInputSystem — this system only writes materials, never entities.
  */
 export class DefensePadSystem extends createSystem({
   directors: { required: [LevelDirector] },
 }) {
-  /** Accumulated seconds driving the sine phase. */
   private breatheTime = 0;
 
   update(delta: number): void {

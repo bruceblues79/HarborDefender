@@ -12,10 +12,8 @@ import { COMBAT, ECONOMY, ORNITHOPTER, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP
 export const OceanTag = createComponent('OceanTag', {});
 
 /**
- * Marks an entity as a source of concentric wake ripples on the ocean.
- * OceanSystem feeds active sources into the ocean shader's uniform array.
- * Toggle `active` to turn ripples on (sailing) or off (anchored / stopped).
- * Works for ships, shells, or any object that should disturb the surface.
+ * Marks an entity as a source of concentric wake ripples on the ocean;
+ * OceanSystem feeds active sources into the ocean shader.
  */
 export const WakeSource = createComponent('WakeSource', {
   /** Current ripple strength 0..1. OceanSystem eases toward targetStrength. */
@@ -34,16 +32,11 @@ export const WakeSource = createComponent('WakeSource', {
   speed: { type: 'Float32', default: 3.0 },
 });
 
-/**
- * Single-instance director state for the level -> wave -> unit flow. Exactly
- * one entity carries it, owned and written by LevelWaveSystem.
- */
+/** Single-instance director state for the level -> wave -> unit flow, owned by LevelWaveSystem. */
 export const LevelDirector = createComponent('LevelDirector', {
   /** 'waiting-start' | 'dispatching' | 'clearing' | 'wave-gap' | 'level-gap' | 'game-cleared' | 'defeated' */
   phase: { type: 'String', default: 'waiting-start' },
-  /** Index into the active level list. */
   levelIndex: { type: 'Int32', default: 0 },
-  /** Index into the current level's waves. */
   waveIndex: { type: 'Int32', default: 0 },
   /** Units of the current wave still to be dispatched. */
   pendingUnits: { type: 'Int32', default: 0 },
@@ -61,8 +54,7 @@ export const UnitTag = createComponent('UnitTag', {
 
 /**
  * Sail-in behaviour for attacker ships: a straight run from the ocean's far
- * edge to a rolled target point short of the wall. Plain scalars so a
- * designer can read a unit's real state from the inspector.
+ * edge to a rolled target point short of the wall.
  */
 export const ShipMovement = createComponent('ShipMovement', {
   /** Movement pattern id (see MovementPattern in level-config). */
@@ -85,20 +77,14 @@ export const ShipMovement = createComponent('ShipMovement', {
   laneHalfWidth: { type: 'Float32', default: 0.35 },
   /** Set while a ship ahead keeps this one waiting. */
   blocked: { type: 'Boolean', default: false },
-  /**
-   * This hull's own wake radius (m) — the unit sheet's wakeRadius at spawn.
-   * ShipMovementSystem retargets the WakeSource between this and half of it;
-   * per-entity so oversized hulls (the boss) churn ship-scaled ripples.
-   */
+  /** This hull's own wake radius (m); ShipMovementSystem retargets the WakeSource to half this when halted. */
   wakeRadius: { type: 'Float32', default: WAKE_RADIUS },
 });
 
 /**
  * Driven rotor of a flying unit (the bombardier's tandem propellers).
- * Presence of this component *is* the tag "has a spinning rotor":
  * PropellerSpinSystem resolves the model's `propellers` node and turns each
- * child rotor about its local +Y. A hovering flyer keeps its rotors turning,
- * so motion state does not gate the spin.
+ * child about local +Y; a hovering flyer keeps spinning.
  */
 export const PropellerSpin = createComponent('PropellerSpin', {
   /** Rotor speed, radians per second. */
@@ -106,12 +92,9 @@ export const PropellerSpin = createComponent('PropellerSpin', {
 });
 
 /**
- * Flapping wings of a flying unit (the ornithopter's canvas pair). Presence
- * of this component *is* the tag "this unit has driven wings":
- * WingFlapSystem resolves the model's `wing_left` / `wing_right` nodes and
- * swings them about their root axle with mirrored rotation.z — pure scalar
- * sine, no physics. A hovering flyer keeps flapping; motion state does not
- * gate the animation.
+ * Flapping wings of a flying unit (the ornithopter's canvas pair). WingFlapSystem
+ * swings the `wing_left` / `wing_right` nodes about their root axle with mirrored
+ * rotation.z; a hovering flyer keeps flapping.
  */
 export const WingFlap = createComponent('WingFlap', {
   /** Flap frequency, radians per second. */
@@ -121,10 +104,8 @@ export const WingFlap = createComponent('WingFlap', {
 });
 
 /**
- * Materialisation countdown for a freshly dispatched unit. Carrying this
- * component *is* the tag "hull still fading in": SpawnFadeSystem drives the
- * materials and removes it once the unit is solid, so nothing downstream has
- * to know a fade ever happened. Movement runs in parallel, not after it.
+ * Materialisation countdown for a freshly dispatched unit. SpawnFadeSystem drives the
+ * materials and removes it once the unit is solid; movement runs in parallel.
  */
 export const SpawnFade = createComponent('SpawnFade', {
   /** Seconds the materialisation takes. */
@@ -134,10 +115,8 @@ export const SpawnFade = createComponent('SpawnFade', {
 });
 
 /**
- * Rotation-only billboard: BillboardSystem yaws the entity so its +Z face
- * looks at the viewer, without moving it. For world-anchored panels that must
- * stay put while turning to face the player — IWSDK's Follower is a
- * head-following panel and would drag the anchor with the player.
+ * Rotation-only billboard: BillboardSystem yaws the entity so its +Z face looks at
+ * the viewer — IWSDK's Follower would drag the anchor with the player.
  */
 export const Billboard = createComponent('Billboard', {
   /** Keep true for yaw-only turning; false also allows pitch. */
@@ -155,19 +134,15 @@ export const PanelScaleAnim = createComponent('PanelScaleAnim', {
 });
 
 /**
- * Marks a RayInteractable whose presses belong to its own UI — the flat-mode
- * camera rig (CameraOrbitSystem) refuses to orbit/pinch any pointer that is
- * pressed on an entity carrying this tag, exactly like it does for cannon
- * aim drags. Attach to the ROOT entity of a UIKitML panel so every child
- * element (rows, scroll areas, padding gaps) is covered by one tag.
+ * Marks a RayInteractable whose presses belong to its own UI — CameraOrbitSystem
+ * refuses to orbit/pinch any pointer pressed on an entity carrying this tag. Attach
+ * to the ROOT entity of a UIKitML panel so every child element is covered.
  */
 export const CameraBlocker = createComponent('CameraBlocker', {});
 
 /**
- * Marks a pooled projectile living in CannonFireSystem's pools. A projectile
- * is free exactly while it does NOT carry `BallisticFlight` — presence of
- * the flight component is the "airborne" tag, so no separate in-use flag
- * exists.
+ * Marks a pooled projectile living in CannonFireSystem's pools. A projectile is free
+ * exactly while it does NOT carry `BallisticFlight` (no separate in-use flag).
  */
 export const ShellTag = createComponent('ShellTag', {});
 
@@ -175,26 +150,20 @@ export const ShellTag = createComponent('ShellTag', {});
 export const StoneTag = createComponent('StoneTag', {});
 
 /**
- * Singleton tag on the trajectory-guide entity owned by
- * TrajectoryPreviewSystem: an InstancedMesh of sparse unlit cubes redrawn
- * every frame while a defense unit is being aim-dragged. Pure visual —
- * no RayInteractable, no state fields.
+ * Singleton tag on the trajectory-guide entity owned by TrajectoryPreviewSystem — an
+ * InstancedMesh of unlit cubes, pure visual, no state fields.
  */
 export const TrajectoryPreview = createComponent('TrajectoryPreview', {});
 
 /**
- * Explicit "this cannon is mid-drag" tag, written and cleared only by
- * CannonAimSystem at its drag-session anchors (browser pointer anchoring /
- * XR grab, and their releases). Unlike the transient `Pressed` hover tag —
- * which InputSystem clears the moment the pointer slides off the mount —
- * this tag lives for the whole gesture, matching the drag itself.
+ * Explicit "this cannon is mid-drag" tag, written and cleared only by CannonAimSystem.
+ * Unlike the transient `Pressed` hover tag, it lives for the whole gesture.
  */
 export const AimDragging = createComponent('AimDragging', {});
 
 /**
- * Auto-fire ability of a cannon's muzzle: launch one pooled shell every
- * `interval` seconds. When the pool is empty the shot is skipped and retried
- * shortly, so a busy pool degrades to a slower fire rate, never a stall.
+ * Auto-fire ability of a cannon's muzzle: launch one pooled shell every `interval`
+ * seconds; an empty pool skips the shot and retries shortly — slower, never stalled.
  */
 export const CannonFire = createComponent('CannonFire', {
   /** Seconds between two shots. */
@@ -202,19 +171,16 @@ export const CannonFire = createComponent('CannonFire', {
   /** Countdown to the next shot; written only by CannonFireSystem. */
   cooldown: { type: 'Float32', default: 0 },
   /**
-   * Attacker unit id stamped onto fired shells (ShellFaction.unitType) so
-   * ShellHitSystem can look the damage up in DAMAGE_MATRIX.
+   * Attacker unit id stamped onto fired shells (ShellFaction.unitType) for the
+   * DAMAGE_MATRIX lookup.
    */
   unitType: { type: 'String', default: '' },
 });
 
 /**
- * Flight state for a shell: carrying this *is* the tag "shell airborne".
- * Plain scalars so a shell's velocity stays inspector-readable; BallisticSystem
- * is the only writer. `drag` is the shell's linear air-drag coefficient (1/s):
- * city shells launch with COMBAT.shellDrag, while the pirate/boss intercept
- * solves assume vacuum flight and keep the 0 default. Removed on splash-down,
- * returning the shell to the pool.
+ * Flight state for a shell: carrying this *is* the tag "shell airborne". `drag` is the
+ * linear air-drag coefficient (1/s): city shells use COMBAT.shellDrag, pirate/boss
+ * intercepts 0. Removed on splash-down, returning the shell to the pool.
  */
 export const BallisticFlight = createComponent('BallisticFlight', {
   vx: { type: 'Float32', default: 0 },
@@ -224,11 +190,8 @@ export const BallisticFlight = createComponent('BallisticFlight', {
 });
 
 /**
- * Cannon aim state — the single truth for traverse and elevation.
- * CannonAimSystem writes it from drag input (browser drag / XR pinch-drag via
- * the native `Pressed` tag) and applies it every frame: yaw on the cannon
- * root, pitch on the gun_rotate pivot. Yaw and pitch limits are per-entity
- * scalars; the defaults reproduce the stock cannon envelope.
+ * Cannon aim state (yaw on the cannon root, pitch on the `gun_rotate` pivot), written
+ * by CannonAimSystem from drag input and applied every frame.
  */
 export const CannonAim = createComponent('CannonAim', {
   /** Whole-cannon traverse, degrees, clamped ±yawRangeDeg. */
@@ -244,9 +207,8 @@ export const CannonAim = createComponent('CannonAim', {
 });
 
 /**
- * Splash ripple countdown. Carrying this *is* the tag "ripple still fading":
- * SplashSystem drives the WakeSource strength 1 -> 0 over `duration`, then
- * disposes the entity so it leaves OceanSystem's wake list for good.
+ * Splash ripple countdown: SplashSystem drives the WakeSource strength 1 -> 0 over
+ * `duration`, then disposes the entity so it leaves OceanSystem's wake list.
  */
 export const SplashFade = createComponent('SplashFade', {
   /** Seconds the ripple takes to fade out. */
@@ -256,11 +218,8 @@ export const SplashFade = createComponent('SplashFade', {
 });
 
 /**
- * The hittable core of a combatant (pirate ship, city cannon). An invisible
- * `hit_core` helper sits at the model's bounding-box centre; ShellHitSystem
- * consumes any airborne shell of a different faction that comes within
- * `radius` (3D distance). Presence of this component *is* the "can be hit"
- * tag.
+ * The hittable core of a combatant: an invisible `hit_core` helper; ShellHitSystem
+ * consumes any opposing-faction shell within `radius`. Presence *is* "can be hit".
  */
 export const HitCore = createComponent('HitCore', {
   /** Consume distance (m) from the hit_core centre. */
@@ -270,10 +229,8 @@ export const HitCore = createComponent('HitCore', {
   /** Unit id of the hittable combatant ('cannon', 'pirate-ship'…). */
   unitType: { type: 'String', default: '' },
   /**
-   * Exact name of the hit-core node in the carrier's subtree. Multi-seat
-   * assets must use unique names per seat (GLTFLoader de-duplicates
-   * same-name nodes with numeric suffixes at load time, so a bare
-   * 'hit_core' only reliably resolves on single-seat assets — the default).
+   * Exact name of the hit-core node in the carrier's subtree. Multi-seat assets must use
+   * unique names per seat — GLTFLoader de-duplicates same-name nodes with numeric suffixes.
    */
   nodeName: { type: 'String', default: 'hit_core' },
   /** Kill-bounty tier (RewardTier) paid once when this core dies. */
@@ -281,10 +238,8 @@ export const HitCore = createComponent('HitCore', {
 });
 
 /**
- * Damage pool of a hittable combatant (pirate ship, city cannon). Carried by
- * every HitCore entity; ShellHitSystem is the only writer of `current`.
- * Reaching zero kills the unit: attackers sink (dispose), defender cannons
- * are tagged Destroyed.
+ * Damage pool of a hittable combatant. Reaching zero kills the unit: attackers sink
+ * (dispose), defender cannons are tagged Destroyed.
  */
 export const Health = createComponent('Health', {
   /** Hits remaining before the unit dies. */
@@ -292,27 +247,22 @@ export const Health = createComponent('Health', {
   /** Hits the unit starts with; the RESTART restore target. */
   max: { type: 'Float32', default: 1 },
   /**
-   * Explicit bar height in the carrier's LOCAL space. HealthBarSystem pins
-   * the bar here verbatim — there is no bounding-box fallback: a derivation
-   * on a deep child spawned mid-frame reads a stale ancestor matrixWorld and
-   * floats the bar. Every Health carrier sets it (hulls: the unit sheet's
-   * measured top + margin; boss armour parts: the baked-geometry constants).
+   * Explicit bar height in the carrier's LOCAL space — HealthBarSystem pins the bar here
+   * verbatim (no bbox fallback: a mid-frame child would read a stale matrixWorld).
    */
   barY: { type: 'Float32', default: 0 },
 });
 
 /**
- * Explicit tag: a defender cannon is knocked out. Written once by
- * ShellHitSystem at the killing hit — the tag gates every consumer (fire,
- * aim, targeting, hit detection exclude it) so the cannon leaves the fight
- * without its components being stripped. The cannon object stays in the
- * world, hidden; restoreCannons (battle-setup) removes the tag on RESTART.
+ * Explicit tag: a defender cannon is knocked out. Written by ShellHitSystem at the
+ * killing hit; the tag gates every consumer so the cannon leaves the fight without its
+ * components being stripped. restoreCannons removes it on RESTART.
  */
 export const Destroyed = createComponent('Destroyed', {});
 
 /**
- * Faction carried by an airborne shell. Added on fire, removed on every
- * recycle path (splash or hit) so a pooled shell can never keep a stale side.
+ * Faction carried by an airborne shell, added on fire and removed on every recycle path
+ * (splash or hit) so a pooled shell never keeps a stale side.
  */
 export const ShellFaction = createComponent('ShellFaction', {
   /** 'attacker' | 'defender'. */
@@ -322,18 +272,15 @@ export const ShellFaction = createComponent('ShellFaction', {
 });
 
 /**
- * Pirate-ship cannon ability. A stopped ship picks one random defender
- * HitCore as its target, yaws onto it, and lobs guaranteed-hit shells on a
- * cooldown. PirateFireSystem is the only writer.
+ * Pirate-ship cannon ability: a stopped ship locks one random defender HitCore, yaws
+ * onto it and lobs guaranteed-hit shells on a cooldown.
  */
 export const PirateCannon = createComponent('PirateCannon', {
   /** Seconds between two shots. */
   interval: { type: 'Float32', default: COMBAT.pirateFireInterval },
   /**
-   * Seaward-most world z this unit may fire from — the far edge of its own
-   * berth band (ships SHIP_STOP_Z_MIN, the bombardier FLYER_STOP_Z_MIN).
-   * LevelWaveSystem writes it from the unit sheet at spawn; this system only
-   * reads it, so "crossing the fire line" stays one per-unit fact.
+   * Seaward-most world z this unit may fire from — the far edge of its own berth band
+   * (ships SHIP_STOP_Z_MIN, the bombardier FLYER_STOP_Z_MIN). Written at spawn.
    */
   fireLineZ: { type: 'Float32', default: SHIP_STOP_Z_MIN },
   /** Countdown to the next shot; ticks only while stopped and the game runs. */
@@ -341,117 +288,84 @@ export const PirateCannon = createComponent('PirateCannon', {
   /** Set once a defender target has been acquired. */
   hasTarget: { type: 'Boolean', default: false },
   /**
-   * Entity index of the defender core this cannon has locked. PirateFireSystem
-   * re-validates it every frame against the live core query (which drops
-   * Destroyed cannons): gone means re-acquire a random surviving target.
+   * Entity index of the locked defender core. PirateFireSystem re-validates it every
+   * frame against the live core query (which drops Destroyed cannons).
    */
   targetCoreIndex: { type: 'Int32', default: -1 },
   /** Target hit_core world position snapshot (city cannons never move). */
   targetX: { type: 'Float32', default: 0 },
   targetY: { type: 'Float32', default: 0 },
   targetZ: { type: 'Float32', default: 0 },
-  /**
-   * True when this unit hurls pooled stones (ornithopter) instead of
-   * cannonballs: PirateFireSystem picks the free-stone pool for the shot.
-   */
+  /** True when this unit hurls pooled stones (ornithopter) instead of cannonballs. */
   stone: { type: 'Boolean', default: false },
 });
 
 /**
- * Explicit tag: the START gate has opened and the level flow is live. Added
- * by LevelWaveSystem.beginLevel, removed by resetToWelcome — MenuSystem
- * watches its qualify/dismiss to show and hide the call-menu button.
+ * Explicit tag: the START gate has opened and the level flow is live. MenuSystem watches
+ * its qualify/dismiss to show and hide the call-menu button.
  */
 export const GameStarted = createComponent('GameStarted', {});
 
 /**
- * Explicit pause tag on the director entity. MenuSystem is the only writer;
- * every simulation system early-returns while it is present. UI, camera,
- * billboard and follower systems ignore it, so pausing never blocks input.
+ * Explicit pause tag on the director entity (written by MenuSystem); every simulation
+ * system early-returns while it is present, while UI/camera systems keep running.
  */
 export const GamePaused = createComponent('GamePaused', {});
 
 /**
- * Explicit tag: the run has ended — director phase is 'game-cleared'
- * (victory) or 'defeated' (battery wiped out). LevelWaveSystem is the only
- * writer, adding it on the outcome frame and removing it in beginLevel /
- * restartLevel / resetToWelcome. The result panel qualifies on it; the
- * fire/aim systems hold while it is present.
+ * Explicit tag: the run has ended — phase 'game-cleared' (victory) or 'defeated'. The
+ * result panel qualifies on it; the fire/aim systems hold while it is present.
  */
 export const GameOver = createComponent('GameOver', {});
 
 /**
- * Marks a pooled hit-flash sphere. The pool lives in HitFlashSystem; a flash
- * is free exactly while it does NOT carry `HitFlash` — presence of the state
- * component is the "playing" tag, so no separate in-use flag exists.
+ * Marks a pooled hit-flash sphere; a flash is free exactly while it does NOT carry
+ * `HitFlash` (no separate in-use flag).
  */
 export const HitFlashTag = createComponent('HitFlashTag', {});
 
 /**
- * Playing state of a pooled hit-flash sphere. ShellHitSystem claims a free
- * flash by adding this component (the thin spawn command); HitFlashSystem is
- * the only writer afterwards, deriving scale and opacity from `elapsed`.
- * Removal returns the sphere to the pool.
+ * Playing state of a pooled hit-flash sphere; HitFlashSystem derives scale and opacity
+ * from `elapsed`. Removal returns the sphere to the pool.
  */
 export const HitFlash = createComponent('HitFlash', {
   /** Seconds the bloom-and-fade takes. */
   duration: { type: 'Float32', default: COMBAT.hitFlashDuration },
   /** Seconds elapsed so far. */
   elapsed: { type: 'Float32', default: 0 },
-  /**
-   * Full-size multiplier over the shared base geometry: defender cores play
-   * at 1 (hitFlashRadius), attacker ships at hitFlashShipRadius /
-   * hitFlashRadius. Set by the spawner, read-only for the animator.
-   */
+  /** Full-size multiplier over the shared base geometry; set by the spawner. */
   peakScale: { type: 'Float32', default: 1 },
 });
 
 /**
- * Marks a pooled death-burst InstancedMesh. The pool lives in
- * DieBurstSystem; a burst is free exactly while it does NOT carry
- * `DieBurst` — presence of the state component is the "playing" tag, so no
- * separate in-use flag exists.
+ * Marks a pooled death-burst InstancedMesh; a burst is free exactly while it does NOT
+ * carry `DieBurst` (no separate in-use flag).
  */
 export const DieBurstTag = createComponent('DieBurstTag', {});
 
 /**
- * Playing state of a pooled death-burst: the wood-and-iron chunk cloud a
- * unit explodes into when it dies. ShellHitSystem claims a free burst by
- * adding this component (the thin spawn command); DieBurstSystem is the
- * only writer afterwards — its `qualify` callback randomises the per-chunk
- * state, `update` integrates it, and removal returns the mesh to the pool.
+ * Playing state of a pooled death-burst: the wood-and-iron chunk cloud a unit explodes
+ * into. DieBurstSystem randomises per-chunk state on qualify and integrates it in update.
  */
 export const DieBurst = createComponent('DieBurst', {
   /** Seconds the burst takes from spawn to fully recycled. */
   duration: { type: 'Float32', default: COMBAT.dieBurstDuration },
   /** Seconds elapsed so far. */
   elapsed: { type: 'Float32', default: 0 },
-  /**
-   * Full-size multiplier over the shared base geometry: pirate ships burst
-   * at dieBurstShipRatio, wall cannons at dieBurstCannonRatio. Set by the
-   * spawner, read-only for the animator.
-   */
+  /** Full-size multiplier over the shared base geometry; set by the spawner. */
   sizeRatio: { type: 'Float32', default: 1 },
   /**
-   * Rest height in the pooled mesh's LOCAL space: slightly below the core
-   * for a cannon (chunks settle on the wall stone) and just under the water
-   * line for a sinking ship. Spawn converts world heights to this local
-   * value once.
+   * Rest height in the pooled mesh's LOCAL space — chunks settle on the wall stone or
+   * just under the water line for a sinking ship.
    */
   floorY: { type: 'Float32', default: 0 },
-  /**
-   * Vertical bounce factor on reaching `floorY`. > 0 chunks rebound and
-   * settle (wall top); 0 chunks are hidden the moment they touch (sunk
-   * beneath the waves).
-   */
+  /** Vertical bounce factor on reaching `floorY`; 0 hides the chunk on contact. */
   floorBounce: { type: 'Float32', default: 0 },
 });
 
 /**
- * Player wallet — the economy's single truth, carried by the director entity
- * next to LevelDirector. RepairSystem is the only per-frame writer (repair
- * drain); BuildPanelSystem deducts on a build; LevelWaveSystem resets it to
- * ECONOMY.startMoney on begin / restart / welcome.
+ * Player wallet, carried by the director entity next to LevelDirector — drained by repair,
+ * deducted on build, reset to ECONOMY.startMoney on begin / restart / welcome.
  */
 export const Wallet = createComponent('Wallet', {
   /** Money the player currently holds. */
@@ -459,28 +373,22 @@ export const Wallet = createComponent('Wallet', {
 });
 
 /**
- * Explicit tag: this defender is under active repair — health rises and
- * money drains until the pool is full, the wallet empties, the unit dies or
- * the player toggles the repair button again. Added/removed by
- * RepairButtonSystem (the repair button command), drained by RepairSystem.
+ * Explicit tag: this defender is under active repair — health rises and money drains
+ * until the pool is full, the wallet empties or the unit dies. Toggled by
+ * RepairButtonSystem, drained by RepairSystem.
  */
 export const Repairing = createComponent('Repairing', {});
 
 /**
- * Explicit tag: 嘲讽 (taunt) — the unit's mere presence hijacks the raiders'
- * free targeting: as long as one live carrier exists, every non-boss attacker
- * rolls its target exclusively among carriers. Only the raider fire path
- * (PirateFireSystem) reads the tag; the boss ignores taunts by design (its
- * turret sweep, laser and death light keep their own targeting). Carried by
- * the iron-guard (钢铁卫士), which never fires and never repairs.
+ * Explicit tag: 嘲讽 (taunt) — while one live carrier exists, every non-boss attacker
+ * rolls its target exclusively among carriers. PirateFireSystem reads it; the boss
+ * ignores taunts by design. Carried by the iron-guard.
  */
 export const Taunt = createComponent('Taunt', {});
 
 /**
- * Explicit tag: the shared build panel is open, targeting the defense slot
- * in `slot`. Added/removed by DefensePadInputSystem (an empty slot's
- * pedestal pad: open, switch slot, toggle close), removed by
- * BuildPanelSystem (row purchased).
+ * Explicit tag: the shared build panel is open, targeting the defense slot in `slot`.
+ * Opened/closed by DefensePadInputSystem, removed by BuildPanelSystem on purchase.
  */
 export const BuildOpen = createComponent('BuildOpen', {
   /** Index into DEFENSE_SLOTS the open panel builds into. */
@@ -488,45 +396,34 @@ export const BuildOpen = createComponent('BuildOpen', {
 });
 
 /**
- * Explicit tag: 一个守方炮台血条上方的维修按钮实体。RepairButtonSystem 创建
- * 它、驱动它跟随血条，并把 InputSystem 的 `Pressed` 标签（鼠标 / 触摸 /
- * XR 射线共享同一条路径）翻译成目标炮台的 `Repairing` 开关。
+ * Explicit tag: 一个守方炮台血条上方的维修按钮实体。RepairButtonSystem 创建并驱动它，
+ * 并把 `Pressed` 标签翻译成目标炮台的 `Repairing` 开关。
  */
 export const RepairButton = createComponent('RepairButton', {});
 
 /**
- * One pedestal pad under a defense slot. DefensePadSystem drives the empty
- * slot's breathing emissive; DefensePadInputSystem owns the pad's
- * RayInteractable gate (present only while the slot is empty) and opens the
- * shared build dock on press.
+ * One pedestal pad under a defense slot: DefensePadSystem drives the breathing emissive,
+ * DefensePadInputSystem gates its RayInteractable and opens the build dock on press.
  */
 export const DefensePad = createComponent('DefensePad', {
   /** Index into DEFENSE_SLOTS this pad serves. */
   slot: { type: 'Int32', default: 0 },
 });
 
-/**
- * Explicit tag (no fields): `HideHealthBar` — HealthBarSystem skips carriers.
- */
+/** Explicit tag (no fields): HealthBarSystem skips carriers. */
 export const HideHealthBar = createComponent('HideHealthBar', {});
 
 /**
- * Explicit tag (no fields): `BossTurret` — lifecycle marker on the boss's
- * four baked turret child entities. Each turret carries its own Health pool
- * (so its own bar via HealthBarSystem) but has no UnitTag/ShipMovement, so
- * the attackers query never sees them; reset and restart tear them down
- * through this tag, because Entity.dispose() does not cascade into child
- * entities and they must die with their hull.
+ * Explicit tag (no fields): lifecycle marker on the boss's four baked turret children.
+ * They carry Health but no UnitTag/ShipMovement, so the attackers query never sees them;
+ * reset and restart tear them down through this tag (Entity.dispose() does not cascade).
  */
 export const BossTurret = createComponent('BossTurret', {});
 
 /**
- * Per-gun targeting slot (索敌组件). ANY gun entity carries one; the carrier
- * hull never needs to know its guns exist. FreeLockTargetSystem is the ONLY
- * writer — it re-rolls a live uniform-random defender core whenever the slot
- * is empty or its target has died; a fire cycle clears the slot after each
- * shot to request the next roll. Repeats are legal, especially when one
- * defender is left.
+ * Per-gun targeting slot (索敌组件): FreeLockTargetSystem re-rolls a live uniform-random
+ * defender core whenever the slot is empty or its target died; a fire cycle clears it
+ * after each shot. Repeats are legal, especially when one defender is left.
  */
 export const LockTarget = createComponent('LockTarget', {
   /** Entity index of the locked defender core; -1 = no target. */
@@ -538,14 +435,9 @@ export const LockTarget = createComponent('LockTarget', {
 });
 
 /**
- * Per-gun fire state machine (发射状态机). ANY gun entity carries one and
- * runs the `cooldown -> turning -> hold -> fire` loop independently:
- * swing its gun_rotate onto the LockTarget snapshot (turnSpeedDeg until the
- * error is under turnThresholdDeg), hold the aim for aimHoldSec, launch one
- * pooled shell on the closed-form intercept (shellSpeed, stamped
- * shellUnitType for the damage matrix), then wait fireInterval (+ jitter)
- * and clear the LockTarget slot for the next random roll. GunCycleSystem is
- * the only writer; all rhythm values are per-gun data set at assembly.
+ * Per-gun fire state machine (发射状态机): runs `cooldown -> turning -> hold -> fire`
+ * independently — swing onto the LockTarget snapshot, hold, launch one pooled shell
+ * on the closed-form intercept, then wait and clear the slot for the next roll.
  */
 export const GunCycle = createComponent('GunCycle', {
   /** 'cooldown' | 'turning' | 'hold'. */
@@ -569,9 +461,8 @@ export const GunCycle = createComponent('GunCycle', {
   /** When true the cycle only ticks once the carrier's state is 'stopped'. */
   requireStopped: { type: 'Boolean', default: false },
   /**
-   * Exact node names of this gun's yaw pivot and muzzle inside its own
-   * subtree. Unique per seat in the GLB (see HitCore.nodeName for why);
-   * written at assembly — no shared names, no runtime guessing.
+   * Exact node names of this gun's yaw pivot and muzzle inside its own subtree; unique
+   * per seat (see HitCore.nodeName), written at assembly — no runtime guessing.
    */
   pivotName: { type: 'String', default: 'gun_rotate' },
   muzzleName: { type: 'String', default: 'muzzle' },
@@ -580,16 +471,10 @@ export const GunCycle = createComponent('GunCycle', {
 });
 
 /**
- * Laser main cannon state machine (激光主炮状态机). Runs the
- * `cooldown -> turning -> hold -> charging -> firing` loop: swing the pivot
- * onto the LockTarget snapshot (quaternion rotateTowards, yaw + pitch in
- * one arc), hold briefly at convergence with the beam axis frozen, charge,
- * then deduct laserDamageRatio of each swept defender's max Health once at
- * the firing transition. The axis freeze (origin/dir/length below) locks a
- * defense-slot DIRECTION: a target dying during hold/charge/fire never
- * re-aims, and FreeLockTargetSystem re-rolls of the slot are ignored until
- * the next cooldown hands targeting back. LaserCycleSystem is the only
- * writer; death stays single-truthed in ShellHitSystem's death sweep.
+ * Laser main cannon state machine (激光主炮状态机): `cooldown -> turning -> hold ->
+ * charging -> firing`, then deducts laserDamageRatio of each swept defender at the
+ * firing transition. The axis is frozen at convergence — a target dying mid-cycle never
+ * re-aims, and LockTarget re-rolls are ignored until the next cooldown.
  */
 export const LaserCycle = createComponent('LaserCycle', {
   /** 'cooldown' | 'turning' | 'hold' | 'charging' | 'firing'. */
@@ -616,10 +501,8 @@ export const LaserCycle = createComponent('LaserCycle', {
   pivotName: { type: 'String', default: 'gun_rotate_laser' },
   muzzleName: { type: 'String', default: 'muzzle_laser' },
   /**
-   * Beam axis frozen at aim convergence: muzzle world position (origin),
-   * the muzzle's world -Z direction (dir, unit length), and the distance
-   * from origin to the frozen target snapshot (length). Written once per
-   * cycle; never re-read from LockTarget while charging/firing.
+   * Beam axis frozen at aim convergence: muzzle world origin, unit dir and origin-to-
+   * target length. Written once per cycle; never re-read from LockTarget while firing.
    */
   originX: { type: 'Float32', default: 0 },
   originY: { type: 'Float32', default: 0 },
@@ -631,15 +514,10 @@ export const LaserCycle = createComponent('LaserCycle', {
 });
 
 /**
- * The boss hull's laser-pivot mount seat for the phase-two chief head
- * (海盗头领挂点). Written once by LevelWaveSystem while assembling the boss
- * turrets — the ONLY moment the pivot node is guaranteed to exist, because
- * the laser turret's death removes its whole subtree (pivot included) from
- * the hull clone. The seat is the `gun_rotate_laser` pivot's position
- * accumulated over the parent chain EXCLUDING the hull root: the root's
- * position is a WORLD coordinate, not hull-local, and the head is parented
- * under the hull so it would be double-counted. BossChiefSystem reads it
- * to place and rise the head. Only the boss hull carries it.
+ * The boss hull's laser-pivot mount seat for the phase-two chief head (海盗头领挂点).
+ * Written by LevelWaveSystem at assembly — the only moment the pivot is guaranteed to
+ * exist (the laser turret's death removes its subtree). The accumulated position skips
+ * the hull root, whose position is a WORLD coordinate and would be double-counted.
  */
 export const ChiefMount = createComponent('ChiefMount', {
   x: { type: 'Float32', default: 0 },
@@ -648,71 +526,47 @@ export const ChiefMount = createComponent('ChiefMount', {
 });
 
 /**
- * Explicit 0.5 s beat between the last boss turret dying and the chief head
- * starting to rise. Mounted on the boss hull by BossChiefSystem, ticked down
- * in place, removed at zero (which mounts the head). Pause-frozen with the
- * system.
+ * Short beat between the last boss turret dying and the chief head rising: mounted on
+ * the hull by BossChiefSystem, ticked down in place, removed at zero (which mounts the
+ * head).
  */
 export const ChiefPending = createComponent('ChiefPending', {
   timer: { type: 'Float32', default: 0 },
 });
 
 /**
- * The phase-two pirate chief head (海盗头领) lifecycle tag. The head is a
- * child entity of the boss hull — Health + HitCore make it shootable, it
- * never attacks, and its death routes through ShellHitSystem's kill() into
- * the ChiefDown clear-the-field command. LevelWaveSystem's dispose sweep
- * recycles it like the turret children.
+ * The phase-two pirate chief head (海盗头领) lifecycle tag: a child entity of the boss
+ * hull with Health + HitCore, so it is shootable; its death routes through ShellHitSystem
+ * into the ChiefDown command. LevelWaveSystem's dispose sweep recycles it.
  */
 export const IslewrathChief = createComponent('IslewrathChief', {});
 
 /**
- * Chief-head emerge animation (升场状态). One-shot: BossChiefSystem
- * integrates the head's local y from the mount point up to mount + riseY
+ * Chief-head emerge animation (升场状态): BossChiefSystem integrates the head's local y
  * over `duration`, then removes the component (head sits at its rest pose).
- * Pause-frozen like every other simulation timer.
  */
 export const ChiefRise = createComponent('ChiefRise', {
   /** Elapsed rise seconds. */
   elapsed: { type: 'Float32', default: 0 },
   /** Total rise seconds. */
   duration: { type: 'Float32', default: 1.2 },
-  /**
-   * Hull-local y the rise starts from — the laser citadel's mount seat
-   * snapshotted at mount time so the rise tick never needs a parent lookup.
-   */
+  /** Hull-local y the rise starts from — the mount seat, snapshotted at mount time. */
   baseY: { type: 'Float32', default: 0 },
 });
 
 /**
- * Chief death light (铁头死光) attack state on the phase-two chief head.
- * Attached when the rise completes; ChiefDeathLightSystem is the only
- * writer, ChiefDeathLightFxSystem is a pure derived view (renders from the
- * frozen fields below, never the scene graph). Pacing and damage ratios
- * live in DEATH_LIGHT (level-config).
- *
- * Beat clock (state 'idle'): every DEATH_LIGHT.intervalSec a beat fires —
- * a lightning bolt, or on the sweepEveryBeats-th beat the sweep. One truth
- * per attack, frozen when it starts:
- *
- * - bolt (死光闪电): instant segment between the chief's hit core and one
- *   random surviving defender core; `boltTimer` counts the visual's life
- *   down while the state stays 'idle'. Damage is written at fire time;
- *   death stays in ShellHitSystem's sweep.
- * - sweep (死光扫射): the state machine `aiming -> hold -> forming ->
- *   sweeping` walks the head's yaw to one end of the wall, holds, forms the
- *   beam, then sweeps across the slot row. `origin` freezes the chief's hit
- *   core position; `aimA`/`aimB` are the two wall-face endpoints the beam
- *   tracks between (world space). Each live defender core the sweeping
- *   corridor crosses loses DEATH_LIGHT.sweepDamageRatio of its max Health,
- *   once per sweep.
+ * Chief death light (铁头死光) attack state on the phase-two chief head, attached when
+ * the rise completes. Every DEATH_LIGHT.intervalSec a beat fires: a bolt, or on the
+ * sweepEveryBeats-th beat a sweep (`aiming -> hold -> forming -> sweeping` across the
+ * slot row). Frozen fields are the one truth per attack; ChiefDeathLightFxSystem is a
+ * pure derived view.
  */
 export const ChiefDeathLight = createComponent('ChiefDeathLight', {
   /** 'idle' | 'aiming' | 'hold' | 'forming' | 'sweeping'. */
   state: { type: 'String', default: 'idle' },
   /** Countdown of the current phase (beat gap / hold / form / sweep), s. */
   timer: { type: 'Float32', default: 0 },
-  /** Lightnings fired since the last sweep; the sweep replaces beat 8. */
+  /** Lightnings fired since the last sweep; the sweep replaces that beat. */
   beatCount: { type: 'Int32', default: 0 },
   /** Frozen lightning endpoints (world): chief hit core -> victim core. */
   boltOriginX: { type: 'Float32', default: 0 },
@@ -737,49 +591,37 @@ export const ChiefDeathLight = createComponent('ChiefDeathLight', {
 });
 
 /**
- * Thin command (薄命令) on the director: the chief head has been killed —
- * clear the field and win. ShellHitSystem's kill() is the only writer;
- * LevelWaveSystem consumes it once (removes the tag, disposes every
- * attacker including the head, declares the level cleared). Mounted on the
- * director entity like BuildOpen.
+ * Thin command (薄命令) on the director: the chief head has been killed — clear the
+ * field and win. ShellHitSystem writes it; LevelWaveSystem consumes it once (removes the
+ * tag, disposes every attacker including the head, declares the level cleared).
  */
 export const ChiefDown = createComponent('ChiefDown', {});
 
 /**
- * Explicit tag: the current run is the endless level (endless 模式标记).
- * LevelWaveSystem adds it in beginLevel and removes it in resetToWelcome /
- * restartLevel. EndlessPlannerSystem qualifies on it alongside
- * NextWaveCommand; LevelWaveSystem's wave-gap / chief-down branches read it
- * instead of declaring victory.
+ * Explicit tag: the current run is the endless level (endless 模式标记). Added in
+ * beginLevel, removed in resetToWelcome / restartLevel; the wave-gap / chief-down
+ * branches read it instead of declaring victory.
  */
 export const EndlessMode = createComponent('EndlessMode', {});
 
 /**
- * Thin command (薄命令) on the director: the current endless wave has
- * cleared — plan the next one. LevelWaveSystem writes it when an endless
- * wave-gap opens; EndlessPlannerSystem consumes it in the SAME frame
- * (synchronous qualify): it samples the defender battery + wallet, composes
- * one WaveSpec and appends it to endlessLevel.waves. The spawn pipeline
- * stays single-truthed inside LevelWaveSystem.
+ * Thin command (薄命令) on the director: the endless wave has cleared — plan the next
+ * one. LevelWaveSystem writes it when a wave-gap opens; EndlessPlannerSystem consumes it
+ * in the SAME frame, composing one WaveSpec and appending it to endlessLevel.waves.
  */
 export const NextWaveCommand = createComponent('NextWaveCommand', {});
 
 /**
- * Explicit tag: the endless intermission window (波间歇) is open — the
- * GET READY panel shows while it sits on the director. LevelWaveSystem adds
- * it when an endless wave gap begins and removes it in enterWave; the
- * IntermissionPanelSystem qualifies/disqualifies on exactly that. Pure
- * presentation: the player is never paused during the window.
+ * Explicit tag: the endless intermission window (波间歇) is open — the GET READY panel
+ * shows while it sits on the director. Added when a wave gap begins, removed in
+ * enterWave. Pure presentation: the player is never paused.
  */
 export const WaveIntermission = createComponent('WaveIntermission', {});
 
 /**
  * Partial-immersion sky dome for AR (部分沉浸穹顶). WebXR on Quest exposes no
- * passthrough-blend control, so a BackSide sphere unlit-pastes the shared
- * sky HDR (its own ocean below the horizon included) onto a disc around the
- * player's facing axis (world -z); past the rim it is pure passthrough, with
- * a static-noise-ragged smoothstep rim. SkyDomeSystem owns the mesh and
- * mirrors these inspector fields into the uniforms.
+ * passthrough-blend control, so a BackSide sphere unlit-pastes the shared sky HDR onto
+ * a disc around the player's facing axis (world -z), with a noise-ragged rim.
  */
 export const SkyDome = createComponent('SkyDome', {
   /** Ceiling of the dome's sky alpha over passthrough (1 = fully opaque). */

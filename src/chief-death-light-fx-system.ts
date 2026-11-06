@@ -60,41 +60,22 @@ interface ChiefDeathLightFxRig {
   sweepGlows: Mesh[];
   sweepCores: Mesh[];
   /**
-   * Continuous-bolt jitter state: lateral (perpA, perpB) offset per shared
-   * joint node ((K+1) nodes, both end nodes pinned at zero), re-rolled
-   * every frame for the fast writhing.
+   * Continuous-bolt jitter: lateral (perpA, perpB) offset per joint node,
+   * end nodes pinned at zero, re-rolled every frame.
    */
   boltNodeOffsets: Float32Array;
 }
 
 /**
- * Visual rig for the chief death light (铁头死光) — a pure derived view of
- * the `ChiefDeathLight` state, never a writer of it:
- *
- * - lightning bolt: a CONTINUOUS polyline between the FROZEN bolt
- *   endpoints — neighbouring segments share their joint node (a cross-slice
- *   quad pair per span), so the bolt reads as one connected ribbon. The
- *   joint offsets re-roll every frame (fast writhing); the zero-offset end
- *   nodes pin both endpoints, so the bolt always connects chief and victim.
- *   No growth: it snaps on with the component and vanishes when boltTimer
- *   runs out.
- * - sweep beam: the same red cross-slice, unsegmented, stretched along the
- *   sweeping axis — the beam tracks the lerped wall-face aim the attack
- *   system derives from the frozen endpoints, so the fx never reads the
- *   scene graph. `forming` scales the width in over formSec (no charge
- *   props), `sweeping` holds full width with a plasma flicker.
- *
- * The rig hangs under a ROOT-LEVEL transform entity: both beams live in
- * world space (the frozen component fields are world coordinates), and the
- * head yaws beneath the sweep beam independently. Qualify builds one rig
- * per chief, disqualify tears it down; only shared geometry/materials stay
- * for the next battle.
+ * Derived view of the `ChiefDeathLight` state (never a writer of it):
+ * continuous lightning bolt between the frozen endpoints plus the sweep beam.
+ * The rig hangs under a root-level entity because the frozen fields are world
+ * coordinates; only shared geometry/materials survive a teardown.
  */
 export class ChiefDeathLightFxSystem extends createSystem({
   chiefs: { required: [IslewrathChief, ChiefDeathLight] },
   directors: { required: [LevelDirector] },
 }) {
-  /** fx rig per chief entity index; the rig entity is root-level. */
   private readonly rigs = new Map<number, ChiefDeathLightFxRig>();
   // Shared geometry/materials — every rig reuses them.
   private quadGeometry!: PlaneGeometry;
@@ -107,7 +88,6 @@ export class ChiefDeathLightFxSystem extends createSystem({
   private readonly perpA = new Vector3();
   private readonly perpB = new Vector3();
   private readonly center = new Vector3();
-  /** Continuous-bolt walk: segment start node, end node, span direction. */
   private readonly nodeA = new Vector3();
   private readonly nodeB = new Vector3();
   private readonly segDir = new Vector3();
@@ -141,19 +121,17 @@ export class ChiefDeathLightFxSystem extends createSystem({
     this.queries.chiefs.subscribe('qualify', (entity) => {
       this.rigs.set(entity.index, this.buildRig(entity));
     });
-    // The chief left the query (killed or the field cleared): drop the rig.
-    // The ROOT-LEVEL rig entity disposes — never the chief, whose death is
-    // single-truthed in ShellHitSystem's kill(); shared geometry/materials
-    // survive for the next battle.
+    // The chief left the query (killed or field cleared): drop the rig. The
+    // root-level rig entity disposes — never the chief, whose death is owned
+    // by ShellHitSystem's kill(); shared geometry/materials survive.
     this.queries.chiefs.subscribe('disqualify', (entity) => {
       this.teardownRig(entity.index);
     });
   }
 
   /**
-   * Drop one rig: unpin the group and dispose the root-level rig entity
-   * (its release detaches the Object3D). The single teardown truth for both
-   * the disqualify subscriber and the reconcile sweep in update().
+   * Drop one rig: dispose the root-level rig entity (its release detaches the
+   * group). Single teardown truth for disqualify and the reconcile sweep.
    */
   private teardownRig(index: number): void {
     const rig = this.rigs.get(index);
@@ -163,7 +141,6 @@ export class ChiefDeathLightFxSystem extends createSystem({
     this.rigs.delete(index);
   }
 
-  /** Build one root-level rig: bolt group + sweep group, both hidden. */
   private buildRig(owner: Entity): ChiefDeathLightFxRig {
     const group = new Object3D();
     group.name = 'chief-death-light-fx';
@@ -216,15 +193,13 @@ export class ChiefDeathLightFxSystem extends createSystem({
   }
 
   update(delta: number): void {
-    // Reconcile: disqualify owns rig teardown, but elics dispatches the
-    // subscriber chain synchronously inside dispose — an earlier subscriber
-    // throwing aborts the rest, and the root-level world-space beam would
-    // float frozen forever. Drop any rig whose chief is already dead.
+    // Reconcile: disqualify owns teardown, but elics dispatches subscribers
+    // synchronously inside dispose — a throwing subscriber aborts the chain and
+    // leaves a frozen beam. Drop any rig whose chief is already dead.
     for (const [index, rig] of this.rigs) {
       if (!rig.owner.active) this.teardownRig(index);
     }
-    // Settlement screen: retire every rig instead of freezing a half-drawn
-    // bolt or beam behind the overlay.
+    // Settlement screen: retire every rig instead of freezing it behind the overlay.
     if (this.over()) {
       this.hideAll();
       return;
@@ -264,12 +239,9 @@ export class ChiefDeathLightFxSystem extends createSystem({
   }
 
   /**
-   * Lightning layout: a CONTINUOUS polyline between the frozen endpoints.
-   * (K+1) shared joint nodes carry the lateral offsets — re-rolled every
-   * frame for the fast writhing, both end nodes pinned at zero — and each
-   * cross-slice quad pair spans node i -> node i+1, so the bolt reads as
-   * one connected ribbon, never disjointed chunks. The 12% length padding
-   * keeps every joint covered while the spans swing.
+   * Lightning layout: (K+1) shared joint nodes carry the lateral offsets,
+   * both end nodes pinned at zero, each quad pair spanning node i -> i+1.
+   * The 12% length padding keeps every joint covered while the spans swing.
    */
   private layoutBolt(rig: ChiefDeathLightFxRig, chief: Entity): void {
     this.origin.set(
@@ -292,7 +264,6 @@ export class ChiefDeathLightFxSystem extends createSystem({
     this.perpA.normalize();
     this.perpB.copy(this.dir).cross(this.perpA).normalize();
 
-    // Fast writhing: the shared node offsets re-roll every frame.
     const nodes = rig.boltNodeOffsets;
     for (let i = 0; i <= BOLT_SEGMENTS; i++) {
       // sin envelope: zero at both end nodes, peak mid-bolt.
@@ -301,7 +272,6 @@ export class ChiefDeathLightFxSystem extends createSystem({
       nodes[i * 2 + 1] = (Math.random() * 2 - 1) * BOLT_JITTER * 0.6 * env;
     }
 
-    // Walk the polyline: segment i spans node i -> node i+1.
     this.nodeA.copy(this.origin);
     for (let i = 0; i < BOLT_SEGMENTS; i++) {
       this.nodeB
@@ -340,9 +310,8 @@ export class ChiefDeathLightFxSystem extends createSystem({
   }
 
   /**
-   * Sweep layout: one long cross-slice pair along the current beam axis —
-   * the attack system's frozen origin + the lerped aim endpoint. widthScale
-   * carries the 0.1 s form-in; the flicker sines read as live plasma.
+   * Sweep layout: one long cross-slice pair along the frozen origin plus the
+   * lerped aim; widthScale carries the form-in, the sines read as plasma.
    */
   private layoutSweep(
     rig: ChiefDeathLightFxRig,
@@ -393,7 +362,6 @@ export class ChiefDeathLightFxSystem extends createSystem({
     }
   }
 
-  /** Hide every rig's groups (idempotent — skips already-hidden ones). */
   private hideAll(): void {
     for (const rig of this.rigs.values()) {
       if (rig.boltGroup.visible) rig.boltGroup.visible = false;

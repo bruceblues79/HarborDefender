@@ -17,22 +17,10 @@ import {
 import { CannonAim, CameraBlocker } from './components.js';
 
 /**
- * Browser-mode (non-immersive) orbit camera rig.
- *
- * IWSDK does not own browser camera controls, so this system implements them:
- * - One pointer drag: orbit around a fixed target point (yaw + pitch on a
- *   sphere of constant radius, camera always facing the target). The feel
- *   follows three.js OrbitControls conventions: drag right swings the camera
- *   counter-clockwise around the target; drag down raises the camera.
- * - Two-finger pinch (and the mouse wheel): adjusts camera FOV — zoom here
- *   changes the field of view, never the orbit radius.
- *
- * Orbit yaw/pitch are clamped to a window around the default battle view
- * (±YAW_RANGE / ±PITCH_RANGE); FOV is clamped to [FOV_MIN, FOV_MAX]. The
- * camera never translates freely and never free-looks.
- *
- * The rig only runs outside XR; during an immersive session the tracked player
- * owns the camera.
+ * Browser-mode (non-immersive) orbit camera rig: one pointer drag orbits a
+ * fixed target (OrbitControls conventions), pinch/wheel changes FOV, never
+ * the orbit radius. The rig only runs outside XR; the tracked player owns
+ * the camera in an immersive session.
  */
 
 const ORBIT_SPEED = 0.004; // radians per dragged pixel
@@ -58,9 +46,8 @@ export class CameraOrbitSystem extends createSystem({
   blockers: { required: [CameraBlocker] },
 }) {
   // Orbit state. Seed matches the welcome/loading pose from
-  // iwsdk.config.json — camera (0,1.25,2) looking level at (0,1.25,-1.5) — so
-  // the target starts 3.5 m ahead at zero yaw/pitch. Game-start transitions
-  // re-seed through moveToView() and are eased in update().
+  // iwsdk.config.json — camera (0,1.25,2) looking level at (0,1.25,-1.5) —
+  // so the target starts 3.5 m ahead at zero yaw/pitch.
   private readonly target = new Vector3(0, 1.25, -1.5);
   private radius = 3.5;
   private yaw = 0;
@@ -78,13 +65,10 @@ export class CameraOrbitSystem extends createSystem({
   // Pointers whose press landed on an interactive UI element: the UI owns the
   // whole gesture, so the camera rig must not react to it at all.
   private readonly blockedPointers = new Set<number>();
-  // Last anchor for orbit mode (the single tracked pointer).
   private orbitLast = { x: 0, y: 0 };
-  // Pinch anchors: finger spread at the second press plus the FOV then.
   private pinchStartDist = 0;
   private pinchStartFov = 50;
 
-  // Eased game-start camera move (browser mode only)
   private readonly targetFrom = new Vector3();
   private readonly targetTo = new Vector3();
   private fromRadius = 3.5;
@@ -118,14 +102,10 @@ export class CameraOrbitSystem extends createSystem({
     window.addEventListener('pointercancel', this.onPointerUp);
     canvas.addEventListener('wheel', this.onWheel, { passive: false });
 
-    // Mobile browsers run two-finger pinch/pan as native page gestures on top
-    // of pointer events. Once the browser decides a native gesture takes over
-    // a touch it fires pointercancel and stops delivering pointer moves — our
-    // rig state machine would then flap. touch-action: none is not honored by
-    // every mobile browser (iOS Safari ignores it for page pinch), so suppress
-    // the touch defaults on the canvas directly — the r3f-style approach.
-    // Canvas scope only: the DOM ENTER XR button must keep receiving
-    // taps/clicks.
+    // Once a browser native gesture takes over a touch it fires pointercancel
+    // and the rig state machine flaps. touch-action: none is ignored by iOS
+    // Safari, so suppress touch defaults on the canvas (canvas scope only:
+    // the DOM ENTER XR button must keep receiving taps/clicks).
     const blockGesture = (e: Event): void => e.preventDefault();
     canvas.addEventListener('touchstart', blockGesture, { passive: false });
     canvas.addEventListener('touchmove', blockGesture, { passive: false });
@@ -133,10 +113,8 @@ export class CameraOrbitSystem extends createSystem({
     document.addEventListener('gesturestart', blockGesture);
     document.addEventListener('gesturechange', blockGesture);
 
-    // A press starting on the ENTER GAME button belongs to the button (tap /
-    // click / button drag), never to the camera rig. UIKitML buttons live
-    // inside the same WebGL canvas, so their pointer events are synthetic;
-    // they share the exact hit-test that fires the button's own click.
+    // A press starting on the ENTER GAME button belongs to the button, never
+    // the camera rig: UIKitML buttons live inside the same WebGL canvas.
     const enterGameButton = this.world
       .getSceneObject<UIKitMLAsset>('welcome-panel')
       ?.getElementById('enter-game-button');
@@ -156,14 +134,9 @@ export class CameraOrbitSystem extends createSystem({
   }
 
   /**
-   * Register a UIKitML button whose presses must never reach the camera rig —
-   * the same contract the welcome button gets at init. Systems owning runtime
-   * panels (pause menu) call this once per button when the panel resolves.
-   *
-   * Legacy per-element path: it matches the pointer-events synthetic
-   * pointerId against native ids, which holds for mouse but not for touch
-   * (the library assigns counter-based ids there). Whole-panel roots should
-   * prefer the CameraBlocker tag, which rides the Hovered/Pressed ECS route.
+   * Register a UIKitML button whose presses must never reach the camera rig.
+   * Legacy path: synthetic pointerIds match for mouse but not touch — prefer
+   * the CameraBlocker tag, which rides the Hovered/Pressed ECS route.
    */
   addUiBlocker(element: Object3D): void {
     element.addEventListener('pointerdown', this.onUiPointerDown);
@@ -180,7 +153,6 @@ export class CameraOrbitSystem extends createSystem({
     if (this.world.visibilityState.peek() !== VisibilityState.NonImmersive) {
       return;
     }
-    // Press started on a UI element: ignore this pointer for the gesture.
     if (this.blockedPointers.has(e.pointerId)) return;
     // Press started on a cannon or a blocker panel: the UI/aim drag owns it
     // (Hovered is already set for a mouse; touch gets Pressed one frame
@@ -192,7 +164,6 @@ export class CameraOrbitSystem extends createSystem({
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (this.pointers.size === 1) {
-      // Single finger drives the orbit.
       this.mode = 'orbit';
       this.orbitLast.x = e.clientX;
       this.orbitLast.y = e.clientY;
@@ -270,7 +241,6 @@ export class CameraOrbitSystem extends createSystem({
       this.orbitLast.x = remaining.x;
       this.orbitLast.y = remaining.y;
     } else if (this.pointers.size === 2) {
-      // Back to exactly two pointers (a third lifted): re-anchor the pinch.
       this.mode = 'pinch';
       this.pinchStartDist = this.currentPinchDist();
       this.pinchStartFov = this.currentFov;
@@ -290,9 +260,8 @@ export class CameraOrbitSystem extends createSystem({
   };
 
   /**
-   * Ease the browser-mode camera to orbit `target` from `position`. Called
-   * once when loading finishes. Allocation is confined to this call; the
-   * per-frame tween in update() reuses class-owned vectors only.
+   * Ease the camera to orbit `target` from `position`; the per-frame tween
+   * reuses class-owned vectors only.
    */
   moveToView(position: Vector3, target: Vector3, duration = 0.9): void {
     this.targetFrom.copy(this.target);
@@ -311,10 +280,8 @@ export class CameraOrbitSystem extends createSystem({
   }
 
   /**
-   * Ease back to the authored welcome pose — the same camera/target pair the
-   * world starts with (0,1.25,2) looking level at (0,1.25,-1.5). Called on the
-   * MAIN-menu hand-off; the welcome view becomes the clamp window center on
-   * arrival, exactly like any other completed tween.
+   * Ease back to the authored welcome pose; on arrival it becomes the clamp
+   * window center, like any completed tween.
    */
   returnToWelcome(): void {
     this.moveToView(
@@ -328,7 +295,6 @@ export class CameraOrbitSystem extends createSystem({
     return Math.hypot(a.x - b.x, a.y - b.y);
   }
 
-  /** True while any cannon carries the given transient interaction tag. */
   private anyCannon(tag: typeof Hovered | typeof Pressed): boolean {
     for (const entity of this.queries.cannons.entities) {
       if (entity.hasComponent(tag)) return true;
@@ -336,7 +302,6 @@ export class CameraOrbitSystem extends createSystem({
     return false;
   }
 
-  /** True while any CameraBlocker panel carries the given interaction tag. */
   private anyBlocker(tag: typeof Hovered | typeof Pressed): boolean {
     for (const entity of this.queries.blockers.entities) {
       if (entity.hasComponent(tag)) return true;

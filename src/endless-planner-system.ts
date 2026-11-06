@@ -19,33 +19,14 @@ import {
 import { DEFENSE_SLOTS, ENDLESS, ECONOMY, endlessLevel } from './level-config.js';
 import type { WaveSpec } from './level-config.js';
 
-/** Purchase pool: unitType -> budget cost, as entries for random picks. */
 const POOL: [string, number][] = Object.entries(ENDLESS.cost);
 
 /**
- * Endless dynamic-difficulty planner (DDT 发兵系统).
- *
- * Single job: when the director raises a `NextWaveCommand`, sample the
- * player's live state — surviving battery and wallet — and append one
- * generated WaveSpec to endlessLevel.waves. The command is consumed in the
- * same frame (synchronous qualify), so the wave is always ready before the
- * intermission's shortest window ends and LevelWaveSystem's enterWave reads
- * it. No behaviour of its own beyond the plan: spawning stays inside
- * LevelWaveSystem's shared pipeline.
- *
- * Composition (all knobs in ENDLESS):
- * - every `bossEvery` waves the wave IS a boss wave — one lone boss rolled
- *   from `bossPool`, no escorts;
- * - otherwise a budget buys units from the `cost` pool (equal-weight picks
- *   among what remains affordable): budget = base growth × defender
- *   pressure × money grind. A richer wall and a fatter wallet both draw a
- *   heavier wave — 消磨玩家金币;
- * - difficulty rides composition only: units are stock, the damage matrix
- *   rows apply unchanged everywhere.
+ * Endless planner: consumes `NextWaveCommand` synchronously, appending one
+ * WaveSpec before same-frame readers run. All knobs live in ENDLESS.
  */
 export class EndlessPlannerSystem extends createSystem({
-  /** Exclusive command query: a runtime-mounted tag needs its own query —
-   *  qualify only fires for entities entering THIS query (elics 陷阱). */
+  /** Command query must be its own: qualify only fires for entities entering THIS query (elics). */
   commands: { required: [LevelDirector, EndlessMode, NextWaveCommand] },
   cores: { required: [HitCore] },
 }) {
@@ -55,7 +36,6 @@ export class EndlessPlannerSystem extends createSystem({
     );
   }
 
-  /** Consume the command: append the next wave to the endless list. */
   private planNextWave(director: Entity): void {
     // Wave numbers are 1-based: the seed wave (index 0) is wave 1.
     const waveNumber = endlessLevel.waves.length + 1;
@@ -65,9 +45,8 @@ export class EndlessPlannerSystem extends createSystem({
     director.removeComponent(NextWaveCommand);
   }
 
-  /** Build the WaveSpec for the given 1-based wave number. */
   private composeWave(waveNumber: number, director: Entity): WaveSpec {
-    // Boss cadence: every `bossEvery` waves IS a boss wave — fixed考试，不乘任何系数.
+    // Every bossEvery waves is a boss wave: fixed composition, no multipliers.
     if (waveNumber % ENDLESS.bossEvery === 0) {
       const boss =
         ENDLESS.bossPool[Math.floor(Math.random() * ENDLESS.bossPool.length)];
@@ -108,8 +87,7 @@ export class EndlessPlannerSystem extends createSystem({
   }
 
   /**
-   * 每一波都重新估玩家的真实承受能力：炮台血量 × 修满购买力 + 卫士权重 + 空槽重建购买力。
-   * 钱只通过修理/重建转成战力，剩余钱算 sustainFactor，不重复乘。
+   * 每波重估玩家承受力：炮台血量 + 可修部分 + 卫士权重 + 空槽重建力；剩余钱只进 sustainFactor。
    */
   private estimateCapacity(money: number): {
     power: number;
@@ -158,7 +136,6 @@ export class EndlessPlannerSystem extends createSystem({
       cannonCount * (cannonHpRatioCurrent + (1 - cannonHpRatioCurrent) * hpFactor) +
       ENDLESS.guardPowerWeight * guardHpSum;
 
-    // 重建：修完剩下的钱能在空槽里建几门炮
     const moneyAfterRepair = money - repairSpend;
     const rebuildCost = ECONOMY.unitValues.cannon;
     const rebuildable = Math.min(emptySlots, Math.floor(moneyAfterRepair / rebuildCost));
@@ -168,7 +145,6 @@ export class EndlessPlannerSystem extends createSystem({
     const excess = moneyAfterRepair - rebuildable * rebuildCost;
     const sustainFactor = 1 + Math.min(ENDLESS.sustainMax, excess / ENDLESS.sustainDiv);
 
-    // 压力曲线
     const ratio = Math.min(ENDLESS.powerRatioMax, power / ENDLESS.powerFull);
     const pressure =
       ENDLESS.pressureMin + (ENDLESS.pressureMax - ENDLESS.pressureMin) * ratio;

@@ -10,16 +10,11 @@ import type { Entity, Mesh } from '@iwsdk/core';
 import { GamePaused, LevelDirector, SpawnFade } from './components.js';
 
 /**
- * Materialises freshly dispatched units — the only owner of hull material
- * state during a fade.
- *
- * Presence of `SpawnFade` *is* the tag: while an entity carries it, the hull
- * is still fading in. Opacity ramps 0..1 over `duration`, then shadows turn on
- * and the component is removed so the entity leaves this query for good. The
- * material stays `transparent` with opacity 1 rather than flipping to opaque —
- * at opacity 1 the alpha blend is a no-op, so there is no render-pass switch
- * and no colour pop. Movement is a separate system and starts on the same
- * frame, so a ship is already under way while it materialises.
+ * Materialises freshly dispatched units — the only owner of hull material state during
+ * a fade. Presence of `SpawnFade` *is* the tag: opacity ramps 0..1 over `duration`, then
+ * shadows turn on and the component is removed. The material stays `transparent` at
+ * opacity 1 rather than flipping to opaque — the blend is a no-op, so no render-pass
+ * switch and no colour pop. Movement is a separate system and starts the same frame.
  */
 export class SpawnFadeSystem extends createSystem({
   fading: { required: [SpawnFade] },

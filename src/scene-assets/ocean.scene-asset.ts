@@ -7,11 +7,8 @@
 
 import { ShaderMaterial, UniformsLib, UniformsUtils, Vector3 } from '@iwsdk/core';
 
-/**
- * Shader uniform array cap for simultaneous wake sources — the single source
- * of truth, imported by OceanSystem. 12 covers six sailing ships plus a
- * volley of cannonball splashes with margin.
- */
+/** Shader uniform cap for simultaneous wake sources; imported by OceanSystem.
+ * 12 covers six ships plus cannonball volleys with margin. */
 export const MAX_WAKE = 12;
 
 const vertexShader = `
@@ -29,8 +26,7 @@ varying vec3 vWorldNormal;
 varying vec3 vLocalNormal;
 varying vec3 vWorldPosition;
 
-// Hash-based value noise (2D), quintic-interpolated (C2-continuous) so the
-// lattice shows no derivative creases at cell boundaries.
+// Quintic-interpolated (C2-continuous) value noise: no derivative creases at cell edges.
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
@@ -45,8 +41,7 @@ float valueNoise(vec2 p) {
   );
 }
 
-// Two-octave noise, roughly -1..1. Sampling (p.y - t) makes the pattern
-// drift toward +z with time.
+// Two octaves, roughly -1..1; sampling (p.y - t) drifts the pattern toward +z.
 float flowingNoise(vec2 p, float t) {
   vec2 q = vec2(p.x, p.y - t);
   float n = valueNoise(q) * 0.65 + valueNoise(q * 2.3 + 7.7) * 0.35;
@@ -63,9 +58,8 @@ void main() {
     float wave3 = sin((pos.x + pos.z) * 2.25 + time * 0.6) * 0.0075;
     pos.y += wave1 + wave2 + wave3;
 
-    // Surge toward the wall: noise crests travel toward +z, rise the
-    // surface and lean forward so the sea feels like it is piling up
-    // against the harbour wall. Kept small to preserve the low-poly read.
+    // Crests travel toward +z and lean forward so the sea piles against the wall;
+    // kept small to preserve the low-poly read.
     float surge = flowingNoise(
       vec2(pos.x * noiseFrequency, pos.z * noiseFrequency),
       time * noiseSpeed
@@ -90,14 +84,13 @@ void main() {
 
   vec4 worldPos = modelMatrix * vec4(pos, 1.0);
   vWorldPosition = worldPos.xyz;
-  // mat3(modelMatrix) keeps the normal in world space; the renderer's
-  // normalMatrix is view-space, which made the cubemap reflection roll with
-  // head roll in XR. Uniform scale only (GLB placed at scale 1).
+  // World-space normal: normalMatrix is view-space, which rolled reflections with head
+  // roll. Assumes uniform scale (GLB placed at scale 1).
   vWorldNormal = normalize(mat3(modelMatrix) * normal);
   vLocalNormal = normal;
 
-  // Shadow-map lookups follow the wave-displaced world position; the
-  // shadowmap_vertex chunk expects the standard-material locals below.
+  // shadowmap_vertex expects the standard-material locals below; lookups use the
+  // wave-displaced world position.
   vec4 worldPosition = worldPos;
   vec3 transformedNormal = normalMatrix * normal;
   #include <shadowmap_vertex>
@@ -126,8 +119,7 @@ varying vec3 vWorldNormal;
 varying vec3 vLocalNormal;
 varying vec3 vWorldPosition;
 
-// Hash-based value noise (2D), quintic-interpolated (C2-continuous) so the
-// lattice shows no derivative creases at cell boundaries.
+// Quintic-interpolated (C2-continuous) value noise: no derivative creases at cell edges.
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
@@ -142,16 +134,15 @@ float valueNoise(vec2 p) {
   );
 }
 
-// Two-octave noise, roughly -1..1. Sampling (p.y - t) makes the pattern
-// drift toward +z with time.
+// Two octaves, roughly -1..1; sampling (p.y - t) drifts the pattern toward +z.
 float flowingNoise(vec2 p, float t) {
   vec2 q = vec2(p.x, p.y - t);
   float n = valueNoise(q) * 0.65 + valueNoise(q * 2.3 + 7.7) * 0.35;
   return n * 2.0 - 1.0;
 }
 
-// ShaderMaterial bypasses the renderer's linear -> sRGB output conversion
-// (renderer.outputColorSpace is SRGBColorSpace), so apply it manually here.
+// ShaderMaterial bypasses the renderer's linear -> sRGB output (outputColorSpace is sRGB),
+// so convert manually here.
 vec3 linearToSRGB(vec3 c) {
   c = max(c, vec3(0.0));
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
@@ -160,20 +151,17 @@ vec3 linearToSRGB(vec3 c) {
 void main() {
   vec3 color;
 
-  // Fake reflection only on the +y surface (the water top).
-  // Cubemap sampling avoids the pole stretching of equirect UV mapping.
+  // Fake reflection on the +y water top only; the cubemap avoids equirect pole stretching.
   if (vLocalNormal.y > 0.5) {
     vec3 viewDir = normalize(vWorldPosition - cameraPosition);
     vec3 reflDir = reflect(viewDir, normalize(vWorldNormal));
 
-    // Noise perturbation of the reflection direction: the sky projection
-    // wobbles as if the surface had fine ripples, without touching geometry.
+    // Noise-perturbed reflection direction: fine ripples without touching geometry.
     float n1 = flowingNoise(vWorldPosition.xz * noiseFrequency, time * noiseSpeed);
     float n2 = flowingNoise(vWorldPosition.zx * noiseFrequency + 19.3, time * noiseSpeed * 0.8);
     reflDir = normalize(reflDir + vec3(n1, 0.0, n2) * noiseIntensity);
 
-    // Wake ripple perturbation: the ripple gradient tilts the reflection
-    // toward the ring centre, creating a lensing wobble around each source.
+    // Wake gradient tilts the reflection toward each ring centre (lensing wobble).
     vec2 wakeGrad = vec2(0.0);
     for (int i = 0; i < ${MAX_WAKE}; i++) {
       if (i >= wakeCount) break;
@@ -187,7 +175,6 @@ void main() {
       float atten = smoothstep(radius, 0.0, dist);
       float phase = dist * freq - time * speed;
       float d = cos(phase) * freq * amp * atten;
-      // Direction from source to fragment, normalised (gradient direction)
       vec2 dir = diff / max(dist, 0.001);
       wakeGrad += dir * d;
     }
@@ -196,14 +183,11 @@ void main() {
     color = textureCube(envMap, reflDir).rgb * reflectivity;
     color = mix(color, vec3(0.30, 0.52, 0.72), 0.18);
   } else {
-    // Sides / bottom: deep water body color, no env mapping
     color = vec3(0.06, 0.11, 0.18);
   }
 
-  // Darken by the shadow mask (receiveShadow-gated by the renderer). The
-  // fake-reflection surface is unlit — no ambient term to fall back on —
-  // so remap the mask (0 in umbra) to a floor that keeps some water colour;
-  // without this the ship's shadow would read pitch black on the sea.
+  // Remap the shadow mask (0 in umbra) to a 0.5 floor: the unlit fake-reflection
+  // surface would otherwise read pitch black under a ship's shadow.
   color *= mix(0.5, 1.0, getShadowMask());
 
   gl_FragColor = vec4(linearToSRGB(color), 1.0);
@@ -220,22 +204,12 @@ export interface OceanNoiseParams {
 }
 
 /**
- * Wave + fake-reflection material for the solidified ocean body
- * (gltf/ocean-body.glb, exported by scripts/export-assets.ts). The GLB
- * carries the geometry; this shader supplies vertex waves and the cubemap
- * reflection, applied to the loaded mesh at game start.
+ * Wave + fake-reflection material for the solidified ocean body (gltf/ocean-body.glb,
+ * exported by scripts/export-assets.ts); the GLB carries the geometry.
  *
- * `lights: true` plus the merged UniformsLib.lights lets the renderer feed
- * the shadow-map uniforms, so the surface can receive cast shadows while
- * staying unlit (the shadow mask only darkens the fake-reflection colour).
- *
- * Wake ripples: up to MAX_WAKE active sources are fed per frame by
- * OceanSystem via the wakePos / wakeParams uniform arrays. Toggle
- * WakeSource.active to turn a source's ripples on or off (sailing vs.
- * anchored, projectile splash vs. inert).
- *
- * Runtime-tunable noise interfaces. Adjust live via the material uniforms,
- * e.g. `oceanMaterial.uniforms.noiseIntensity.value = 0.3`.
+ * `lights: true` plus the merged UniformsLib.lights feeds the shadow-map uniforms, so
+ * the unlit surface still receives cast shadows. OceanSystem writes up to MAX_WAKE
+ * wake sources per frame through the wakePos / wakeParams uniform arrays.
  */
 export function createOceanMaterial(noise: OceanNoiseParams = {}): ShaderMaterial {
   return new ShaderMaterial({

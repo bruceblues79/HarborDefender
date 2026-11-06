@@ -24,12 +24,8 @@ const PANEL_HIDDEN_SCALE = 0.5;
 type StartPhase = 'idle' | 'appearing' | 'ready' | 'dismissing' | 'delay';
 
 /**
- * Owns the START gate between loading and the first level.
- *
- * Sequence: the loading panel hides, then this panel grows in (0.5 -> 1.0)
- * above the ocean near edge, billboarded toward the player. Clicking START
- * shrinks it back to 0.5, hides it, and — one second later — hands control to
- * LevelWaveSystem. This is the beat that separates menu, load and play.
+ * START gate: grows in over the ocean; START shrinks it out and hands control
+ * to LevelWaveSystem one second later.
  */
 export class StartPanelSystem extends createSystem({}) {
   private levelSystem: LevelWaveSystem | undefined;
@@ -47,11 +43,10 @@ export class StartPanelSystem extends createSystem({}) {
       );
   }
 
-  /** Reveal the START panel. Called once the loading panel has hidden. */
+  /** Reveal the START panel (called once the loading panel has hidden). */
   show(): void {
     if (this.phase !== 'idle') return;
-    // Round-trip reuse: after a MAIN-menu return the panel entity still
-    // exists, so reset its animation and grow it back in — no second load.
+    // Round-trip reuse: after MAIN the entity persists, so just regrow it.
     if (this.panel && this.panelEntity) {
       this.panel.visible = true;
       this.panelEntity.setValue(
@@ -89,7 +84,6 @@ export class StartPanelSystem extends createSystem({}) {
       );
   }
 
-  /** START pressed: shrink out, then wait out the hand-off delay. */
   private dismiss(): void {
     if (this.phase !== 'ready') return;
     this.panelEntity?.setValue(
@@ -100,10 +94,7 @@ export class StartPanelSystem extends createSystem({}) {
     this.phase = 'dismissing';
   }
 
-  /**
-   * MAIN-menu hand-off: park the START gate back in its pre-battle state.
-   * The panel entity is kept (hidden) so the next ENTER GAME reuses it.
-   */
+  /** MAIN-menu hand-off: park the gate pre-battle, keeping the hidden entity for reuse. */
   reset(): void {
     if (this.phase === 'idle') return;
     if (this.panel) this.panel.visible = false;

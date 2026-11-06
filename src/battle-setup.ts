@@ -41,14 +41,8 @@ import { HitFlashSystem } from './hit-flash-system.js';
 import { SplashSystem } from './splash-system.js';
 
 /**
- * Re-bake the harbor wall's vertex colors into per-face stone mottle. The
- * GLB's baked colors are sparse (1694 verts across a 3.4 m wall), so their
- * large-scale variation interpolates over huge faces into a near-flat wash —
- * extra faces would buy mottling far too dearly. Instead the geometry goes
- * non-indexed (original normals kept — no recompute, shading is unchanged)
- * so each face can carry ONE solid tint: its averaged baked color jittered
- * by a seeded ±7% brightness and a whisper of warmth. Zero extra triangles,
- * zero textures, and the sequence is deterministic across sessions.
+ * Re-bakes the harbor wall's sparse vertex colors into per-face stone mottle:
+ * non-indexed geometry (original normals kept) carries one solid tint per face.
  * Idempotent: already non-indexed geometry is left untouched.
  */
 function bakeWallFaceMottle(root: Object3D): void {
@@ -90,11 +84,8 @@ function bakeWallFaceMottle(root: Object3D): void {
 }
 
 /**
- * Hang the two invisible combat helpers on a mounted-defender prototype once,
- * so every clone inherits them: the `muzzle` on the gun_rotate pivot (shots
- * launch down its world -Z at the barrel tip) and the `hit_core` at the
- * model's bounding-box centre (opposing shells within its radius get
- * consumed).
+ * Hangs the `muzzle` (on the gun_rotate pivot) and `hit_core` (bounding-box
+ * centre) helpers on a defender prototype once, so every clone inherits them.
  */
 function decorateCombatPrototype(
   prototype: Object3D,
@@ -118,19 +109,9 @@ function decorateCombatPrototype(
 }
 
 /**
- * Mount one defender into a defense slot: clone the unit's prototype, place
- * it on the wall top facing the sea, hand it the unit's combat kit and file
- * it into the battery registry. Shared by the initial battery build and
- * build-panel purchases — a purchase into a destroyed slot is this mount
- * with the old occupant stripped first (replaceDefenseUnit below).
- *
- * Kit by unit id:
- * - cannon: RayInteractable + CannonAim + CannonFire (the aim/fire loop) and
- *   HitCore(faction defender, unitType 'cannon').
- * - iron-guard (钢铁卫士): never fires, never aims — no RayInteractable, no
- *   CannonAim/CannonFire. Carries Taunt (嘲讽) so raiders always roll it as
- *   their target, and the same defender HitCore keyed 'iron-guard' so the
- *   DAMAGE_MATRIX charges its fixed 2% per hit.
+ * Mount one defender into a defense slot, with the unit's combat kit: cannon
+ * gets RayInteractable + CannonAim + CannonFire, iron-guard gets Taunt. Shared
+ * by the initial battery build and build-panel purchases.
  */
 function mountDefenseUnit(
   world: World,
@@ -142,8 +123,7 @@ function mountDefenseUnit(
   if (!prototype) throw new Error(`battle-setup: unit "${unitId}" not loaded`);
   const unit = prototype.clone(true);
   unit.position.set(slot.x, 0.8 + DEFENSE_PAD.height, WALL_CENTER_Z);
-  // Runtime-instantiated GLB meshes keep three.js defaults
-  // (both false); scene-JSON assets get these via content flags.
+  // Runtime-instantiated GLB meshes keep three.js defaults (both false).
   unit.traverse((child: Object3D) => {
     if ((child as Mesh).isMesh) {
       child.castShadow = true;
@@ -151,10 +131,8 @@ function mountDefenseUnit(
     }
   });
   const unitEntity = world.createTransformEntity(unit);
-  // RayInteractable makes the unit pressable (mouse / touch / XR ray);
-  // CannonAim hands it to the shared aim system, with per-entity yaw and
-  // pitch limits so each mount's traverse/elevation envelope rides the same
-  // component.
+  // RayInteractable makes the unit pressable; CannonAim hands it to the shared
+  // aim system with per-entity yaw/pitch limits.
   if (unitId === 'cannon') {
     unitEntity.addComponent(RayInteractable);
     unitEntity.addComponent(CannonAim);
@@ -163,10 +141,8 @@ function mountDefenseUnit(
     // 钢铁卫士：嘲讽坦位 —— 在场即劫持普通攻击者索敌。
     unitEntity.addComponent(Taunt);
   }
-  // Defender hit core: enemy shells arriving within this radius are
-  // consumed by ShellHitSystem, which charges the unit's health pool per
-  // hit (knockout = Destroyed tag + hidden). unitType keys the
-  // DAMAGE_MATRIX row — iron-guard takes a flat 2% from every attacker.
+  // Defender hit core: ShellHitSystem consumes enemy shells within this radius
+  // and charges health; unitType keys the DAMAGE_MATRIX row.
   unitEntity.addComponent(HitCore, {
     radius: COMBAT.defenderCoreRadius,
     faction: 'defender',
@@ -187,22 +163,15 @@ function mountDefenseUnit(
   return unitEntity;
 }
 
-/**
- * The entity and unit id currently mounted in a defense slot. Destroyed
- * units still count as mounted — callers check the Destroyed tag for
- * "needs building".
- */
+/** The occupant of a slot; destroyed units still count as mounted. */
 export function getDefenseSlotInfo(
   slotIndex: number,
 ): { entity: Entity; unit: DefenseUnitId } | undefined {
   return defenseEntities.find((entry) => entry.slot === slotIndex);
 }
 
-/**
- * Whether a live (not Destroyed) occupant of `unitId` stands in any slot —
- * the single truth UNIQUE_UNITS panels consult: one live iron-guard anywhere
- * forbids building a second.
- */
+/** Whether a live (not Destroyed) occupant of `unitId` stands in any slot;
+ * UNIQUE_UNITS panels use it to forbid a second one. */
 export function hasLiveDefenseUnit(unitId: DefenseUnitId): boolean {
   return defenseEntities.some(
     (entry) =>
@@ -211,12 +180,8 @@ export function hasLiveDefenseUnit(unitId: DefenseUnitId): boolean {
 }
 
 /**
- * Strip a slot's occupant without mounting a replacement: the unit loses
- * its combat components (every combat query drops it this frame), is hidden
- * and is forgotten by the battery registry — hidden forever like a knockout,
- * so its entity index is never freed and reused. No-op when the slot is
- * already empty. Money handling stays with the caller (BuildPanelSystem);
- * this is the structural removal only.
+ * Strip a slot's occupant without mounting a replacement: combat components
+ * removed, object hidden, registry entry dropped. Money stays with the caller.
  */
 export function removeDefenseUnit(world: World, slotIndex: number): void {
   const old = defenseEntities.find((entry) => entry.slot === slotIndex);
@@ -241,10 +206,8 @@ export function removeDefenseUnit(world: World, slotIndex: number): void {
 }
 
 /**
- * Place a freshly mounted unit into a slot that has no live occupant (empty
- * or destroyed): the old unit is stripped via removeDefenseUnit first.
- * Money handling stays with the caller (BuildPanelSystem); this is the
- * structural placement only.
+ * Place a freshly mounted unit into a slot, stripping any old occupant first.
+ * Money handling stays with the caller (BuildPanelSystem).
  */
 export function replaceDefenseUnit(
   world: World,
@@ -256,27 +219,23 @@ export function replaceDefenseUnit(
 }
 
 /**
- * Battlefield persistence: the ocean, wall and cannons are built once per
- * page load and kept alive across MAIN-menu round trips (hidden, never
- * disposed — their geometry/materials are shared with the cached GLTF
- * prototypes, so disposing them would poison the AssetManager cache). Their
- * runtime state resets on every (re)entry: cannon aim returns to level.
+ * Battlefield persistence: the ocean, wall and cannons are built once per page
+ * load and kept alive across MAIN-menu round trips; disposing them would poison
+ * the AssetManager cache their GLTF prototypes share. Runtime state resets on entry.
  */
 let battlefieldReady = false;
 /** Whether a battle entry is currently in flight (guards double ENTER). */
 let battleStarted = false;
 /**
- * Whether the loading panel already carries a transform entity — re-entries
- * after a failed load reuse the same cached document, and a second
- * createTransformEntity on one object would double-place it.
+ * Whether the loading panel already carries a transform entity — re-entry
+ * reuses the cached document, and a second one would double-place it.
  */
 let loadingPanelPlaced = false;
 const battlefieldObjects: Object3D[] = [];
 
 /**
- * Per-slot pedestal pad materials — each pad clone gets its own instance so
- * DefensePadSystem breathes only the empty slots (all at the same phase,
- * so the glowing ones still pulse in lockstep). Null until the first build.
+ * Per-slot pedestal pad materials; each pad clone owns its instance so
+ * DefensePadSystem breathes only empty slots. Null until the first build.
  */
 const defensePadMaterials: (MeshStandardMaterial | null)[] = [];
 export function getDefensePadMaterial(
@@ -285,35 +244,25 @@ export function getDefensePadMaterial(
   return defensePadMaterials[slotIndex] ?? null;
 }
 
-/**
- * Every mounted defender with the pose it resets to on battle re-entry:
- * the stock half-raised barrel.
- */
+/** Every mounted defender with the pose it resets to on battle re-entry. */
 interface DefenseEntity {
   entity: Entity;
   unit: DefenseUnitId;
   defaultPitchDeg: number;
-  /** Index into DEFENSE_SLOTS this unit occupies. */
   slot: number;
 }
 const defenseEntities: DefenseEntity[] = [];
 
 /**
  * Unit prototypes loaded once by startBattle; build-panel purchases clone
- * from them exactly like the initial battery does. `defensePrototypes` maps
- * every DefenseUnitId to its mounted prototype (cannon carries the muzzle
- * helper; iron-guard is a static bust with only hit_core).
+ * from them like the initial battery does.
  */
 const defensePrototypes = new Map<DefenseUnitId, Object3D>();
 
 /**
- * Battle-entry failure recovery. Every load error used to only console.error —
- * the loading panel stayed on screen forever with the entry gate armed, a
- * dead lock (triggered when a stale cached shell requested a since-deleted
- * GLB and got a 404). Now the gate re-arms, the loading panel hides and the
- * welcome screen returns: ENTER GAME retries, and every load that already
- * succeeded is an AssetManager cache hit. Safe to retry blindly — all
- * network failures happen before the first world placement.
+ * Battle-entry failure: re-arm the entry gate, hide the loading panel and
+ * restore the welcome screen so ENTER GAME can retry (loads already done are
+ * AssetManager cache hits).
  */
 function failEntry(
   world: World,
@@ -328,20 +277,9 @@ function failEntry(
 }
 
 /**
- * One-shot battle start flow: hide the welcome panel, show the loading
- * panel, instantiate the solidified GLB models and the ocean reflection
- * cubemap, place them into the world, then ease into the battle view.
- * Re-entry after a MAIN-menu return skips straight to the view change —
- * the battlefield is already built.
- *
- * All game assets are preloaded with `background` priority while the
- * welcome screen is up, so these loads are warm cache hits and the loading
- * panel only becomes visible on a slow network.
- *
- * Lighting split: standard PBR objects (wall, cannons) are lit by the
- * scene's IBLTexture (EnvironmentSystem writes scene.environment) and need
- * no per-object setup; the ocean keeps its unlit fake-reflection shader,
- * which samples the cubemap built here from the same cached HDR texture.
+ * One-shot battle start: hide the welcome panel, show the loading panel, build
+ * the battlefield, then ease into the battle view. Re-entry after a MAIN-menu
+ * return skips straight to the view change — the battlefield already exists.
  */
 export function startBattle(world: World): void {
   if (battleStarted) return;
@@ -358,7 +296,6 @@ export function startBattle(world: World): void {
       system instanceof StartPanelSystem,
     );
 
-  // 1. Hide the welcome panel
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
   if (panel) panel.visible = false;
 
@@ -370,8 +307,8 @@ export function startBattle(world: World): void {
     startPanelSystem?.show();
   };
 
-  // Round trip: the battlefield persists across MAIN-menu returns — reveal
-  // it, un-destroy and level the cannons, and go straight to the view change.
+  // Round trip: reveal the persistent battlefield, un-destroy and level the
+  // cannons, and go straight to the view change.
   if (battlefieldReady) {
     for (const object of battlefieldObjects) object.visible = true;
     restoreCannons();
@@ -380,11 +317,9 @@ export function startBattle(world: World): void {
     return;
   }
 
-  // 2. Show loading panel (1 m × 0.5 m, faces +Z)
   loadUIKitMLAsset('loading-panel')
     .then((loadingPanel) => {
-      // A failed entry reuses the same cached document — guard against a
-      // second createTransformEntity double-placing it.
+      // A failed entry reuses the cached document — guard double placement.
       if (!loadingPanelPlaced) {
         loadingPanel.position.set(0, 1.25, -1.5);
         world.createTransformEntity(loadingPanel);
@@ -392,7 +327,6 @@ export function startBattle(world: World): void {
       }
       loadingPanel.visible = true;
 
-      // 3. Load game assets: HDR env + solidified GLB models
       AssetManager.loadHDRTextureById('ocean-env.hdr')
         .then(async (hdrTexture) => {
           // Equirect HDR -> cubemap: avoids pole stretching in reflections
@@ -410,7 +344,6 @@ export function startBattle(world: World): void {
               AssetManager.loadGLTFById('defense-pad'),
             ]);
 
-          // Swap the GLB's placeholder material for the wave shader
           const oceanObject = oceanGltf.scene;
           const oceanMaterial = createOceanMaterial();
           oceanMaterial.uniforms.envMap.value = cubeRT.texture;
@@ -418,24 +351,20 @@ export function startBattle(world: World): void {
           oceanObject.traverse((child: Object3D) => {
             if ((child as Mesh).isMesh) {
               (child as Mesh).material = oceanMaterial;
-              // The unlit shader still samples the shadow map when the
-              // mesh receives shadows (see createOceanMaterial).
+              // The unlit ocean shader still samples the shadow map.
               child.receiveShadow = true;
             }
           });
 
-          // Ocean extended to 10 m: the near edge sits against the wall's
-          // sea face, the centre rides OCEAN.centerZ.
+          // Ocean near edge meets the wall's sea face; centre rides OCEAN.centerZ.
           oceanObject.position.set(0, 0.55, OCEAN.centerZ);
           world.createTransformEntity(oceanObject).addComponent(OceanTag);
           battlefieldObjects.push(oceanObject);
 
-          // Place harbor wall at the ocean body's maxZ edge
           const wallObject = wallGltf.scene;
           bakeWallFaceMottle(wallObject);
           wallObject.position.set(0, 0.55, WALL_CENTER_Z);
-          // Runtime-instantiated GLB meshes keep three.js defaults
-          // (both false); scene-JSON assets get these via content flags.
+          // Runtime-instantiated GLB meshes keep three.js defaults (both false).
           wallObject.traverse((child: Object3D) => {
             if ((child as Mesh).isMesh) {
               child.castShadow = true;
@@ -445,14 +374,8 @@ export function startBattle(world: World): void {
           world.createTransformEntity(wallObject);
           battlefieldObjects.push(wallObject);
 
-          // The defense battery: one clone per DEFENSE_SLOTS entry across the
-          // central 3 m of the 3.4 m wall, muzzles facing the sea (-Z).
-          // Cloning keeps geometry/materials shared while each gun_rotate
-          // pivot stays independent; the prototype carries the muzzle and
-          // hit_core helpers, so every clone is an armed, targetable
-          // combatant. The active level may re-crew the slots
-          // (LevelSpec.initialUnits — the design boss stage opens with a
-          // full five-gun battery); the slots' own units are the default.
+          // One clone per DEFENSE_SLOTS entry, muzzles facing the sea (-Z). The
+          // active level may re-crew the slots via LevelSpec.initialUnits.
           const cannonProto = cannonGltf.scene;
           decorateCombatPrototype(cannonProto, 0, -0.2);
           defensePrototypes.set('cannon', cannonProto);
@@ -472,11 +395,8 @@ export function startBattle(world: World): void {
             if (initial) mountDefenseUnit(world, slotIndex, initial);
           }
 
-          // Empty-slot pedestal pads: one permanent disc per slot, standing
-          // on the wall top. Each clone gets its own material instance so
-          // DefensePadSystem breathes only empty slots; DefensePadInputSystem
-          // keeps RayInteractable on the pad only while the slot is empty and
-          // opens the build panel from a press.
+          // Empty-slot pedestal pads: one permanent disc per slot. DefensePadInput
+          // keeps RayInteractable on the pad only while the slot is empty.
           const padPrototype = padGltf.scene;
           for (
             let slotIndex = 0;
@@ -507,9 +427,8 @@ export function startBattle(world: World): void {
 
           battlefieldReady = true;
 
-          // 4. Hide loading panel — game is ready, ease into the game view,
-          // then raise the START gates. Units are dispatched by
-          // LevelWaveSystem once the player presses START.
+          // Game is ready: hide the panel and raise the START gates; units are
+          // dispatched by LevelWaveSystem once the player presses START.
           loadingPanel.visible = false;
           proceed();
         })
@@ -519,9 +438,8 @@ export function startBattle(world: World): void {
 }
 
 /**
- * MAIN-menu hand-off: hide the battlefield (it is never disposed — see the
- * persistence note above), bring the welcome panel back and ease the camera
- * to its authored welcome pose. A later ENTER GAME rebuilds nothing.
+ * MAIN-menu hand-off: hide the battlefield (never disposed), bring the welcome
+ * panel back and ease the camera to its welcome pose.
  */
 export function returnToWelcome(world: World): void {
   battleStarted = false;
@@ -537,12 +455,8 @@ export function returnToWelcome(world: World): void {
 }
 
 /**
- * Spawn-pose reset for every mounted defender: turret yaw back to centre,
- * barrel pitch back to the spawn elevation (stock half-raised).
- * `CannonAim` stays the single truth — CannonAimSystem re-applies the pose
- * to the transforms on its next frame. Shared by the MAIN-menu battlefield
- * re-entry and the pause menu's RESTART. Units without an aim kit (the
- * iron-guard bust) have nothing to reset.
+ * Reset every mounted defender to its spawn pose (yaw centre, stock pitch);
+ * CannonAimSystem re-applies it next frame. Shared by re-entry and RESTART.
  */
 export function resetCannonAim(): void {
   for (const { entity, defaultPitchDeg } of defenseEntities) {
@@ -553,11 +467,8 @@ export function resetCannonAim(): void {
 }
 
 /**
- * Undo every knockout: the Destroyed tag drops, the hidden defender object
- * is revealed and its health pool refills. Cannons persist across rounds
- * (see the battlefield-persistence note above), so a RESTART
- * restores rather than rebuilds the battery. Shared by the pause menu's
- * RESTART and the MAIN-menu battlefield re-entry.
+ * Undo every knockout: drop Destroyed, reveal the hidden defender and refill
+ * its health. Shared by the pause menu's RESTART and the MAIN-menu re-entry.
  */
 export function restoreCannons(): void {
   for (const { entity } of defenseEntities) {
@@ -569,12 +480,9 @@ export function restoreCannons(): void {
 }
 
 /**
- * Re-crew the battery to the active level's initialUnits (level-switch):
- * every occupant is restored first, then slots whose mounted unit differs
- * from the level's wish are stripped and remounted. A null wish means an
- * empty slot (the endless gate leaves the wing slots to the player). Level
- * lists without initialUnits fall back to the slot defaults. Callers are the
- * LevelWaveSystem's beginLevel / restartLevel.
+ * Re-crew the battery to the active level's initialUnits: restore every
+ * occupant, then strip and remount slots whose unit differs; a null wish means
+ * an empty slot. Called by LevelWaveSystem's beginLevel / restartLevel.
  */
 export function syncBatteryToLevel(world: World): void {
   restoreCannons();
@@ -596,10 +504,8 @@ export function syncBatteryToLevel(world: World): void {
 }
 
 /**
- * Recall everything the last round left flying or blooming: airborne shells
- * back to the pool, hit flashes and splash ripples disposed. Shared by the
- * pause menu's MAIN / RESTART and the result panel's equivalents, so every
- * reset path clears the exact same effect set.
+ * Recall everything the last round left flying or blooming: airborne shells,
+ * hit flashes and splash ripples. Shared by every reset path.
  */
 export function recycleCombatEffects(world: World): void {
   world

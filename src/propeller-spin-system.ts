@@ -16,22 +16,13 @@ import {
 } from './components.js';
 
 /**
- * Turns a flying unit's rotors. Presence of `PropellerSpin` *is* the tag
- * "this unit has a driven rotor": on qualify the system resolves the model's
- * `propellers` node once and caches it (CannonAimSystem's gunPivots idiom),
- * then each frame spins every child rotor about its local +Y — the
- * bombardier's tandem discs each live on their own mast node, so one shared
- * component drives them all.
- *
- * A hovering flyer keeps its rotors turning: motion state never gates the
- * spin, only the pause/hold tags do — exactly like every other simulation
- * system, the rotors freeze while the game is paused or over.
+ * Spins every child of the `propellers` node (resolved once on qualify) about its
+ * local +Y; only the pause/over tags gate the spin.
  */
 export class PropellerSpinSystem extends createSystem({
   rotors: { required: [PropellerSpin], excluded: [Destroyed] },
   directors: { required: [LevelDirector] },
 }) {
-  /** `propellers` node per rotor entity index, resolved once on qualify. */
   private readonly rotorSets = new Map<number, Object3D>();
 
   init(): void {
@@ -53,7 +44,6 @@ export class PropellerSpinSystem extends createSystem({
     }
   }
 
-  /** True while the pause-menu tag sits on the director entity. */
   private paused(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GamePaused);
@@ -61,7 +51,6 @@ export class PropellerSpinSystem extends createSystem({
     return false;
   }
 
-  /** True while the run has ended (result panel up, battlefield frozen). */
   private over(): boolean {
     for (const director of this.queries.directors.entities) {
       return director.hasComponent(GameOver);
