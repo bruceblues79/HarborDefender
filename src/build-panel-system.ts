@@ -117,9 +117,10 @@ export class BuildPanelSystem extends createSystem({
         for (const unitId of PLACEABLE_UNITS) {
           const row = panel.getElementById(`row-${unitId}`) as UiElement | null;
           if (row) {
-            row.addEventListener('click', () => this.onRowPicked(unitId));
+            const onPick = () => this.onRowPicked(unitId);
+            row.addEventListener('click', onPick);
             this.cleanupFuncs.push(() =>
-              row.removeEventListener('click', () => this.onRowPicked(unitId)),
+              row.removeEventListener('click', onPick),
             );
             this.rows.set(unitId, row);
           }
@@ -129,9 +130,10 @@ export class BuildPanelSystem extends createSystem({
           panel.getElementById('wallet-value'),
         );
         if (dismiss) {
-          dismiss.addEventListener('click', () => this.closePanel());
+          const onDismiss = () => this.closePanel();
+          dismiss.addEventListener('click', onDismiss);
           this.cleanupFuncs.push(() =>
-            dismiss.removeEventListener('click', () => this.closePanel()),
+            dismiss.removeEventListener('click', onDismiss),
           );
         }
 
