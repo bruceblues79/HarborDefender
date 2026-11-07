@@ -417,6 +417,21 @@ export const DefensePad = createComponent('DefensePad', {
 export const HideHealthBar = createComponent('HideHealthBar', {});
 
 /**
+ * 血条对外的只读视图数据：HealthBarSystem 每帧写入世界空间的左缘上角与朝向，
+ * RepairButtonSystem 直接读取，不再按节点名遍历单位子树。
+ */
+export const HealthBarView = createComponent('HealthBarView', {
+  visible: { type: 'Boolean', default: false },
+  anchorX: { type: 'Float32', default: 0 },
+  anchorY: { type: 'Float32', default: 0 },
+  anchorZ: { type: 'Float32', default: 0 },
+  quatX: { type: 'Float32', default: 0 },
+  quatY: { type: 'Float32', default: 0 },
+  quatZ: { type: 'Float32', default: 0 },
+  quatW: { type: 'Float32', default: 1 },
+});
+
+/**
  * Explicit tag (no fields): lifecycle marker on the boss's four baked turret children.
  * They carry Health but no UnitTag/ShipMovement, so the attackers query never sees them;
  * reset and restart tear them down through this tag (Entity.dispose() does not cascade).
@@ -683,6 +698,7 @@ export default defineComponents([
   RepairButton,
   DefensePad,
   HideHealthBar,
+  HealthBarView,
   BossTurret,
   LockTarget,
   GunCycle,

@@ -17,14 +17,14 @@ import type { Entity } from '@iwsdk/core';
 import {
   Destroyed,
   Health,
+  HealthBarView,
   HitCore,
   RepairButton,
   Repairing,
   RepairRequest,
 } from './components.js';
 import { createRepairButtonRig } from './repair-button.js';
-import { HEALTH_BAR_RIG_NAME } from './health-bar-system.js';
-import { COMBAT, REPAIR_BUTTON } from './level-config.js';
+import { REPAIR_BUTTON } from './level-config.js';
 
 /**
  * 守方血条上的维修按钮。
@@ -34,15 +34,13 @@ import { COMBAT, REPAIR_BUTTON } from './level-config.js';
  *
  * 按钮是独立的根级实体，每帧把自己的世界变换对齐到目标血条 rig 的左缘上方：
  * 这样它随血条一起 billboard，又不会嵌进单位实体的射线子树（按按钮不会误触炮台）。
- * 显隐复用 HealthBarSystem 的 rig 可见性；回血与扣钱仍归 RepairSystem。
+ * 可见性与锚点来自 `HealthBarView`；回血与扣钱仍归 RepairSystem。
  */
 interface RepairButtonEntry {
   readonly button: Entity;
   readonly unit: Entity;
   readonly root: Object3D;
   readonly setRepairing: (repairing: boolean) => void;
-  /** 目标的血条 rig，第一次可见时按名字解析并缓存。 */
-  rig: Object3D | null;
 }
 
 export class RepairButtonSystem extends createSystem({
@@ -54,12 +52,11 @@ export class RepairButtonSystem extends createSystem({
   private readonly byButton = new Map<number, RepairButtonEntry>();
 
   // update() 不分配：全部预分配。
-  private readonly rigPosition = new Vector3();
-  private readonly rigScale = new Vector3();
+  private readonly anchor = new Vector3();
   private readonly worldCenter = new Vector3();
   private readonly right = new Vector3();
   private readonly up = new Vector3();
-  private readonly rigQuaternion = new Quaternion();
+  private readonly viewQuaternion = new Quaternion();
   private readonly parentQuaternion = new Quaternion();
 
   init(): void {
@@ -79,7 +76,6 @@ export class RepairButtonSystem extends createSystem({
         unit,
         root: rig.root,
         setRepairing: rig.setRepairing,
-        rig: null,
       };
       this.entries.set(unit.index, entry);
       this.byButton.set(button.index, entry);
@@ -105,64 +101,60 @@ export class RepairButtonSystem extends createSystem({
       const entry = this.entries.get(unit.index);
       if (!entry) continue;
       const unitObject = unit.object3D;
-      if (!unitObject) {
+      if (!unitObject || !unit.hasComponent(HealthBarView)) {
         entry.root.visible = false;
         continue;
       }
-      if (!entry.rig) {
-        entry.rig =
-          (unitObject.getObjectByName(HEALTH_BAR_RIG_NAME) as Object3D | null) ??
-          null;
-      }
-      const rig = entry.rig;
       const current = Number(unit.getValue(Health, 'current'));
       const max = Number(unit.getValue(Health, 'max'));
       // 满血、阵亡、单位本体隐藏（主菜单 / 欢迎屏）或血条被面板门禁隐藏时，
       // 按钮一并不出现。
       const visible =
-        !!rig &&
+        Boolean(unit.getValue(HealthBarView, 'visible')) &&
         current < max &&
         !unit.hasComponent(Destroyed) &&
-        unitObject.visible &&
-        rig.visible;
+        unitObject.visible;
       entry.root.visible = visible;
-      if (!visible || !rig) continue;
+      if (!visible) continue;
 
-      this.alignToBar(entry, rig);
+      this.anchor.set(
+        Number(unit.getValue(HealthBarView, 'anchorX')),
+        Number(unit.getValue(HealthBarView, 'anchorY')),
+        Number(unit.getValue(HealthBarView, 'anchorZ')),
+      );
+      this.viewQuaternion.set(
+        Number(unit.getValue(HealthBarView, 'quatX')),
+        Number(unit.getValue(HealthBarView, 'quatY')),
+        Number(unit.getValue(HealthBarView, 'quatZ')),
+        Number(unit.getValue(HealthBarView, 'quatW')),
+      );
+
+      this.alignToAnchor(entry);
 
       entry.setRepairing(unit.hasComponent(Repairing));
     }
   }
 
-  /** 对齐到血条 rig 左缘上方；世界尺寸固定，偏移按 rig 世界缩放折算。 */
-  private alignToBar(entry: RepairButtonEntry, rig: Object3D): void {
-    rig.getWorldPosition(this.rigPosition);
-    rig.getWorldScale(this.rigScale);
-    rig.getWorldQuaternion(this.rigQuaternion);
-
-    this.right.set(1, 0, 0).applyQuaternion(this.rigQuaternion);
-    this.up.set(0, 1, 0).applyQuaternion(this.rigQuaternion);
+  /** 对齐到血条左缘上角；偏移按按钮自身尺寸折算。 */
+  private alignToAnchor(entry: RepairButtonEntry): void {
+    this.right.set(1, 0, 0).applyQuaternion(this.viewQuaternion);
+    this.up.set(0, 1, 0).applyQuaternion(this.viewQuaternion);
 
     const radius = REPAIR_BUTTON.diameter / 2;
-    const barWidth = COMBAT.healthBarWidth * this.rigScale.x;
-    const barHeight = COMBAT.healthBarHeight * this.rigScale.y;
     this.worldCenter
-      .copy(this.rigPosition)
-      .addScaledVector(this.right, -barWidth / 2 + radius)
-      .addScaledVector(
-        this.up,
-        barHeight / 2 + REPAIR_BUTTON.gap + radius,
-      );
+      .copy(this.anchor)
+      .addScaledVector(this.right, radius)
+      .addScaledVector(this.up, REPAIR_BUTTON.gap + radius);
 
     const parent = entry.root.parent;
     if (parent) {
       parent.getWorldQuaternion(this.parentQuaternion).invert();
       entry.root.quaternion
         .copy(this.parentQuaternion)
-        .multiply(this.rigQuaternion);
+        .multiply(this.viewQuaternion);
       parent.worldToLocal(this.worldCenter);
     } else {
-      entry.root.quaternion.copy(this.rigQuaternion);
+      entry.root.quaternion.copy(this.viewQuaternion);
     }
     entry.root.position.copy(this.worldCenter);
   }

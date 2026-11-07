@@ -20,6 +20,7 @@ import {
   GameOver,
   GamePaused,
   Health,
+  HealthBarView,
   HideHealthBar,
   HitCore,
   LevelDirector,
@@ -37,10 +38,9 @@ const WIDTH = COMBAT.healthBarWidth;
 const HEIGHT = COMBAT.healthBarHeight;
 
 /**
- * 每个单位血条 rig 的节点名——RepairButtonSystem 按名字找到它并把维修按钮
- * 锚到血条左缘上方。
+ * 每个单位血条 rig 的节点名——仅用于层级辨识；维修按钮改读 `HealthBarView`。
  */
-export const HEALTH_BAR_RIG_NAME = 'health-bar';
+const HEALTH_BAR_RIG_NAME = 'health-bar';
 
 const backGeometry = new PlaneGeometry(WIDTH, HEIGHT);
 /**
@@ -92,6 +92,11 @@ export class HealthBarSystem extends createSystem({
   private readonly parentWorldQuat = new Quaternion();
   private readonly yawQuat = new Quaternion();
   private readonly up = new Vector3(0, 1, 0);
+  private readonly rigWorldQuat = new Quaternion();
+  private readonly rigWorldScale = new Vector3();
+  private readonly right = new Vector3();
+  private readonly viewUp = new Vector3();
+  private readonly anchor = new Vector3();
 
   init(): void {
     this.queries.units.subscribe('qualify', (entity) => {
@@ -122,6 +127,7 @@ export class HealthBarSystem extends createSystem({
       }
       rig.add(back, fill);
       unit.add(rig);
+      entity.addComponent(HealthBarView);
 
       this.rigs.set(entity.index, rig);
       this.fills.set(entity.index, fill);
@@ -153,11 +159,17 @@ export class HealthBarSystem extends createSystem({
       const fill = this.fills.get(entity.index);
       if (!rig || !fill) continue;
       rig.visible = !panelsUp;
-      if (panelsUp) continue;
+      if (panelsUp) {
+        entity.setValue(HealthBarView, 'visible', false);
+        continue;
+      }
       fill.scale.x = this.fillRatio(entity);
 
       const parent = rig.parent;
-      if (!parent) continue;
+      if (!parent) {
+        entity.setValue(HealthBarView, 'visible', false);
+        continue;
+      }
       // World yaw toward the viewer, recomposed into the unit's local space:
       // local = parentWorld⁻¹ × worldYaw. getWorld* refresh ancestor matrices.
       parent.getWorldQuaternion(this.parentWorldQuat).invert();
@@ -170,6 +182,25 @@ export class HealthBarSystem extends createSystem({
         ),
       );
       rig.quaternion.copy(this.parentWorldQuat).multiply(this.yawQuat);
+
+      // Publish the bar's world-space top-left corner and orientation so the
+      // repair button never has to walk the unit subtree by node name.
+      rig.getWorldQuaternion(this.rigWorldQuat);
+      rig.getWorldScale(this.rigWorldScale);
+      this.right.set(1, 0, 0).applyQuaternion(this.rigWorldQuat);
+      this.viewUp.set(0, 1, 0).applyQuaternion(this.rigWorldQuat);
+      this.anchor
+        .copy(this.rigWorld)
+        .addScaledVector(this.right, -(WIDTH * this.rigWorldScale.x) / 2)
+        .addScaledVector(this.viewUp, (HEIGHT * this.rigWorldScale.y) / 2);
+      entity.setValue(HealthBarView, 'visible', true);
+      entity.setValue(HealthBarView, 'anchorX', this.anchor.x);
+      entity.setValue(HealthBarView, 'anchorY', this.anchor.y);
+      entity.setValue(HealthBarView, 'anchorZ', this.anchor.z);
+      entity.setValue(HealthBarView, 'quatX', this.rigWorldQuat.x);
+      entity.setValue(HealthBarView, 'quatY', this.rigWorldQuat.y);
+      entity.setValue(HealthBarView, 'quatZ', this.rigWorldQuat.z);
+      entity.setValue(HealthBarView, 'quatW', this.rigWorldQuat.w);
     }
   }
 
