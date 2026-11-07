@@ -14,18 +14,18 @@
 
 ## 清单
 
-| # | 事项 | 类型 | 风险 | 量 |
-|---|---|---|---|---|
-| 1 | B1 build-panel listener teardown | bug | 中 | S |
-| 2 | E1 `BuildOpen` 三写者 | ECS 契约 | 中 | M |
-| 3 | E2 `Repairing` 三写者 | ECS 契约 | 低–中 | S–M |
-| 4 | E3 血条 / 维修按钮私有节点耦合 | ECS 结构 | 中（推断） | S |
-| 5 | E4 门禁 helper 复制 | ECS 重复 | 低 | L |
-| 6 | E5 池 claim/release | ECS 契约 | 低（推断） | S–M |
-| 7 | E6 `defenseEntities` 双真相 | ECS 结构 | 低–中 | M–L |
-| 8 | E7 PropellerSpin / WingFlap 同形 | ECS 粒度 | 无 | S |
-| 9 | V1 拆 level-wave | 体量 | 低 | L |
-| — | H1 两处 combat.md 注释 | 注释 | 无 | XS |
+| # | 事项 | 类型 | 风险 | 量 | 状态 |
+|---|---|---|---|---|---|
+| 1 | B1 build-panel listener teardown | bug | 中 | S | ✅ 已完成 |
+| 2 | E1 `BuildOpen` 三写者 | ECS 契约 | 中 | M | ✅ 已完成 |
+| 3 | E2 `Repairing` 三写者 | ECS 契约 | 低–中 | S–M | ✅ 已完成 |
+| 4 | E3 血条 / 维修按钮私有节点耦合 | ECS 结构 | 中（推断） | S | ✅ 已完成 |
+| 5 | E4 门禁 helper 复制 | ECS 重复 | 低 | L | 待办 |
+| 6 | E5 池 claim/release | ECS 契约 | 低（推断） | S–M | 待办 |
+| 7 | E6 `defenseEntities` 双真相 | ECS 结构 | 低–中 | M–L | 待办 |
+| 8 | E7 PropellerSpin / WingFlap 同形 | ECS 粒度 | 无 | S | 待办（可选） |
+| 9 | V1 拆 level-wave | 体量 | 低 | L | 待办 |
+| — | H1 两处 combat.md 注释 | 注释 | 无 | XS | 待办 |
 
 依赖：B1 与 E1 同文件，B1 先；E4 必须在 E1–E3、E5、E6 之后；V1 最后。
 
@@ -149,8 +149,8 @@
 
 ## 批次
 
-- **A 正确性**：B1。
-- **B ECS 契约**：E1 → E2 → E3。
+- **A 正确性**：B1。（已完成）
+- **B ECS 契约**：E1 → E2 → E3。（已完成）
 - **C ECS 重复与双真相**：E4 → E5 → E6 →（可选）E7。
 - **D 体量与注释**：V1、H1。
 
