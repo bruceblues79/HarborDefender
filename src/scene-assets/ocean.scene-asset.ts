@@ -115,6 +115,7 @@ const fragmentShader = `
 
 uniform samplerCube envMap;
 uniform float reflectivity;
+uniform float brightness;
 uniform float time;
 uniform float noiseSpeed;     // metres/second, perturbation drifts toward +z
 uniform float noiseFrequency; // noise cells per metre
@@ -206,6 +207,7 @@ void main() {
   // without this the ship's shadow would read pitch black on the sea.
   color *= mix(0.5, 1.0, getShadowMask());
 
+  color *= brightness;
   gl_FragColor = vec4(linearToSRGB(color), 1.0);
 }
 `;
@@ -217,6 +219,8 @@ export interface OceanNoiseParams {
   frequency?: number;
   /** Master strength: vertex surge amplitude and reflection wobble. */
   intensity?: number;
+  /** Linear brightness multiplier on the final water colour. */
+  brightness?: number;
 }
 
 /**
@@ -245,6 +249,7 @@ export function createOceanMaterial(noise: OceanNoiseParams = {}): ShaderMateria
         time: { value: 0 },
         envMap: { value: null },
         reflectivity: { value: 1.0 },
+        brightness: { value: noise.brightness ?? 1.0 },
         noiseSpeed: { value: noise.speed ?? 0.8 },
         noiseFrequency: { value: noise.frequency ?? 3.0 },
         noiseIntensity: { value: noise.intensity ?? 0.015 },

@@ -412,7 +412,7 @@ export function startBattle(world: World): void {
 
           // Swap the GLB's placeholder material for the wave shader
           const oceanObject = oceanGltf.scene;
-          const oceanMaterial = createOceanMaterial();
+          const oceanMaterial = createOceanMaterial({ brightness: 1.15 });
           oceanMaterial.uniforms.envMap.value = cubeRT.texture;
           oceanMaterial.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
           oceanObject.traverse((child: Object3D) => {

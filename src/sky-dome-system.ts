@@ -5,71 +5,52 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {
-  AssetManager,
-  HalfFloatType,
-  Mesh,
-  Object3D,
-  ShaderMaterial,
-  WebGLCubeRenderTarget,
-  createSystem,
-} from '@iwsdk/core';
+import { Color, ShaderMaterial, createSystem } from '@iwsdk/core';
+import type { Mesh, Object3D } from '@iwsdk/core';
 import { SkyDome } from './components.js';
 import { createSkyDomeMesh } from './scene-assets/sky-dome.scene-asset.js';
 
 const DEG2RAD = Math.PI / 180;
-/** Same HDR the ocean reflects — warm AssetManager cache, one shared world. */
-const DOME_HDR = 'ocean-env.hdr';
 
 type UniformMap = { [name: string]: { value: unknown } };
+type NumberUniform = { value: number };
+type ColorUniform = { value: Color };
 
 /**
- * Owns the AR partial-immersion dome: creates the hidden mesh entity, wires
- * the HDR cubemap, and gates visibility to immersive-AR sessions. IWSDK's AR
- * policy nulls scene.background and hides authored gradient domes but has no
- * blend control — this system restores it in content. Uniform values mirror
- * the carrier's SkyDome fields every frame so the dome stays inspector-tunable.
+ * Owns the sky dome: creates the mesh entity and mirrors the SkyDome inspector
+ * fields into the shader every frame (the cloud clock needs a per-frame write).
+ *
+ * The dome is visible in every mode; only its passthrough mask is gated. In an
+ * XR session with alpha-blend passthrough it becomes the partial-immersion
+ * disc; with no session (or an opaque session) the mask is off and the sphere
+ * covers the whole sky.
  */
 export class SkyDomeSystem extends createSystem({
   domes: { required: [SkyDome] },
 }) {
-  private arActive = false;
-  private domeEnvRT: WebGLCubeRenderTarget | null = null;
+  private maskOn = false;
 
   init(): void {
     const dome = createSkyDomeMesh();
-    // Flat desktop keeps its authored DomeGradient background.
-    dome.visible = false;
     this.world.createTransformEntity(dome).addComponent(SkyDome);
 
-    AssetManager.loadHDRTextureById(DOME_HDR).then((hdr) => {
-      const rt = new WebGLCubeRenderTarget(256, { type: HalfFloatType });
-      rt.fromEquirectangularTexture(this.renderer, hdr);
-      this.domeEnvRT = rt;
-      for (const entity of this.queries.domes.entities) {
-        this.traverseUniforms(entity.object3D, (u) => {
-          const envUniform = u.uEnvMap as { value: WebGLCubeRenderTarget['texture'] | null };
-          envUniform.value = rt.texture;
-          (u.uEnvLoaded as { value: number }).value = 1;
-        });
-      }
-    });
-
-    const sync = (): void => this.syncArVisibility();
+    const sync = (): void => this.syncSessionState();
     this.xrManager.addEventListener('sessionstart', sync);
     this.xrManager.addEventListener('sessionend', sync);
     this.cleanupFuncs.push(() => {
       this.xrManager.removeEventListener('sessionstart', sync);
       this.xrManager.removeEventListener('sessionend', sync);
-      this.domeEnvRT?.dispose();
     });
-    this.syncArVisibility();
+    this.syncSessionState();
   }
 
-  update(): void {
-    if (!this.arActive) return;
+  update(_delta: number, time: number): void {
+    const maskOn = this.maskOn ? 1 : 0;
     for (const entity of this.queries.domes.entities) {
-      const maxAlpha = Number(entity.getValue(SkyDome, 'maxAlpha'));
+      const sea = entity.getVectorView(SkyDome, 'seaColor');
+      const horizon = entity.getVectorView(SkyDome, 'horizonColor');
+      const zenith = entity.getVectorView(SkyDome, 'zenithColor');
+      const cloud = entity.getVectorView(SkyDome, 'cloudColor');
       // Rim angles collapse to cosines once here; the shader just smoothsteps.
       const edgeCos = Math.cos(Number(entity.getValue(SkyDome, 'edgeDeg')) * DEG2RAD);
       const fadeCos = Math.cos(
@@ -77,32 +58,41 @@ export class SkyDomeSystem extends createSystem({
           Number(entity.getValue(SkyDome, 'fadeWidthDeg'))) *
           DEG2RAD,
       );
-      const edgeNoise = Number(entity.getValue(SkyDome, 'edgeNoise'));
-      const noiseScale = Number(entity.getValue(SkyDome, 'noiseScale'));
-      const skyIntensity = Number(entity.getValue(SkyDome, 'skyIntensity'));
-      const exposure = Number(entity.getValue(SkyDome, 'exposure'));
-      // Disc axis: world -z raised by pitchUpDeg.
       const pitch = Number(entity.getValue(SkyDome, 'pitchUpDeg')) * DEG2RAD;
+
       this.traverseUniforms(entity.object3D, (u) => {
-        (u.uMaxAlpha as { value: number }).value = maxAlpha;
-        (u.uEdgeCos as { value: number }).value = edgeCos;
-        (u.uFadeCos as { value: number }).value = fadeCos;
-        (u.uEdgeNoise as { value: number }).value = edgeNoise;
-        (u.uNoiseScale as { value: number }).value = noiseScale;
-        (u.uSkyIntensity as { value: number }).value = skyIntensity;
-        (u.uExposure as { value: number }).value = exposure;
-        (u.uAxisY as { value: number }).value = Math.sin(pitch);
-        (u.uAxisZ as { value: number }).value = -Math.cos(pitch);
+        (u.uTime as NumberUniform).value = time;
+        (u.uMaskOn as NumberUniform).value = maskOn;
+        (u.uMaxAlpha as NumberUniform).value = Number(entity.getValue(SkyDome, 'maxAlpha'));
+        (u.uEdgeCos as NumberUniform).value = edgeCos;
+        (u.uFadeCos as NumberUniform).value = fadeCos;
+        (u.uEdgeNoise as NumberUniform).value = Number(entity.getValue(SkyDome, 'edgeNoise'));
+        (u.uNoiseScale as NumberUniform).value = Number(entity.getValue(SkyDome, 'noiseScale'));
+        (u.uAxisY as NumberUniform).value = Math.sin(pitch);
+        (u.uAxisZ as NumberUniform).value = -Math.cos(pitch);
+        (u.uIntensity as NumberUniform).value = Number(
+          entity.getValue(SkyDome, 'skyIntensity'),
+        );
+        (u.uCloudCover as NumberUniform).value = Number(entity.getValue(SkyDome, 'cloudCover'));
+        (u.uCloudScale as NumberUniform).value = Number(entity.getValue(SkyDome, 'cloudScale'));
+        (u.uCloudSpeed as NumberUniform).value = Number(entity.getValue(SkyDome, 'cloudSpeed'));
+        (u.uCloudMinY as NumberUniform).value = Math.sin(
+          Number(entity.getValue(SkyDome, 'cloudMinDeg')) * DEG2RAD,
+        );
+        (u.uCloudMaxY as NumberUniform).value = Math.sin(
+          Number(entity.getValue(SkyDome, 'cloudMaxDeg')) * DEG2RAD,
+        );
+        (u.uSeaColor as ColorUniform).value.setRGB(sea[0], sea[1], sea[2]);
+        (u.uHorizonColor as ColorUniform).value.setRGB(horizon[0], horizon[1], horizon[2]);
+        (u.uZenithColor as ColorUniform).value.setRGB(zenith[0], zenith[1], zenith[2]);
+        (u.uCloudColor as ColorUniform).value.setRGB(cloud[0], cloud[1], cloud[2]);
       });
     }
   }
 
-  private syncArVisibility(): void {
+  private syncSessionState(): void {
     const blendMode = this.xrManager.getSession()?.environmentBlendMode;
-    this.arActive = blendMode === 'alpha-blend' || blendMode === 'additive';
-    for (const entity of this.queries.domes.entities) {
-      if (entity.object3D) entity.object3D.visible = this.arActive;
-    }
+    this.maskOn = blendMode === 'alpha-blend' || blendMode === 'additive';
   }
 
   private traverseUniforms(
