@@ -1,6 +1,6 @@
 {
   "name": "harbordefender",
-  "version": "0.1.318",
+  "version": "0.1.320",
   "private": true,
   "type": "module",
   "scripts": {

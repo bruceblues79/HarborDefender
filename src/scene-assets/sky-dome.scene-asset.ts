@@ -126,18 +126,18 @@ void main() {
     // which is what sells the distance; the clamp keeps the near plane finite.
     vec2 p = dir.xz / max(h, 0.05) * uCloudScale;
     p.y -= uTime * uCloudSpeed;
-    float c = texture2D(uCloudNoise, p).r * 0.55
-            + texture2D(uCloudNoise, p * 0.37 + vec2(0.41, 0.17)).r * 0.27
-            + texture2D(uCloudNoise, p * 2.1 + vec2(0.73, 0.29)).r * 0.18;
+    float c = texture2D(uCloudNoise, p).r * 0.58
+            + texture2D(uCloudNoise, p * 0.37 + vec2(0.41, 0.17)).r * 0.28
+            + texture2D(uCloudNoise, p * 2.1 + vec2(0.73, 0.29)).r * 0.14;
     // The fBm clusters tightly around 0.5; stretch it without going binary, so
     // cloud bodies keep their midtones.
     c = smoothstep(0.25, 0.75, c);
     float band = smoothstep(uCloudMinY, uCloudMinY + 0.09, h)
                * (1.0 - smoothstep(uCloudMaxY - 0.14, uCloudMaxY, h));
     // A long soft tail below the threshold leaves translucent wisps instead of
-    // cut-out blobs, and the 0.78 cap keeps sky showing through the body.
+    // cut-out blobs, and the 0.62 cap keeps sky showing through the body.
     float m = smoothstep(1.0 - uCloudCover - 0.22, 1.0 - uCloudCover + 0.16, c);
-    color = mix(color, uCloudColor, m * band * 0.78);
+    color = mix(color, uCloudColor, m * band * 0.62);
   }
 
   color = linearToSRGB(color * uIntensity);

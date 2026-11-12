@@ -812,7 +812,7 @@ export const SkyDome = createComponent('SkyDome', {
   /** Drift speed toward +z, in cloud-texture units per second. */
   cloudSpeed: { type: 'Float32', default: 0.06 },
   /** Lower elevation (deg) where the cloud band starts. */
-  cloudMinDeg: { type: 'Float32', default: 8 },
+  cloudMinDeg: { type: 'Float32', default: 1.5 },
   /** Upper elevation (deg) where the cloud band ends. */
   cloudMaxDeg: { type: 'Float32', default: 50 },
 });
