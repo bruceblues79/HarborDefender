@@ -69,7 +69,7 @@ varying vec2 vUv;
 // UV values, so the inscribed circle scales with the quad automatically.
 const float MASK_RADIUS = 0.5;
 const float MASK_FADE = 0.06;
-const vec2 MASK_CENTER = vec2(0.5, 0.47);
+const vec2 MASK_CENTER = vec2(0.5, 0.4725);
 
 // Hash-based value noise (2D), quintic-interpolated (C2-continuous) so the
 // lattice shows no derivative creases at cell boundaries.
