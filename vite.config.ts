@@ -22,6 +22,10 @@ export default defineConfig({
     iwsdkDev(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Registration lives in src/index.ts: the host serves sw.js with a
+      // year-long immutable cache, so the default registration never re-checks
+      // it and clients stay pinned to the first build they cached.
+      injectRegister: false,
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
         name: 'HarborDefender',

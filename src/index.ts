@@ -49,6 +49,27 @@ import { WingFlapSystem } from './wing-flap-system.js';
 import { installXRButton } from './xr-button.js';
 import { installHandPriorityArbitration } from './xr-hand-arbitration.js';
 
+// sw.js must never be HTTP-cached and updates must activate without waiting for
+// every tab to close: an immutable sw.js pins the precached index.html to the
+// first build a client ever saw. updateViaCache: 'none' bypasses the HTTP cache,
+// SKIP_WAITING wakes the generated worker, and controllerchange reloads once.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  const scope = import.meta.env.BASE_URL;
+  const hadController = navigator.serviceWorker.controller !== null;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController) location.reload();
+  });
+  void navigator.serviceWorker
+    .register(`${scope}sw.js`, { scope, updateViaCache: 'none' })
+    .then((registration) => {
+      const activate = () => registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
+      activate();
+      registration.addEventListener('updatefound', () => {
+        registration.installing?.addEventListener('statechange', activate);
+      });
+    });
+}
+
 World.create(
   document.getElementById('scene-container') as HTMLDivElement,
   projectOptions,
