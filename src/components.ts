@@ -809,8 +809,8 @@ export const SkyDome = createComponent('SkyDome', {
   cloudCover: { type: 'Float32', default: 0.45 },
   /** Cloud-plane projection scale — smaller spreads the pattern wider. */
   cloudScale: { type: 'Float32', default: 0.5 },
-  /** Drift speed toward +z, in cloud-texture units per second. */
-  cloudSpeed: { type: 'Float32', default: 0.06 },
+  /** Drift speed of the near deck toward +z, in cloud-texture units per second. */
+  cloudSpeed: { type: 'Float32', default: 0.03 },
   /** Lower elevation (deg) where the cloud band starts. */
   cloudMinDeg: { type: 'Float32', default: 1.5 },
   /** Upper elevation (deg) where the cloud band ends. */
