@@ -131,19 +131,26 @@ export const PACING = {
 };
 
 /**
- * Ocean body footprint in world space. Kept in step with the ocean GLB
- * placement in battle-setup.ts (10 m body centred at z = -6.5, lifted 0.55).
+ * Gameplay ocean footprint (spawn lane, stop line, splash band). The visual
+ * surface is a single 20 × 20 m plane flush with the wall — see
+ * OCEAN_PLANE_SIZE and battle-setup.ts.
  */
 export const OCEAN = {
-  /** Body width along x (m). */
+  /** Lane width along x (m). */
   width: 3,
-  /** Body length along z (m). */
+  /** Lane length along z (m). */
   length: 10,
-  /** Body centre z (m). */
+  /** Lane centre z (m). */
   centerZ: -6.5,
-  /** Top-surface y (m): 0.55 lift + half of the 0.25 m thickness. */
+  /** Water surface y (m). */
   surfaceY: 0.675,
 };
+
+/**
+ * Edge length (m) of the visual water plane. Its near edge sits on the wall's
+ * sea face and the quad extends away from the harbour.
+ */
+export const OCEAN_PLANE_SIZE = 15;
 
 /** World z of the ocean's far edge — where attackers emerge. */
 export const OCEAN_FAR_Z: number = OCEAN.centerZ - OCEAN.length / 2;

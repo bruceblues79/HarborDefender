@@ -10,59 +10,59 @@ import { AssetType, defineAssets } from '@iwsdk/core';
 const publicAssetUrl = (filePath: string): string =>
   `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
 
-// UI documents are fetched by URL at runtime, and nginx sends no Cache-Control
-// for them, so a client may reuse a stale copy across deploys (seen on Huawei
-// Browser). Versioning the URL makes every deploy a fresh resource. Binary
-// assets keep unversioned URLs: glTF is renamed for incompatible swaps, and
-// the HDR is sniffed by key suffix.
-const uiAssetUrl = (filePath: string): string =>
+// Resources served from public/ with no Cache-Control can stay stale in a
+// client's HTTP cache across deploys (seen on Huawei Browser). Versioning the
+// URL makes every deploy a fresh resource. Binary assets normally keep
+// unversioned URLs (glTF is renamed for incompatible swaps); the ocean carrier
+// changed in place, so it opts in.
+const versionedAssetUrl = (filePath: string): string =>
   `${publicAssetUrl(filePath)}?v=${__BUILD_VERSION__}`;
 
 export default defineAssets({
   'welcome-panel': {
-    url: uiAssetUrl('ui/welcome.uikitml'),
+    url: versionedAssetUrl('ui/welcome.uikitml'),
     type: AssetType.UIKitML,
     name: 'Welcome Panel',
     priority: 'critical',
   },
   'loading-panel': {
-    url: uiAssetUrl('ui/loading.uikitml'),
+    url: versionedAssetUrl('ui/loading.uikitml'),
     type: AssetType.UIKitML,
     name: 'Loading Panel',
     priority: 'critical',
   },
   'start-panel': {
-    url: uiAssetUrl('ui/start.uikitml'),
+    url: versionedAssetUrl('ui/start.uikitml'),
     type: AssetType.UIKitML,
     name: 'Start Panel',
     priority: 'critical',
   },
   'menu-call': {
-    url: uiAssetUrl('ui/menu-call.uikitml'),
+    url: versionedAssetUrl('ui/menu-call.uikitml'),
     type: AssetType.UIKitML,
     name: 'Menu Call',
     priority: 'critical',
   },
   'pause-menu': {
-    url: uiAssetUrl('ui/pause-menu.uikitml'),
+    url: versionedAssetUrl('ui/pause-menu.uikitml'),
     type: AssetType.UIKitML,
     name: 'Pause Menu',
     priority: 'critical',
   },
   'result-panel': {
-    url: uiAssetUrl('ui/result.uikitml'),
+    url: versionedAssetUrl('ui/result.uikitml'),
     type: AssetType.UIKitML,
     name: 'Result Panel',
     priority: 'critical',
   },
   'intermission-panel': {
-    url: uiAssetUrl('ui/intermission.uikitml'),
+    url: versionedAssetUrl('ui/intermission.uikitml'),
     type: AssetType.UIKitML,
     name: 'Intermission Panel',
     priority: 'critical',
   },
   'build-panel': {
-    url: uiAssetUrl('ui/build-panel.uikitml'),
+    url: versionedAssetUrl('ui/build-panel.uikitml'),
     type: AssetType.UIKitML,
     name: 'Build Panel',
     priority: 'critical',
@@ -77,7 +77,7 @@ export default defineAssets({
     priority: 'background',
   },
   'ocean-body': {
-    url: publicAssetUrl('gltf/ocean-body.glb'),
+    url: versionedAssetUrl('gltf/ocean-body.glb'),
     type: AssetType.GLTF,
     name: 'Ocean Body',
     priority: 'background',

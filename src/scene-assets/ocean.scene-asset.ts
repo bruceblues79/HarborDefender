@@ -18,86 +18,22 @@ const vertexShader = `
 #include <common>
 #include <shadowmap_pars_vertex>
 
-uniform float time;
-uniform float noiseSpeed;     // metres/second, disturbance drifts toward +z
-uniform float noiseFrequency; // noise cells per metre
-uniform float noiseIntensity; // master disturbance strength
-uniform int wakeCount;
-uniform vec3 wakePos[${MAX_WAKE}];    // x, packed radius, z
-uniform vec3 wakeParams[${MAX_WAKE}]; // amplitude, frequency, speed
 varying vec3 vWorldNormal;
 varying vec3 vLocalNormal;
 varying vec3 vWorldPosition;
-
-// Hash-based value noise (2D), quintic-interpolated (C2-continuous) so the
-// lattice shows no derivative creases at cell boundaries.
-float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-}
-float valueNoise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-  return mix(
-    mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-    mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
-    u.y
-  );
-}
-
-// Two-octave noise, roughly -1..1. Sampling (p.y - t) makes the pattern
-// drift toward +z with time.
-float flowingNoise(vec2 p, float t) {
-  vec2 q = vec2(p.x, p.y - t);
-  float n = valueNoise(q) * 0.65 + valueNoise(q * 2.3 + 7.7) * 0.35;
-  return n * 2.0 - 1.0;
-}
+varying vec2 vUv;
 
 void main() {
-  vec3 pos = position;
-
-  // Low-poly waves on the top surface only (y > 0 in local box space)
-  if (pos.y > 0.0) {
-    float wave1 = sin(pos.x * 3.75 + time * 1.2) * 0.02;
-    float wave2 = sin(pos.z * 5.25 + time * 0.9) * 0.0125;
-    float wave3 = sin((pos.x + pos.z) * 2.25 + time * 0.6) * 0.0075;
-    pos.y += wave1 + wave2 + wave3;
-
-    // Surge toward the wall: noise crests travel toward +z, rise the
-    // surface and lean forward so the sea feels like it is piling up
-    // against the harbour wall. Kept small to preserve the low-poly read.
-    float surge = flowingNoise(
-      vec2(pos.x * noiseFrequency, pos.z * noiseFrequency),
-      time * noiseSpeed
-    );
-    pos.y += surge * noiseIntensity * 0.25;
-    pos.z += max(surge, 0.0) * noiseIntensity * 0.15;
-
-    // Wake ripples: concentric rings expanding outward from each source.
-    vec4 worldPos = modelMatrix * vec4(pos, 1.0);
-    for (int i = 0; i < ${MAX_WAKE}; i++) {
-      if (i >= wakeCount) break;
-      vec2 diff = worldPos.xz - wakePos[i].xz;
-      float dist = length(diff);
-      float radius = wakePos[i].y;
-      float amp = wakeParams[i].x;
-      float freq = wakeParams[i].y;
-      float speed = wakeParams[i].z;
-      float atten = smoothstep(radius, 0.0, dist);
-      pos.y += sin(dist * freq - time * speed) * amp * atten;
-    }
-  }
-
-  vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+  vec4 worldPos = modelMatrix * vec4(position, 1.0);
   vWorldPosition = worldPos.xyz;
+  vUv = uv;
   // mat3(modelMatrix) keeps the normal in world space; the renderer's
   // normalMatrix is view-space, which made the cubemap reflection roll with
   // head roll in XR. Uniform scale only (GLB placed at scale 1).
   vWorldNormal = normalize(mat3(modelMatrix) * normal);
   vLocalNormal = normal;
 
-  // Shadow-map lookups follow the wave-displaced world position; the
-  // shadowmap_vertex chunk expects the standard-material locals below.
+  // The shadowmap_vertex chunk expects the standard-material locals below.
   vec4 worldPosition = worldPos;
   vec3 transformedNormal = normalMatrix * normal;
   #include <shadowmap_vertex>
@@ -115,6 +51,7 @@ const fragmentShader = `
 
 uniform samplerCube envMap;
 uniform float reflectivity;
+uniform float brightness;
 uniform float time;
 uniform float noiseSpeed;     // metres/second, perturbation drifts toward +z
 uniform float noiseFrequency; // noise cells per metre
@@ -125,6 +62,14 @@ uniform vec3 wakeParams[${MAX_WAKE}]; // amplitude, frequency, speed
 varying vec3 vWorldNormal;
 varying vec3 vLocalNormal;
 varying vec3 vWorldPosition;
+varying vec2 vUv;
+
+// Circular surface mask in UV space: the disc stays fully opaque, the rim
+// fades out, and everything outside is discarded. Centre and radius are both
+// UV values, so the inscribed circle scales with the quad automatically.
+const float MASK_RADIUS = 0.5;
+const float MASK_FADE = 0.06;
+const vec2 MASK_CENTER = vec2(0.5, 0.4725);
 
 // Hash-based value noise (2D), quintic-interpolated (C2-continuous) so the
 // lattice shows no derivative creases at cell boundaries.
@@ -158,6 +103,12 @@ vec3 linearToSRGB(vec3 c) {
 }
 
 void main() {
+  // Mask first: everything outside the disc is thrown away before the costly
+  // noise, cubemap and shadow work runs.
+  float d = distance(vUv, MASK_CENTER);
+  float mask = 1.0 - smoothstep(MASK_RADIUS - MASK_FADE, MASK_RADIUS, d);
+  if (mask <= 0.001) discard;
+
   vec3 color;
 
   // Fake reflection only on the +y surface (the water top).
@@ -206,7 +157,8 @@ void main() {
   // without this the ship's shadow would read pitch black on the sea.
   color *= mix(0.5, 1.0, getShadowMask());
 
-  gl_FragColor = vec4(linearToSRGB(color), 1.0);
+  color *= brightness;
+  gl_FragColor = vec4(linearToSRGB(color), mask);
 }
 `;
 
@@ -217,13 +169,17 @@ export interface OceanNoiseParams {
   frequency?: number;
   /** Master strength: vertex surge amplitude and reflection wobble. */
   intensity?: number;
+  /** Linear brightness multiplier on the final water colour. */
+  brightness?: number;
 }
 
 /**
- * Wave + fake-reflection material for the solidified ocean body
+ * Fake-reflection material for the solidified ocean plane
  * (gltf/ocean-body.glb, exported by scripts/export-assets.ts). The GLB
- * carries the geometry; this shader supplies vertex waves and the cubemap
- * reflection, applied to the loaded mesh at game start.
+ * carries a single flat quad; this shader supplies the cubemap reflection
+ * with its noise and wake perturbation, applied to the loaded mesh at game
+ * start. The quad is masked to a centred disc in UV space: opaque inside,
+ * fading at the rim, discarded outside.
  *
  * `lights: true` plus the merged UniformsLib.lights lets the renderer feed
  * the shadow-map uniforms, so the surface can receive cast shadows while
@@ -245,6 +201,7 @@ export function createOceanMaterial(noise: OceanNoiseParams = {}): ShaderMateria
         time: { value: 0 },
         envMap: { value: null },
         reflectivity: { value: 1.0 },
+        brightness: { value: noise.brightness ?? 1.0 },
         noiseSpeed: { value: noise.speed ?? 0.8 },
         noiseFrequency: { value: noise.frequency ?? 3.0 },
         noiseIntensity: { value: noise.intensity ?? 0.015 },
@@ -254,6 +211,9 @@ export function createOceanMaterial(noise: OceanNoiseParams = {}): ShaderMateria
       },
     ]),
     lights: true,
+    // Blended rim only; depthWrite stays on so the surface still occludes
+    // hulls below the waterline.
+    transparent: true,
     vertexShader,
     fragmentShader,
   });

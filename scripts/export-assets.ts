@@ -75,13 +75,14 @@ function makeRandom(seed: number): () => number {
 const smooth = (t: number): number => t * t * (3 - 2 * t);
 
 // ---------------------------------------------------------------------------
-// Ocean body (geometry only — the wave/reflection shader stays in the app)
+// Ocean surface (geometry only — the reflection shader stays in the app)
 // ---------------------------------------------------------------------------
 
 function createOceanBodyExport(): Object3D {
-  // 3 m wide, 0.25 m thick, 10 m long (was 6 m, extended by 2/3); 10×1×33
-  // segments keep the same ~3.3/m vertex density so the wave look is unchanged.
-  const geometry = new BoxGeometry(3, 0.25, 10, 10, 1, 33);
+  // One flat 15 × 15 m quad (no subdivision, no thickness). The vertex stage
+  // no longer displaces it, so a single face carries the whole sea.
+  const geometry = new PlaneGeometry(15, 15);
+  geometry.rotateX(-Math.PI / 2);
   const colors = new Float32Array(geometry.attributes.position.count * 3).fill(1);
   geometry.setAttribute('color', new BufferAttribute(colors, 3));
 

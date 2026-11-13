@@ -2,12 +2,6 @@
   "version": "iwsdk.scene.v1",
   "units": "meters",
   "components": {
-    "com.iwsdk.components.DomeGradient": {
-      "sky": [0.45, 0.66, 0.92, 1],
-      "equator": [0.8, 0.88, 0.96, 1],
-      "ground": [0.03, 0.08, 0.15, 1],
-      "intensity": 1
-    },
     "com.iwsdk.components.IBLTexture": {
       "src": "ocean-env.hdr",
       "intensity": 1

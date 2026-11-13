@@ -31,7 +31,17 @@ import {
   Repairing,
   Taunt,
 } from './components.js';
-import { COMBAT, activeLevelList, DEFENSE_PAD, DEFENSE_SLOTS, DEFENDER_BAR_Y, OCEAN, WALL_CENTER_Z } from './level-config.js';
+import {
+  COMBAT,
+  activeLevelList,
+  DEFENSE_PAD,
+  DEFENSE_SLOTS,
+  DEFENDER_BAR_Y,
+  OCEAN,
+  OCEAN_PLANE_SIZE,
+  WALL_CENTER_Z,
+  WALL_SEA_FACE_Z,
+} from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
 import { StartPanelSystem } from './start-panel-system.js';
@@ -412,7 +422,7 @@ export function startBattle(world: World): void {
 
           // Swap the GLB's placeholder material for the wave shader
           const oceanObject = oceanGltf.scene;
-          const oceanMaterial = createOceanMaterial();
+          const oceanMaterial = createOceanMaterial({ brightness: 1.15 });
           oceanMaterial.uniforms.envMap.value = cubeRT.texture;
           oceanMaterial.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
           oceanObject.traverse((child: Object3D) => {
@@ -424,9 +434,13 @@ export function startBattle(world: World): void {
             }
           });
 
-          // Ocean extended to 10 m: the near edge sits against the wall's
-          // sea face, the centre rides OCEAN.centerZ.
-          oceanObject.position.set(0, 0.55, OCEAN.centerZ);
+          // One flat 30 × 30 m quad: its near edge sits on the wall's sea
+          // face and it extends away from the harbour.
+          oceanObject.position.set(
+            0,
+            OCEAN.surfaceY,
+            WALL_SEA_FACE_Z - OCEAN_PLANE_SIZE / 2,
+          );
           world.createTransformEntity(oceanObject).addComponent(OceanTag);
           battlefieldObjects.push(oceanObject);
 
