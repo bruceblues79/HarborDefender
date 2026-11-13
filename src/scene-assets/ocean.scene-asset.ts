@@ -103,6 +103,12 @@ vec3 linearToSRGB(vec3 c) {
 }
 
 void main() {
+  // Mask first: everything outside the disc is thrown away before the costly
+  // noise, cubemap and shadow work runs.
+  float d = distance(vUv, MASK_CENTER);
+  float mask = 1.0 - smoothstep(MASK_RADIUS - MASK_FADE, MASK_RADIUS, d);
+  if (mask <= 0.001) discard;
+
   vec3 color;
 
   // Fake reflection only on the +y surface (the water top).
@@ -150,10 +156,6 @@ void main() {
   // so remap the mask (0 in umbra) to a floor that keeps some water colour;
   // without this the ship's shadow would read pitch black on the sea.
   color *= mix(0.5, 1.0, getShadowMask());
-
-  float d = distance(vUv, MASK_CENTER);
-  float mask = 1.0 - smoothstep(MASK_RADIUS - MASK_FADE, MASK_RADIUS, d);
-  if (mask <= 0.001) discard;
 
   color *= brightness;
   gl_FragColor = vec4(linearToSRGB(color), mask);
