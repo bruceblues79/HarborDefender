@@ -260,22 +260,21 @@ export const DEFENSE_PAD = {
 };
 
 /**
- * 发兵扇形（send-line fan）：远端发兵带是停船带的 `widthScale` 倍，越靠近
- * 城墙横向范围越窄。停船带以基座 1-5 的外沿为界（最外槽位中心 ± 基座半径）；
- * 航线仍是 spawn -> target 的直线，收窄感受由两点自然形成，行进逻辑不变。
+ * 发兵扇形（send-line fan）：远端发兵带总宽 `width`，越靠近城墙横向范围越窄，
+ * 收窄到基座 1-5 的外沿（最外槽位中心 ± 基座半径）。航线仍是 spawn -> target
+ * 的直线，收窄感受由两点自然形成，行进逻辑不变。
  */
 export const SPAWN_FAN = {
-  /** 远端发兵带半宽倍数（相对停船带）。 */
-  widthScale: 1.5,
+  /** 远端发兵带总宽（m）。 */
+  width: 5.5,
   /** 停船带半宽（m）：基座 1-5 的外沿。 */
   stopHalfWidth:
     Math.max(...DEFENSE_SLOTS.map((slot) => Math.abs(slot.x))) +
     DEFENSE_PAD.diameter / 2,
 };
 
-/** 远端发兵带半宽（m）——停船带半宽 × widthScale。 */
-export const SPAWN_HALF_WIDTH: number =
-  SPAWN_FAN.stopHalfWidth * SPAWN_FAN.widthScale;
+/** 远端发兵带半宽（m）。 */
+export const SPAWN_HALF_WIDTH: number = SPAWN_FAN.width / 2;
 
 /**
  * Economy knobs: money the player starts with, kill bounties, repair
@@ -400,8 +399,8 @@ export const STOP_MIN_GAP_Z = 1.5;
 export const STOP_ROLL_TRIES = 8;
 
 /**
- * Spawn-point best-candidate tries. The far edge is only about 4.2 m wide, so
- * a plain random roll keeps landing new ships on top of ones that just emerged.
+ * Spawn-point best-candidate tries. The far edge is only 5.5 m wide, so a
+ * plain random roll keeps landing new ships on top of ones that just emerged.
  * Roll a handful and keep the X furthest from every active attacker's current
  * X — same pattern as stop-point selection, one dimension simpler.
  */
