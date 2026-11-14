@@ -131,13 +131,11 @@ export const PACING = {
 };
 
 /**
- * Gameplay ocean footprint (spawn lane, stop line, splash band). The visual
- * surface is a single 20 × 20 m plane flush with the wall — see
- * OCEAN_PLANE_SIZE and battle-setup.ts.
+ * Gameplay ocean footprint (stop line, splash band). The visual surface is a
+ * single 15 × 15 m plane flush with the wall — see OCEAN_PLANE_SIZE and
+ * battle-setup.ts. The x band attackers roam lives in SPAWN_FAN.
  */
 export const OCEAN = {
-  /** Lane width along x (m). */
-  width: 3,
   /** Lane length along z (m). */
   length: 10,
   /** Lane centre z (m). */
@@ -251,6 +249,8 @@ export const REPAIR_BUTTON = {
  * only and opens the build dock on press.
  */
 export const DEFENSE_PAD = {
+  /** Pad diameter (m) — the pedestal disc under every defense slot. */
+  diameter: 0.38,
   /** Pad height (m): the step every mounted unit stands on. */
   height: 0.04,
   /** Breathing speed (rad/s) — ~0.6 Hz. */
@@ -258,6 +258,24 @@ export const DEFENSE_PAD = {
   /** Emissive-intensity amplitude: intensity sweeps 0..breatheAmp. */
   breatheAmp: 0.3,
 };
+
+/**
+ * 发兵扇形（send-line fan）：远端发兵带是停船带的 `widthScale` 倍，越靠近
+ * 城墙横向范围越窄。停船带以基座 1-5 的外沿为界（最外槽位中心 ± 基座半径）；
+ * 航线仍是 spawn -> target 的直线，收窄感受由两点自然形成，行进逻辑不变。
+ */
+export const SPAWN_FAN = {
+  /** 远端发兵带半宽倍数（相对停船带）。 */
+  widthScale: 1.5,
+  /** 停船带半宽（m）：基座 1-5 的外沿。 */
+  stopHalfWidth:
+    Math.max(...DEFENSE_SLOTS.map((slot) => Math.abs(slot.x))) +
+    DEFENSE_PAD.diameter / 2,
+};
+
+/** 远端发兵带半宽（m）——停船带半宽 × widthScale。 */
+export const SPAWN_HALF_WIDTH: number =
+  SPAWN_FAN.stopHalfWidth * SPAWN_FAN.widthScale;
 
 /**
  * Economy knobs: money the player starts with, kill bounties, repair
@@ -367,7 +385,7 @@ export const SPAWN_FADE_DURATION = 0.9;
  * 1.2 m long: 0.8 m across the beam, 1.5 m along the keel. An elliptical test
  * packs this small patch of water noticeably tighter than one isotropic radius.
  *
- * Note the stop zone is 2.4 m by 3.2 m, so six simultaneous stops at this
+ * Note the stop zone is 2.78 m by 3.2 m, so six simultaneous stops at this
  * spacing is close to the limit — the last ships out will settle a little
  * inside the minimum, which is expected behaviour, not a fault. Loosen these
  * two numbers to let the fleet cluster more freely.
@@ -382,10 +400,10 @@ export const STOP_MIN_GAP_Z = 1.5;
 export const STOP_ROLL_TRIES = 8;
 
 /**
- * Spawn-point best-candidate tries. The far edge is only 3 m wide, so a plain
- * random roll keeps landing new ships on top of ones that just emerged. Roll a
- * handful and keep the X furthest from every active attacker's current X —
- * same pattern as stop-point selection, one dimension simpler.
+ * Spawn-point best-candidate tries. The far edge is only about 4.2 m wide, so
+ * a plain random roll keeps landing new ships on top of ones that just emerged.
+ * Roll a handful and keep the X furthest from every active attacker's current
+ * X — same pattern as stop-point selection, one dimension simpler.
  */
 export const SPAWN_ROLL_TRIES = 6;
 
@@ -650,9 +668,9 @@ export const COMBAT = {
   /** Seconds for one hit flash to expand and fade. */
   hitFlashDuration: 0.5,
   /** Base sphere radius (m) at scale 1 — defender cores (harbour cannons). */
-  hitFlashRadius: 0.3,
+  hitFlashRadius: 0.45,
   /** Attacker cores (pirate ships) bloom larger to cover the whole hull. */
-  hitFlashShipRadius: 0.35,
+  hitFlashShipRadius: 0.525,
   /** Starting fraction of full size ("initial 0.5 volume"). */
   hitFlashStartScale: 0.5,
   /** Fresnel centre colour (hot yellow, sRGB hex). */
@@ -900,8 +918,11 @@ export const BOSS = {
    * Per-shot jitter reuses COMBAT.fireJitterMin/Max — one jitter truth for
    * every gun in the game, boss included.
    */
-  /** Hit-core radius (m) of a gun turret (baked hit_core helper). */
-  turretCoreRadius: 0.35,
+  /**
+   * Hit-core radius (m) of a gun turret (baked hit_core helper).
+   * boss 整体 1.5×：0.35 -> 0.525。
+   */
+  turretCoreRadius: 0.525,
   /**
    * Turret death burst: scaled-down shatter of the shared debris pool.
    * turretBurstFloorY is a carrier-LOCAL rest height relative to the burst
@@ -972,8 +993,11 @@ export const BOSS_CHIEF = {
   riseSec: 1.2,
   /** Health pool: the same normalised 100-point sheet as every unit. */
   health: COMBAT.unitHealth,
-  /** Hit-core radius (m) of the head (baked hit_core helper). */
-  coreRadius: 0.3,
+  /**
+   * Hit-core radius (m) of the head (baked hit_core helper).
+   * boss 整体 1.5×：0.3 -> 0.45。
+   */
+  coreRadius: 0.45,
   /** Death-burst size ratio over the shared debris pool (turret-scale, smaller). */
   burstRatio: 0.3,
   /** Carrier-LOCAL rest height of the burst chunks (deck bounce, like turrets). */
@@ -1094,7 +1118,8 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   },
   'boss_islewrath': {
     assetId: 'boss-islewrath',
-    scale: 1,
+    // 整体 1.5（2026-11-14）：洋面放宽后 boss 相对过小，整体放大。
+    scale: 1.5,
     movement: 'default-ship',
     faction: 'attacker',
     // Waterline seat (v0.1.180): two draft orders consolidated — the surface

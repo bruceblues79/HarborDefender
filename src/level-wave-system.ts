@@ -48,7 +48,6 @@ import {
   ENDLESS,
   ECONOMY,
   endlessList,
-  OCEAN,
   OCEAN_FAR_Z,
   BOSS,
   PACING,
@@ -56,6 +55,8 @@ import {
   RewardTier,
   setActiveLevelList,
   SPAWN_FADE_DURATION,
+  SPAWN_FAN,
+  SPAWN_HALF_WIDTH,
   SPAWN_ROLL_TRIES,
   STOP_MIN_GAP_X,
   STOP_MIN_GAP_Z,
@@ -167,8 +168,6 @@ function prepareSpawnMaterials(object: Object3D): void {
 
 /** Ships emerge this far inside the ocean's far edge. */
 const SPAWN_Z = OCEAN_FAR_Z + 0.1;
-/** Keep a lane clear of the ocean edge. */
-const SPAWN_MARGIN = 0.3;
 
 type DirectorPhase =
   | 'waiting-start'
@@ -410,9 +409,14 @@ export class LevelWaveSystem extends createSystem({
     return true;
   }
 
-  /** World x a ship may emerge at: anywhere across the ocean minus edge margin. */
-  private rollX(): number {
-    return (Math.random() * 2 - 1) * (OCEAN.width / 2 - SPAWN_MARGIN);
+  /** World x a ship may emerge at: the wide far-edge band. */
+  private rollSpawnX(): number {
+    return (Math.random() * 2 - 1) * SPAWN_HALF_WIDTH;
+  }
+
+  /** World x a berth may claim: the narrow pedestal band against the wall. */
+  private rollStopX(): number {
+    return (Math.random() * 2 - 1) * SPAWN_FAN.stopHalfWidth;
   }
 
   /**
@@ -427,10 +431,10 @@ export class LevelWaveSystem extends createSystem({
    * Runs once per dispatch (~every 2 s), never per frame.
    */
   private pickSpawnX(): number {
-    let best = this.rollX();
+    let best = this.rollSpawnX();
     let bestClearance = this.spawnClearance(best);
     for (let attempt = 1; attempt < SPAWN_ROLL_TRIES; attempt += 1) {
-      const x = this.rollX();
+      const x = this.rollSpawnX();
       const clearance = this.spawnClearance(x);
       if (clearance <= bestClearance) continue;
       best = x;
@@ -475,7 +479,7 @@ export class LevelWaveSystem extends createSystem({
    */
   private pickTarget(def: UnitTypeDef): { x: number; z: number } {
     let best = {
-      x: this.rollX(),
+      x: this.rollStopX(),
       z: this.rollZ(def.stopZMin, def.stopZMax),
     };
     let bestRoom = this.roominess(best.x, best.z);
@@ -484,7 +488,7 @@ export class LevelWaveSystem extends createSystem({
       attempt < STOP_ROLL_TRIES && bestRoom < 1;
       attempt += 1
     ) {
-      const x = this.rollX();
+      const x = this.rollStopX();
       const z = this.rollZ(def.stopZMin, def.stopZMax);
       const room = this.roominess(x, z);
       if (room < bestRoom) continue;
