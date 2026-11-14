@@ -414,7 +414,7 @@ export class LevelWaveSystem extends createSystem({
     return (Math.random() * 2 - 1) * SPAWN_HALF_WIDTH;
   }
 
-  /** World x a berth may claim: the narrow pedestal band against the wall. */
+  /** World x a berth may claim: the wall-width band against the wall. */
   private rollStopX(): number {
     return (Math.random() * 2 - 1) * SPAWN_FAN.stopHalfWidth;
   }

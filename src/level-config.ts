@@ -160,6 +160,8 @@ export const OCEAN_FAR_Z: number = OCEAN.centerZ - OCEAN.length / 2;
  * exactly on the ocean's near edge (z = -1.5), so beyond it there is only wall.
  */
 export const WALL_CENTER_Z = -1.3;
+/** Wall width across x (m) — the berth band may span the wall's full face. */
+export const WALL_WIDTH = 3.4;
 export const WALL_DEPTH_Z = 0.4;
 export const WALL_SEA_FACE_Z: number = WALL_CENTER_Z - WALL_DEPTH_Z / 2;
 /** Land-side face; past it the wall no longer holds burst chunks up. */
@@ -261,16 +263,14 @@ export const DEFENSE_PAD = {
 
 /**
  * 发兵扇形（send-line fan）：远端发兵带总宽 `width`，越靠近城墙横向范围越窄，
- * 收窄到基座 1-5 的外沿（最外槽位中心 ± 基座半径）。航线仍是 spawn -> target
- * 的直线，收窄感受由两点自然形成，行进逻辑不变。
+ * 收窄到城墙全宽（±WALL_WIDTH/2）。航线仍是 spawn -> target 的直线，收窄感受
+ * 由两点自然形成，行进逻辑不变。
  */
 export const SPAWN_FAN = {
   /** 远端发兵带总宽（m）。 */
-  width: 5.5,
-  /** 停船带半宽（m）：基座 1-5 的外沿。 */
-  stopHalfWidth:
-    Math.max(...DEFENSE_SLOTS.map((slot) => Math.abs(slot.x))) +
-    DEFENSE_PAD.diameter / 2,
+  width: 6,
+  /** 停船带半宽（m）：与城墙同宽（3.4 m）。 */
+  stopHalfWidth: WALL_WIDTH / 2,
 };
 
 /** 远端发兵带半宽（m）。 */
@@ -346,19 +346,18 @@ export const SHIP_LENGTH = 1.2;
 export const SHIP_HALF_LENGTH: number = SHIP_LENGTH / 2;
 /**
  * Clear water (m) kept between a stopped ship's bow and the wall's seaward
- * face — a full hull length of open water, so the wall never reads as a
- * bumping post. This is the knob to turn when attackers should close in.
+ * face — a hull length plus 1.3 m, so the near berth sits ~3.1 m out from the
+ * wall. This is the knob to turn when attackers should close in / pull back.
  */
-export const SHIP_STOP_MARGIN: number = SHIP_LENGTH;
+export const SHIP_STOP_MARGIN: number = SHIP_LENGTH + 1.3;
 
 /**
- * Attackers stop in the wall-side half of the ocean: from the midpoint
- * toward the wall, but with the bow kept just short of the wall. The stop
- * line has to be derived from the hull's own length — the wall is shallower
- * in z than half a hull, so any formula that measures from the wall's land
- * end would drive the bow clean through the wall block.
+ * Attackers stop on the pushed-out band: far edge 1.5 m beyond the ocean
+ * midpoint, near edge ~3.1 m off the wall. The near stop keeps a full hull
+ * length of clear water; everything derived from it (fire line, flyer bands,
+ * boss berth) shifts out by the same 1.5 m.
  */
-export const SHIP_STOP_Z_MIN: number = OCEAN.centerZ;
+export const SHIP_STOP_Z_MIN: number = OCEAN.centerZ - 1.5;
 export const SHIP_STOP_Z_MAX: number =
   WALL_SEA_FACE_Z - SHIP_HALF_LENGTH - SHIP_STOP_MARGIN;
 /** Ships float just below the wave crest at the surface. */
@@ -384,7 +383,7 @@ export const SPAWN_FADE_DURATION = 0.9;
  * 1.2 m long: 0.8 m across the beam, 1.5 m along the keel. An elliptical test
  * packs this small patch of water noticeably tighter than one isotropic radius.
  *
- * Note the stop zone is 2.78 m by 3.2 m, so six simultaneous stops at this
+ * Note the stop zone is 3.4 m by 3.4 m, so six simultaneous stops at this
  * spacing is close to the limit — the last ships out will settle a little
  * inside the minimum, which is expected behaviour, not a fault. Loosen these
  * two numbers to let the fleet cluster more freely.
@@ -399,7 +398,7 @@ export const STOP_MIN_GAP_Z = 1.5;
 export const STOP_ROLL_TRIES = 8;
 
 /**
- * Spawn-point best-candidate tries. The far edge is only 5.5 m wide, so a
+ * Spawn-point best-candidate tries. The far edge is only 6 m wide, so a
  * plain random roll keeps landing new ships on top of ones that just emerged.
  * Roll a handful and keep the X furthest from every active attacker's current
  * X — same pattern as stop-point selection, one dimension simpler.
@@ -548,26 +547,19 @@ export const COMBAT = {
   /**
    * Gravity (m/s^2) for the parabolic flight — shared by every projectile:
    * city shells, dragless attacker intercepts and stones. The intercept
-   * solver compensates exactly, so attacker arcs only steepen. 12.0 (feel
-   * test, from 9.8) drops shots harder and shortens carry to ~5.8 m @ 33°.
+   * solver compensates exactly, so attacker arcs only steepen. Raised with
+   * shellSpeed (2026-11-14) so max carry grows 5.8 -> ~7.25 m while the
+   * flight time and arc shape stay unchanged.
    */
-  gravity: 12.0,
+  gravity: 15.0,
   /**
-   * Muzzle speed (m/s) — one gun fires everything. 12.0 rides with a heavy
-   * linear drag (shellDrag below): the ball leaves fast and visibly sheds
-   * speed, which layers the ranges the way a real throw feels — optimum
-   * carry ~30° (~7 m), 45° ~6.4 m, 60° ~4.9 m (reaches the farthest ship
-   * berth -6.5 on a mid arc), 80° lobs die at ~1.8 m, flat shots carry
-   * ~2.7 m. History: 7.45 → 9.0 (one-cannon plan) re-opened the flapper
-   * band but made every mid elevation land alike; 7.0 → 7.8 restored the
-   * layering while staying vacuum-flat (30-60° within 15%); 12.0 + drag
-   * breaks that flat top for good — raising the barrel past the optimum
-   * now monotonically shortens the shot; 10.0 (feel test) shrinks max
-   * carry to ~5.6 m @ 32° — ship berths past ~-5.5 fall out of reach;
-   * 11.0 + gravity 12.0 (feel test) keeps max carry ~5.8 m @ 33° — the
-   * far ship end -6.5 stays out of reach, the wall-side half hits.
+   * Muzzle speed (m/s) — one gun fires everything. 13.75 + gravity 15.0 is
+   * the 11.0 / 12.0 pair scaled by 1.25: drag-loaded arcs keep their layering
+   * but reach ~7.25 m, enough for the pushed-out far berth (-8.0). Keep the
+   * two values moving together — scaling both preserves the flight time and
+   * only changes the reach.
    */
-  shellSpeed: 11.0,
+  shellSpeed: 13.75,
   /**
    * Linear air drag (1/s) on defender shells only: dv/dt = -drag·v + g.
    * Pirate and boss intercepts solve vacuum trajectories, so their shells
@@ -656,7 +648,7 @@ export const COMBAT = {
    * so the arc stays flat (~0.2-0.35 m apex) while mathematically landing
    * on the target core. Shares BallisticSystem's gravity.
    */
-  pirateShellSpeed: 8,
+  pirateShellSpeed: 10,
   /**
    * Hit-flash pool shared by every impact: spheres bloom from `startScale`
    * to full size while fading out with an EaseOut curve over `duration`.
@@ -752,8 +744,8 @@ export const TRAJECTORY_PREVIEW = {
   stepDistance: 0.12,
   /** Seconds between two closed-form march samples feeding the resample. */
   sampleStep: 0.02,
-  /** InstancedMesh capacity; the longest lob stays well under this. */
-  maxDots: 72,
+  /** InstancedMesh capacity; sized for the 7.25 m carry at 0.12 m spacing. */
+  maxDots: 90,
   /** Cube edge (m) at the tail (full size) — under half a core radius. */
   dotSize: 0.054,
   /** Cube edge scale at the muzzle end (x dotSize); grows linearly to 1 at the water end. */
@@ -826,31 +818,27 @@ export const DAMAGE_MATRIX: Record<string, number> = {
 export const FLYER_Y = 2.857;
 
 /**
- * The bombardier's berth band: far out at -4.7, near end pulled back to -3.15
- * (2026-11-04 远停自 -4.6 补到 -4.7，纵深 1.55 m，覆盖 STOP_MIN_GAP_Z = 1.5；
- * 近停越靠前，炮口到目标的水平距离越短、仰角越陡：-2.0 时 66.5°，
- * -2.9 时 51.3°，-3.15 约 48.5°). MIN < MAX keeps the ship constants'
- * reading — MIN far out, MAX against the wall.
+ * The bombardier's berth band, shifted 1.5 m out with the ship band: far out
+ * at -6.2, near end at -4.65 (2026-11-14 推远后近停仰角变缓，炮口到目标的
+ * 水平距离变长). MIN < MAX keeps the ship constants' reading — MIN far out,
+ * MAX against the wall.
  */
-export const FLYER_STOP_Z_MIN = -4.7;
-export const FLYER_STOP_Z_MAX = -3.15;
+export const FLYER_STOP_Z_MIN = -6.2;
+export const FLYER_STOP_Z_MAX = -4.65;
 
 /**
  * Ornithopter flight envelope. The middle-air band sits below the
- * bombardier's cruise plane but inside the city cannons' reach. Under the
- * drag-loaded v0 12 lob the band keeps a healthy mid-arc window (far stop
- * ≈ 22-35°, near stop ≈ 35-50°); high lobs no longer reach the outer
- * band — linear drag starves them of horizontal carry, the intended
- * "steep shots guard close in" behavior. The far edge 外推自 -4.9 至
- * -5.25，让满层 6 机可排 3 × 2, and the forward extension [-3.5, -3.3]
- * sits this side of it — still well inside cannon range.
+ * bombardier's cruise plane but inside the city cannons' reach. The whole
+ * band shifted 1.5 m out with the ship band (2026-11-14): far stop -6.75,
+ * near stop -4.8, 1.95 m of depth — enough for the 6-unit cap at
+ * STOP_MIN_GAP_Z = 1.5, still well inside the widened cannon reach.
  */
 export const ORNITHOPTER = {
   /** Cruise altitude (m) — the unit's object-origin height. */
   y: 2.3,
-  /** Berth band: far out at -5.25, nearest at -3.3. */
-  stopZMin: -5.25,
-  stopZMax: -3.3,
+  /** Berth band: far out at -6.75, nearest at -4.8. */
+  stopZMin: -6.75,
+  stopZMax: -4.8,
   /** Uniform model scale — 0.9 reads 10% smaller next to the bombardier. */
   scale: 0.9,
   /** Wing flap frequency (rad/s) and swing amplitude (rad). */
@@ -868,10 +856,10 @@ export const ORNITHOPTER = {
  * wall with the chief death light (see DEATH_LIGHT).
  */
 export const BOSS = {
-  /** Straight-run berth point: centre line, one unit nearer the wall than
-   * the ocean midpoint — the wake rings and broadside read better there. */
+  /** Straight-run berth point: centre line, 2 m beyond the ocean midpoint —
+   * pushed out with the rest of the berth band. */
   targetX: 0,
-  targetZ: OCEAN.centerZ + 1,
+  targetZ: OCEAN.centerZ - 0.5,
   /**
    * Ripple radius (m) of the boss's wake. The hull is 3-4x a raider's beam,
    * so its wake dwarfs the shared WAKE_RADIUS (1.25 × 3 = 3.75); a radius
@@ -953,14 +941,16 @@ export const BOSS = {
   laserAimHoldSec: 0.5,
   /** Fraction of the victim's max Health deducted per beam emission. */
   laserDamageRatio: 0.6,
-  /** Damage-corridor half-width (m) around the beam centre line. */
+  /**
+   * Damage-corridor half-width (m) around the beam centre line. Applies to
+   * collateral defenders only — the locked core always takes the hit.
+   */
   laserDamageRadius: 0.35,
   /**
-   * Fraction of the natural aim drop removed for a flatter bearing. The
-   * muzzle sits ~0.9 m above a defender core at ~4.2 m (≈12° depression);
-   * 0.5 halves that to ≈6°, and the flattened beam still sweeps the damage
-   * corridor over the aimed core (passes ~0.45 m above it against a
-   * 0.22 + laserDamageRadius reach). 0 aims dead-on, 1 is fully level.
+   * Fraction of the natural aim drop removed for a flatter bearing. This is
+   * the authored cannon bearing (0 aims dead-on, 1 is fully level) — leave it
+   * alone when a hull resize shifts the muzzle. Hit reliability is owned by
+   * `lockedCoreIndex` in the damage pass, not by this angle.
    */
   laserPitchFlatten: 0.5,
   /**
