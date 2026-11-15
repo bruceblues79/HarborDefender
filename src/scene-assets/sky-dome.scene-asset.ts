@@ -82,10 +82,26 @@ void main() {
   // sits atan(eyeHeight / rimDistance) below the eye. Sample the cube that much
   // higher — twice it, to continue what the water reflects at the rim — so the
   // cube's own horizon band falls behind the water instead of floating above it.
+  //
+  // The join is a circle, not a straight horizon, so that drop is not one
+  // number: the rim is ~25 m away dead ahead but only ~9 m away toward the
+  // sides. One fixed distance therefore lifts the sky correctly in the middle
+  // of the view and under-lifts it at the edges — exactly the mismatch felt
+  // when orbiting left and right. Solving the rim distance per fragment (ray
+  // against the rim circle in the ground plane) keeps the join glued all the
+  // way round.
   float eyeHeight = max(cameraPosition.y - ${SKY_PORTAL_BASE_Y.toFixed(4)}, 0.0);
-  float rimDistance =
-    length(cameraPosition.xz - vec2(0.0, ${SKY_PORTAL_CENTER_Z.toFixed(4)})) + ${SKY_PORTAL_RADIUS.toFixed(4)};
-  float rimDrop = atan(eyeHeight / rimDistance);
+  vec2 camXZ = cameraPosition.xz - vec2(0.0, ${SKY_PORTAL_CENTER_Z.toFixed(4)});
+  vec2 viewXZ = vWorldPosition.xz - cameraPosition.xz;
+  vec2 azimuth = viewXZ / max(length(viewXZ), 0.0001);
+  float camOut = dot(camXZ, camXZ) - ${(SKY_PORTAL_RADIUS * SKY_PORTAL_RADIUS).toFixed(4)};
+  float b = dot(camXZ, azimuth);
+  // Far intersection of this azimuth with the rim circle. Azimuths that miss
+  // it entirely collapse to the perpendicular foot, and the tangent distance
+  // is the floor — the rim can never be nearer than that, so the lift can
+  // never blow up near the wall.
+  float rimDistance = max(-b + sqrt(max(b * b - camOut, 0.0)), sqrt(max(camOut, 0.0)));
+  float rimDrop = atan(eyeHeight / max(rimDistance, 0.5));
   vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
   vec3 sampleDir = rotateAxis(dir, right, 2.0 * rimDrop);
   sampleDir = normalize(vec3(sampleDir.x, max(sampleDir.y, 0.0001), sampleDir.z));
