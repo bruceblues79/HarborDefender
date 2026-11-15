@@ -7,11 +7,7 @@
 
 import { BackSide, Mesh, ShaderMaterial, SphereGeometry } from '@iwsdk/core';
 import { OCEAN, OCEAN_CENTER_Z, OCEAN_PLANE_SIZE } from '../level-config.js';
-import {
-  OCEAN_BRIGHTNESS,
-  OCEAN_TINT,
-  OCEAN_TINT_AMOUNT,
-} from './ocean.scene-asset.js';
+import { OCEAN_BRIGHTNESS, OCEAN_TINT, OCEAN_TINT_AMOUNT } from './ocean.scene-asset.js';
 
 /**
  * Sky portal (天幕): the upper half of a sphere carrying the environment cube,
