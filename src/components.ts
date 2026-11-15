@@ -584,9 +584,10 @@ export const GunCycle = createComponent('GunCycle', {
  * `cooldown -> turning -> hold -> charging -> firing` loop: swing the pivot
  * onto the LockTarget snapshot (quaternion rotateTowards, yaw + pitch in
  * one arc), hold briefly at convergence with the beam axis frozen, charge,
- * then deduct laserDamageRatio of each swept defender's max Health once at
- * the firing transition. The axis freeze (origin/dir/length below) locks a
- * defense-slot DIRECTION: a target dying during hold/charge/fire never
+ * then deduct laserDamageRatio of the locked core's max Health (guaranteed)
+ * plus every other defender caught in the beam corridor. The axis freeze
+ * (origin/dir/length/lockedCoreIndex below) locks a defense-slot
+ * DIRECTION + victim: a target dying during hold/charge/fire never
  * re-aims, and FreeLockTargetSystem re-rolls of the slot are ignored until
  * the next cooldown hands targeting back. LaserCycleSystem is the only
  * writer; death stays single-truthed in ShellHitSystem's death sweep.
@@ -615,6 +616,13 @@ export const LaserCycle = createComponent('LaserCycle', {
   /** Exact node names of the aim pivot and the beam origin muzzle. */
   pivotName: { type: 'String', default: 'gun_rotate_laser' },
   muzzleName: { type: 'String', default: 'muzzle_laser' },
+  /**
+   * Entity index of the defender core the beam was locked onto when the axis
+   * froze. This is a snapshot, not a live lock: the locked core takes the
+   * damage pass unconditionally even if the visible column drifts off it,
+   * so turning the fx off never changes who gets hurt. -1 = no target.
+   */
+  lockedCoreIndex: { type: 'Int32', default: -1 },
   /**
    * Beam axis frozen at aim convergence: muzzle world position (origin),
    * the muzzle's world -Z direction (dir, unit length), and the distance

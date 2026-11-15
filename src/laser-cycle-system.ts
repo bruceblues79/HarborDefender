@@ -41,10 +41,12 @@ const FORWARD = new Vector3(0, 0, -1);
  * cannon locks a defense-slot direction, and a FreeLockTargetSystem re-roll
  * of the slot is harmless until the next cooldown hands targeting back.
  *
- * Damage is a single pass at the firing transition: every live defender
- * core within the frozen segment's corridor loses `laserDamageRatio` of its
- * max Health. Only `Health.current` is written — what dying means stays
- * single-truthed in ShellHitSystem's death sweep.
+ * Damage is a single pass at the firing transition: the core locked at axis
+ * freeze ALWAYS loses `laserDamageRatio` of its max Health (the lock-on
+ * guarantee, independent of where the visible column drifts), and every
+ * other live defender core within the frozen segment's corridor takes the
+ * same hit as collateral. Only `Health.current` is written — what dying
+ * means stays single-truthed in ShellHitSystem's death sweep.
  *
  * Stateless system: no per-entity caches. Pivot/muzzle are resolved from
  * the cannon's own subtree (`entity.object3D`) at each use; all beam-axis
@@ -255,6 +257,13 @@ export class LaserCycleSystem extends createSystem({
       'length',
       this.originToTarget(laser) * BOSS.laserBeamLengthBoost,
     );
+    // Snapshot the victim too: the beam is a guaranteed hit on the core the
+    // cannon locked, independent of where the visible column ends up.
+    laser.setValue(
+      LaserCycle,
+      'lockedCoreIndex',
+      Number(laser.getValue(LockTarget, 'targetCoreIndex')),
+    );
   }
 
   /** Distance from the frozen origin to the locked target snapshot. */
@@ -272,14 +281,17 @@ export class LaserCycleSystem extends createSystem({
   }
 
   /**
-   * One damage pass at the firing transition: every live defender core
-   * whose centre lies within the corridor (beam half-width + its own core
-   * radius around the frozen origin->end segment) loses
-   * `BOSS.laserDamageRatio` of its max Health. Defenders never move and the
-   * axis is frozen, so one pass at emission start covers the whole sweep —
-   * a target that dies to something else mid-sweep simply has no Health
-   * left to take. Only `Health.current` is written; the death sweep in
-   * ShellHitSystem (priority 14, same frame) owns what dying means.
+   * One damage pass at the firing transition. The core snapshotted into
+   * `lockedCoreIndex` at axis freeze ALWAYS takes `laserDamageRatio` of its
+   * max Health — that is the lock-on guarantee, and it holds no matter where
+   * the visible column drifts or whether the fx is disabled. Every other
+   * live defender core whose centre lies within the corridor (beam
+   * half-width + its own core radius around the frozen origin->end segment)
+   * takes the same hit as collateral. Defenders never move and the axis is
+   * frozen, so one pass at emission start covers the whole sweep — a target
+   * that dies to something else mid-sweep simply has no Health left to take.
+   * Only `Health.current` is written; the death sweep in ShellHitSystem
+   * (priority 14, same frame) owns what dying means.
    */
   private applyBeamDamage(laser: Entity): void {
     const origin = this.origin.set(
@@ -293,21 +305,24 @@ export class LaserCycleSystem extends createSystem({
       Number(laser.getValue(LaserCycle, 'dirZ')),
     );
     const beamLength = Number(laser.getValue(LaserCycle, 'length'));
+    const lockedIndex = Number(laser.getValue(LaserCycle, 'lockedCoreIndex'));
     if (beamLength <= 0) return;
     for (const core of this.queries.cores.entities) {
       if (core.getValue(HitCore, 'faction') !== 'defender') continue;
-      core.object3D?.getWorldPosition(this.corePos);
-      this.toCore.copy(this.corePos).sub(origin);
-      // Closest point on the frozen segment [origin, origin + dir·length].
-      const along = Math.max(
-        0,
-        Math.min(beamLength, this.toCore.dot(beamDir)),
-      );
-      this.closest.copy(origin).addScaledVector(beamDir, along);
-      this.toCore.copy(this.corePos).sub(this.closest);
-      const reach =
-        Number(core.getValue(HitCore, 'radius')) + BOSS.laserDamageRadius;
-      if (this.toCore.lengthSq() > reach * reach) continue;
+      if (core.index !== lockedIndex) {
+        core.object3D?.getWorldPosition(this.corePos);
+        this.toCore.copy(this.corePos).sub(origin);
+        // Closest point on the frozen segment [origin, origin + dir·length].
+        const along = Math.max(
+          0,
+          Math.min(beamLength, this.toCore.dot(beamDir)),
+        );
+        this.closest.copy(origin).addScaledVector(beamDir, along);
+        this.toCore.copy(this.corePos).sub(this.closest);
+        const reach =
+          Number(core.getValue(HitCore, 'radius')) + BOSS.laserDamageRadius;
+        if (this.toCore.lengthSq() > reach * reach) continue;
+      }
       const max = Number(core.getValue(Health, 'max'));
       const current = Number(core.getValue(Health, 'current'));
       core.setValue(
