@@ -71,12 +71,29 @@ vec3 linearToSRGB(vec3 c) {
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
 }
 
+vec3 rotateAxis(vec3 v, vec3 axis, float a) {
+  float c = cos(a);
+  float s = sin(a);
+  return v * c + cross(axis, v) * s + axis * dot(axis, v) * (1.0 - c);
+}
+
 void main() {
   // Direction, not surface UV: the cube is a sky at infinity. The tint and the
   // brightness below are the ocean shader's own constants applied in the same
   // order, so sky and water are indistinguishable where they meet.
   vec3 dir = normalize(vWorldPosition - cameraPosition);
-  vec3 color = textureCube(uSkyCube, dir).rgb;
+  // The sea plane of this game is the water disc, not the eye level: its rim
+  // sits atan(eyeHeight / rimDistance) below the eye. Sample the cube that much
+  // higher — twice it, to continue what the water reflects at the rim — so the
+  // cube's own horizon band falls behind the water instead of floating above it.
+  float eyeHeight = max(cameraPosition.y - ${SKY_PORTAL_BASE_Y.toFixed(4)}, 0.0);
+  float rimDistance =
+    length(cameraPosition.xz - vec2(0.0, ${SKY_PORTAL_CENTER_Z.toFixed(4)})) + ${SKY_PORTAL_RADIUS.toFixed(4)};
+  float rimDrop = atan(eyeHeight / rimDistance);
+  vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+  vec3 sampleDir = rotateAxis(dir, right, 2.0 * rimDrop);
+  sampleDir = normalize(vec3(sampleDir.x, max(sampleDir.y, 0.0001), sampleDir.z));
+  vec3 color = textureCube(uSkyCube, sampleDir).rgb;
   color = mix(color, vec3(${OCEAN_TINT[0]}, ${OCEAN_TINT[1]}, ${OCEAN_TINT[2]}), ${OCEAN_TINT_AMOUNT});
   color = linearToSRGB(color * uIntensity);
 
