@@ -132,7 +132,7 @@ export const PACING = {
 
 /**
  * Gameplay ocean footprint (stop line, splash band). The visual surface is a
- * single 15 × 15 m plane flush with the wall — see OCEAN_PLANE_SIZE and
+ * single quad masked to its inscribed disc — see OCEAN_PLANE_SIZE and
  * battle-setup.ts. The x band attackers roam lives in SPAWN_FAN.
  */
 export const OCEAN = {
@@ -145,10 +145,18 @@ export const OCEAN = {
 };
 
 /**
- * Edge length (m) of the visual water plane. Its near edge sits on the wall's
- * sea face and the quad extends away from the harbour.
+ * Edge length (m) the visual water quad is scaled to. The shader masks it to
+ * the inscribed disc, so the water's radius is half this value — and the sky
+ * portal takes that same radius, which is what keeps the two rims married.
  */
-export const OCEAN_PLANE_SIZE = 15;
+export const OCEAN_PLANE_SIZE = 22;
+
+/**
+ * Edge length (m) of the ocean-body GLB's quad as exported
+ * (scripts/export-assets.ts). The placed mesh is scaled from this to
+ * OCEAN_PLANE_SIZE.
+ */
+export const OCEAN_BODY_GLTF_SIZE = 15;
 
 /** World z of the ocean's far edge — where attackers emerge. */
 export const OCEAN_FAR_Z: number = OCEAN.centerZ - OCEAN.length / 2;
@@ -156,8 +164,9 @@ export const OCEAN_FAR_Z: number = OCEAN.centerZ - OCEAN.length / 2;
 /**
  * Harbor wall placement — kept in step with `harbor-wall.glb` (a
  * 3.4 × 0.5 × 0.4 m block) and its transform in battle-setup.ts. The block is
- * only 0.4 m deep in z and straddles the water's edge: its seaward face sits
- * exactly on the ocean's near edge (z = -1.5), so beyond it there is only wall.
+ * only 0.4 m deep in z and stands on the shore edge of the water: the ocean
+ * shader cuts the sea at the wall's seaward face (z = -1.5), so the water
+ * meets the wall along its whole width instead of touching it at one point.
  */
 export const WALL_CENTER_Z = -1.3;
 /** Wall width across x (m) — the berth band may span the wall's full face. */
@@ -166,6 +175,28 @@ export const WALL_DEPTH_Z = 0.4;
 export const WALL_SEA_FACE_Z: number = WALL_CENTER_Z - WALL_DEPTH_Z / 2;
 /** Land-side face; past it the wall no longer holds burst chunks up. */
 export const WALL_LAND_FACE_Z: number = WALL_CENTER_Z + WALL_DEPTH_Z / 2;
+
+/**
+ * How far the water disc's centre sits behind the wall's sea face (m), solved
+ * so the disc's chord at that face is exactly as long as the wall:
+ * d = R - sqrt(R² - (WALL_WIDTH / 2)²). The ocean shader clips everything on
+ * the +z (land) side of the face, so the waterline starts and ends on the
+ * wall's two bottom corners — it grows out of the wall without crossing it or
+ * trailing a straight edge past its ends.
+ */
+export const OCEAN_SHORE_OVERLAP: number =
+  OCEAN_PLANE_SIZE / 2 -
+  Math.sqrt((OCEAN_PLANE_SIZE / 2) ** 2 - (WALL_WIDTH / 2) ** 2);
+
+/** World z of the water disc centre, which the sky portal also sits on. */
+export const OCEAN_CENTER_Z: number =
+  WALL_SEA_FACE_Z - OCEAN_PLANE_SIZE / 2 + OCEAN_SHORE_OVERLAP;
+
+/**
+ * World z of the shader's shore cut: the wall's sea face itself, so the chord
+ * matches the wall's length and the water never reaches +z (the land side).
+ */
+export const OCEAN_SHORE_CLIP_Z: number = WALL_SEA_FACE_Z;
 
 /**
  * Defense slots — the fixed wall mounts (城防位) a defender unit can occupy.

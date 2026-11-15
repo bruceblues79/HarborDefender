@@ -8,13 +8,11 @@
 import {
   AssetManager,
   Box3,
-  HalfFloatType,
   Mesh,
   Object3D,
   RayInteractable,
   UIKitMLAsset,
   Vector3,
-  WebGLCubeRenderTarget,
   World,
   loadUIKitMLAsset,
 } from '@iwsdk/core';
@@ -38,12 +36,17 @@ import {
   DEFENSE_SLOTS,
   DEFENDER_BAR_Y,
   OCEAN,
+  OCEAN_BODY_GLTF_SIZE,
+  OCEAN_CENTER_Z,
   OCEAN_PLANE_SIZE,
   WALL_CENTER_Z,
-  WALL_SEA_FACE_Z,
 } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
-import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
+import {
+  OCEAN_BRIGHTNESS,
+  createOceanMaterial,
+} from './scene-assets/ocean.scene-asset.js';
+import { loadSkyCube } from './sky-cube.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
 import { DieBurstSystem } from './die-burst-system.js';
@@ -402,15 +405,9 @@ export function startBattle(world: World): void {
       }
       loadingPanel.visible = true;
 
-      // 3. Load game assets: HDR env + solidified GLB models
-      AssetManager.loadHDRTextureById('ocean-env.hdr')
-        .then(async (hdrTexture) => {
-          // Equirect HDR -> cubemap: avoids pole stretching in reflections
-          const cubeRT = new WebGLCubeRenderTarget(256, {
-            type: HalfFloatType,
-          });
-          cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
-
+      // 3. Load game assets: sky cube + solidified GLB models
+      loadSkyCube(world)
+        .then(async (cubeRT) => {
           const [oceanGltf, wallGltf, cannonGltf, ironGuardGltf, padGltf] =
             await Promise.all([
               AssetManager.loadGLTFById('ocean-body'),
@@ -422,7 +419,7 @@ export function startBattle(world: World): void {
 
           // Swap the GLB's placeholder material for the wave shader
           const oceanObject = oceanGltf.scene;
-          const oceanMaterial = createOceanMaterial({ brightness: 1.15 });
+          const oceanMaterial = createOceanMaterial({ brightness: OCEAN_BRIGHTNESS });
           oceanMaterial.uniforms.envMap.value = cubeRT.texture;
           oceanMaterial.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
           oceanObject.traverse((child: Object3D) => {
@@ -434,13 +431,12 @@ export function startBattle(world: World): void {
             }
           });
 
-          // One flat 30 × 30 m quad: its near edge sits on the wall's sea
-          // face and it extends away from the harbour.
-          oceanObject.position.set(
-            0,
-            OCEAN.surfaceY,
-            WALL_SEA_FACE_Z - OCEAN_PLANE_SIZE / 2,
-          );
+          // The GLB is a 15 m quad; scale it to the disc the UV mask and the
+          // sky portal's base ring are built around, centred on the disc. The
+          // shader cuts it at the wall's sea face, so the water grows out of
+          // both ends of the wall and never spills onto the land side.
+          oceanObject.scale.setScalar(OCEAN_PLANE_SIZE / OCEAN_BODY_GLTF_SIZE);
+          oceanObject.position.set(0, OCEAN.surfaceY, OCEAN_CENTER_Z);
           world.createTransformEntity(oceanObject).addComponent(OceanTag);
           battlefieldObjects.push(oceanObject);
 

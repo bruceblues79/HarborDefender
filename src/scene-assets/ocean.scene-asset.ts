@@ -6,6 +6,7 @@
  */
 
 import { ShaderMaterial, UniformsLib, UniformsUtils, Vector3 } from '@iwsdk/core';
+import { OCEAN_SHORE_CLIP_Z } from '../level-config.js';
 
 /**
  * Shader uniform array cap for simultaneous wake sources — the single source
@@ -13,6 +14,20 @@ import { ShaderMaterial, UniformsLib, UniformsUtils, Vector3 } from '@iwsdk/core
  * volley of cannonball splashes with margin.
  */
 export const MAX_WAKE = 12;
+
+/**
+ * Linear brightness of the reflected sky. The sky portal multiplies its own
+ * cube sample by the same value, so the two halves of the horizon match.
+ */
+export const OCEAN_BRIGHTNESS = 1.15;
+
+/**
+ * Linear colour the reflection is pulled toward, and by how much. The sky
+ * portal applies the very same mix to the same cube, so sky and water share
+ * colour and brightness instead of drifting apart.
+ */
+export const OCEAN_TINT = [0.3, 0.52, 0.72] as const;
+export const OCEAN_TINT_AMOUNT = 0.18;
 
 const vertexShader = `
 #include <common>
@@ -29,7 +44,7 @@ void main() {
   vUv = uv;
   // mat3(modelMatrix) keeps the normal in world space; the renderer's
   // normalMatrix is view-space, which made the cubemap reflection roll with
-  // head roll in XR. Uniform scale only (GLB placed at scale 1).
+  // head roll in XR. The mesh is only ever uniformly scaled (battle-setup).
   vWorldNormal = normalize(mat3(modelMatrix) * normal);
   vLocalNormal = normal;
 
@@ -64,12 +79,17 @@ varying vec3 vLocalNormal;
 varying vec3 vWorldPosition;
 varying vec2 vUv;
 
-// Circular surface mask in UV space: the disc stays fully opaque, the rim
-// fades out, and everything outside is discarded. Centre and radius are both
-// UV values, so the inscribed circle scales with the quad automatically.
+// Circular surface mask in UV space. The disc is the sky portal's base ring
+// (same radius, same centre), so the water ends exactly where the dome's rim
+// begins and the join needs no fade: past it the fragment is discarded.
 const float MASK_RADIUS = 0.5;
-const float MASK_FADE = 0.06;
-const vec2 MASK_CENTER = vec2(0.5, 0.4725);
+const vec2 MASK_CENTER = vec2(0.5, 0.5);
+
+// Shore cut: the disc is clipped at the wall's sea face, whose chord is solved
+// to be exactly the wall's length (see OCEAN_SHORE_OVERLAP). So the waterline
+// starts and ends on the wall's bottom corners, grows out of the wall on both
+// sides, and nothing can reach +z (the land side).
+const float SHORE_CLIP_Z = ${OCEAN_SHORE_CLIP_Z};
 
 // Hash-based value noise (2D), quintic-interpolated (C2-continuous) so the
 // lattice shows no derivative creases at cell boundaries.
@@ -105,9 +125,8 @@ vec3 linearToSRGB(vec3 c) {
 void main() {
   // Mask first: everything outside the disc is thrown away before the costly
   // noise, cubemap and shadow work runs.
-  float d = distance(vUv, MASK_CENTER);
-  float mask = 1.0 - smoothstep(MASK_RADIUS - MASK_FADE, MASK_RADIUS, d);
-  if (mask <= 0.001) discard;
+  if (distance(vUv, MASK_CENTER) > MASK_RADIUS) discard;
+  if (vWorldPosition.z > SHORE_CLIP_Z) discard;
 
   vec3 color;
 
@@ -117,11 +136,12 @@ void main() {
     vec3 viewDir = normalize(vWorldPosition - cameraPosition);
     vec3 reflDir = reflect(viewDir, normalize(vWorldNormal));
 
-    // Noise perturbation of the reflection direction: the sky projection
-    // wobbles as if the surface had fine ripples, without touching geometry.
-    float n1 = flowingNoise(vWorldPosition.xz * noiseFrequency, time * noiseSpeed);
-    float n2 = flowingNoise(vWorldPosition.zx * noiseFrequency + 19.3, time * noiseSpeed * 0.8);
-    reflDir = normalize(reflDir + vec3(n1, 0.0, n2) * noiseIntensity);
+    // One swell layer, drifting toward +z (the harbour wall): sampling
+    // (p.y - t) makes the pattern travel with time. It tilts the reflected
+    // sky along z, so the surface reads as waves rolling in on the wall
+    // without any second, crosswise layer.
+    float n = flowingNoise(vWorldPosition.xz * noiseFrequency, time * noiseSpeed);
+    reflDir = normalize(reflDir + vec3(0.0, 0.0, n) * noiseIntensity);
 
     // Wake ripple perturbation: the ripple gradient tilts the reflection
     // toward the ring centre, creating a lensing wobble around each source.
@@ -145,7 +165,7 @@ void main() {
     reflDir = normalize(reflDir + vec3(wakeGrad.x, 0.0, wakeGrad.y) * 0.5);
 
     color = textureCube(envMap, reflDir).rgb * reflectivity;
-    color = mix(color, vec3(0.30, 0.52, 0.72), 0.18);
+    color = mix(color, vec3(${OCEAN_TINT[0]}, ${OCEAN_TINT[1]}, ${OCEAN_TINT[2]}), ${OCEAN_TINT_AMOUNT});
   } else {
     // Sides / bottom: deep water body color, no env mapping
     color = vec3(0.06, 0.11, 0.18);
@@ -158,7 +178,7 @@ void main() {
   color *= mix(0.5, 1.0, getShadowMask());
 
   color *= brightness;
-  gl_FragColor = vec4(linearToSRGB(color), mask);
+  gl_FragColor = vec4(linearToSRGB(color), 1.0);
 }
 `;
 
@@ -177,9 +197,11 @@ export interface OceanNoiseParams {
  * Fake-reflection material for the solidified ocean plane
  * (gltf/ocean-body.glb, exported by scripts/export-assets.ts). The GLB
  * carries a single flat quad; this shader supplies the cubemap reflection
- * with its noise and wake perturbation, applied to the loaded mesh at game
- * start. The quad is masked to a centred disc in UV space: opaque inside,
- * fading at the rim, discarded outside.
+ * with its wind drift and wake perturbation, applied to the loaded mesh at
+ * game start. The quad is masked to its inscribed disc in UV space and
+ * discarded outside, so the water ends on a hard edge that meets the sky
+ * portal's base ring. It is then clipped by the wall's sea face, which turns
+ * the disc into a circular segment growing out of both ends of the wall.
  *
  * `lights: true` plus the merged UniformsLib.lights lets the renderer feed
  * the shadow-map uniforms, so the surface can receive cast shadows while
@@ -201,7 +223,7 @@ export function createOceanMaterial(noise: OceanNoiseParams = {}): ShaderMateria
         time: { value: 0 },
         envMap: { value: null },
         reflectivity: { value: 1.0 },
-        brightness: { value: noise.brightness ?? 1.0 },
+        brightness: { value: noise.brightness ?? OCEAN_BRIGHTNESS },
         noiseSpeed: { value: noise.speed ?? 0.8 },
         noiseFrequency: { value: noise.frequency ?? 3.0 },
         noiseIntensity: { value: noise.intensity ?? 0.015 },
@@ -211,9 +233,8 @@ export function createOceanMaterial(noise: OceanNoiseParams = {}): ShaderMateria
       },
     ]),
     lights: true,
-    // Blended rim only; depthWrite stays on so the surface still occludes
-    // hulls below the waterline.
-    transparent: true,
+    // Fully opaque: the disc is the portal's floor, so it must occlude hulls
+    // below the waterline and never blend the real world through.
     vertexShader,
     fragmentShader,
   });
