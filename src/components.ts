@@ -782,13 +782,14 @@ export const NextWaveCommand = createComponent('NextWaveCommand', {});
 export const WaveIntermission = createComponent('WaveIntermission', {});
 
 /**
- * Sky dome for every render mode (sky gradient + drifting clouds). Outside an
- * XR session it fills the whole sphere and acts as the scene background; in an
- * XR session it becomes a partial-immersion disc around the player's facing
- * axis (world -z) whose rim fades into passthrough, ragged by static noise.
- * The sky is drawn analytically — no environment texture, no cube conversion.
+ * Sky dome for every render mode: samples the same equirectangular HDR the
+ * ocean reflects and reuses the ocean's tint/brightness, so the two surfaces
+ * read as one world. Outside an XR session it fills the whole sphere and acts
+ * as the scene background; in an XR session it becomes a partial-immersion
+ * disc around the player's facing axis (world -z) whose rim fades into
+ * passthrough, ragged by static noise.
  * SkyDomeSystem owns the mesh and mirrors these inspector fields into the
- * uniforms. Colours are linear, matching the ocean shader's own constants.
+ * uniforms. Sea colour is linear, matching the ocean shader's own constants.
  */
 export const SkyDome = createComponent('SkyDome', {
   /** Ceiling of the dome's sky alpha over passthrough (1 = fully opaque). */
@@ -805,24 +806,8 @@ export const SkyDome = createComponent('SkyDome', {
   pitchUpDeg: { type: 'Float32', default: 7.5 },
   /** Multiplier on the whole sky colour. */
   skyIntensity: { type: 'Float32', default: 1.0 },
-  /** Sea colour below the horizon; matches the ocean's far-edge tint. */
+  /** Sea tint below the horizon; matches the ocean's tint constant. */
   seaColor: { type: 'Color', default: [0.3, 0.52, 0.72, 1] },
-  /** Bright haze band at the horizon — the depth cue. */
-  horizonColor: { type: 'Color', default: [0.55, 0.72, 0.88, 1] },
-  /** Colour overhead. */
-  zenithColor: { type: 'Color', default: [0.16, 0.36, 0.7, 1] },
-  /** Cloud body colour. */
-  cloudColor: { type: 'Color', default: [0.85, 0.9, 0.95, 1] },
-  /** Cloud coverage threshold (0 = clear sky, 1 = overcast). */
-  cloudCover: { type: 'Float32', default: 0.45 },
-  /** Cloud-plane projection scale — smaller spreads the pattern wider. */
-  cloudScale: { type: 'Float32', default: 0.5 },
-  /** Drift speed of the near deck toward +z, in cloud-texture units per second. */
-  cloudSpeed: { type: 'Float32', default: 0.03 },
-  /** Lower elevation (deg) where the cloud band starts. */
-  cloudMinDeg: { type: 'Float32', default: 1.5 },
-  /** Upper elevation (deg) where the cloud band ends. */
-  cloudMaxDeg: { type: 'Float32', default: 50 },
 });
 
 export default defineComponents([

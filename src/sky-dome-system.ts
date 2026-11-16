@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { Color, ShaderMaterial, createSystem } from '@iwsdk/core';
-import type { Mesh, Object3D } from '@iwsdk/core';
+import { AssetManager, ShaderMaterial, createSystem } from '@iwsdk/core';
+import type { Color, Mesh, Object3D } from '@iwsdk/core';
 import { SkyDome } from './components.js';
 import { createSkyDomeMesh } from './scene-assets/sky-dome.scene-asset.js';
 
@@ -17,8 +17,8 @@ type NumberUniform = { value: number };
 type ColorUniform = { value: Color };
 
 /**
- * Owns the sky dome: creates the mesh entity and mirrors the SkyDome inspector
- * fields into the shader every frame (the cloud clock needs a per-frame write).
+ * Owns the sky dome: creates the mesh entity, feeds it the ocean's HDR sky map
+ * once loaded, and mirrors the SkyDome inspector fields into the shader.
  *
  * The dome is visible in every mode; only its passthrough mask is gated. In an
  * XR session with alpha-blend passthrough it becomes the partial-immersion
@@ -34,6 +34,19 @@ export class SkyDomeSystem extends createSystem({
     const dome = createSkyDomeMesh();
     this.world.createTransformEntity(dome).addComponent(SkyDome);
 
+    // Same texture the ocean reflects; the dome shows a flat fallback until it
+    // arrives (the asset is preloaded at background priority).
+    AssetManager.loadHDRTextureById('ocean-env.hdr').then(
+      (texture) => {
+        const material = dome.material as ShaderMaterial;
+        material.uniforms.uSkyMap.value = texture;
+        material.needsUpdate = true;
+      },
+      (err: unknown) => {
+        console.warn('Sky dome: HDR sky map failed to load, keeping the fallback.', err);
+      },
+    );
+
     const sync = (): void => this.syncSessionState();
     this.xrManager.addEventListener('sessionstart', sync);
     this.xrManager.addEventListener('sessionend', sync);
@@ -44,13 +57,10 @@ export class SkyDomeSystem extends createSystem({
     this.syncSessionState();
   }
 
-  update(_delta: number, time: number): void {
+  update(_delta: number, _time: number): void {
     const maskOn = this.maskOn ? 1 : 0;
     for (const entity of this.queries.domes.entities) {
       const sea = entity.getVectorView(SkyDome, 'seaColor');
-      const horizon = entity.getVectorView(SkyDome, 'horizonColor');
-      const zenith = entity.getVectorView(SkyDome, 'zenithColor');
-      const cloud = entity.getVectorView(SkyDome, 'cloudColor');
       // Rim angles collapse to cosines once here; the shader just smoothsteps.
       const edgeCos = Math.cos(Number(entity.getValue(SkyDome, 'edgeDeg')) * DEG2RAD);
       const fadeCos = Math.cos(
@@ -61,7 +71,6 @@ export class SkyDomeSystem extends createSystem({
       const pitch = Number(entity.getValue(SkyDome, 'pitchUpDeg')) * DEG2RAD;
 
       this.traverseUniforms(entity.object3D, (u) => {
-        (u.uTime as NumberUniform).value = time;
         (u.uMaskOn as NumberUniform).value = maskOn;
         (u.uMaxAlpha as NumberUniform).value = Number(entity.getValue(SkyDome, 'maxAlpha'));
         (u.uEdgeCos as NumberUniform).value = edgeCos;
@@ -73,19 +82,7 @@ export class SkyDomeSystem extends createSystem({
         (u.uIntensity as NumberUniform).value = Number(
           entity.getValue(SkyDome, 'skyIntensity'),
         );
-        (u.uCloudCover as NumberUniform).value = Number(entity.getValue(SkyDome, 'cloudCover'));
-        (u.uCloudScale as NumberUniform).value = Number(entity.getValue(SkyDome, 'cloudScale'));
-        (u.uCloudSpeed as NumberUniform).value = Number(entity.getValue(SkyDome, 'cloudSpeed'));
-        (u.uCloudMinY as NumberUniform).value = Math.sin(
-          Number(entity.getValue(SkyDome, 'cloudMinDeg')) * DEG2RAD,
-        );
-        (u.uCloudMaxY as NumberUniform).value = Math.sin(
-          Number(entity.getValue(SkyDome, 'cloudMaxDeg')) * DEG2RAD,
-        );
         (u.uSeaColor as ColorUniform).value.setRGB(sea[0], sea[1], sea[2]);
-        (u.uHorizonColor as ColorUniform).value.setRGB(horizon[0], horizon[1], horizon[2]);
-        (u.uZenithColor as ColorUniform).value.setRGB(zenith[0], zenith[1], zenith[2]);
-        (u.uCloudColor as ColorUniform).value.setRGB(cloud[0], cloud[1], cloud[2]);
       });
     }
   }
