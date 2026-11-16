@@ -28,19 +28,25 @@ export const WATER_BRIGHTNESS = 1.15;
  *
  * The source HDR's horizon is blown out to white, which reads as smog and
  * mirrors as a white band on the sea. Both shaders replace that band with the
- * same blue — the sky by view elevation, the water by reflection elevation —
- * so the two surfaces still meet on one clean, matching horizon.
+ * same soft blue — the sky by view elevation, the water by reflection
+ * elevation — so the two surfaces still meet on one clean, matching horizon.
+ *
+ * Elevation is the sine of the view (sky) or reflection (water) elevation.
  */
 export const HORIZON_COLOR: [number, number, number] = [0.26, 0.46, 0.70];
 export const HORIZON_BAND = 0.34;
+
+/** UV radius where the far-sea haze starts / fully takes over. */
+export const MIST_START = 0.32;
+export const MIST_END = 0.50;
 
 export const HORIZON_GRADE_GLSL = `
 const vec3 HORIZON_COLOR = vec3(${HORIZON_COLOR.join(', ')});
 const float HORIZON_BAND = ${HORIZON_BAND};
 
 vec3 horizonGrade(vec3 radiance, float elevation) {
-  float t = 1.0 - smoothstep(0.0, HORIZON_BAND, max(elevation, 0.0));
-  return mix(radiance, HORIZON_COLOR, t * 0.92);
+  float band = 1.0 - smoothstep(0.0, HORIZON_BAND, max(elevation, 0.0));
+  return mix(radiance, HORIZON_COLOR, band * 0.92);
 }
 `;
 
@@ -182,6 +188,17 @@ void main() {
   } else {
     // Sides / bottom: deep water body color, no env mapping
     color = vec3(0.06, 0.11, 0.18);
+  }
+
+  // Far-sea haze: the rim dissolves into the same colour the sky shows at the
+  // waterline, so the boundary reads as depth instead of a disc edge. Two
+  // drifting octaves break the band up so it reads as volume, not a ring.
+  float haze = smoothstep(${MIST_START}, ${MIST_END}, d);
+  if (haze > 0.001) {
+    float drift = valueNoise(vWorldPosition.xz * 0.08 + vec2(time * 0.012, 0.0));
+    float detail = valueNoise(vWorldPosition.xz * 0.21 + vec2(0.0, time * 0.02));
+    haze = pow(haze, 1.6) * mix(0.62, 1.0, drift * 0.7 + detail * 0.3);
+    color = mix(color, HORIZON_COLOR, haze);
   }
 
   // Darken by the shadow mask (receiveShadow-gated by the renderer). The
