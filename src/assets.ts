@@ -74,7 +74,9 @@ export default defineAssets({
     url: publicAssetUrl('textures/kloofendal_partly_cloudy_puresky_1k.hdr'),
     type: AssetType.HDRTexture,
     name: 'Ocean Environment HDR',
-    priority: 'background',
+    // Never prefetched: the welcome / loading screens are unlit, so the sky map
+    // is requested explicitly once the player presses ENTER GAME.
+    priority: 'lazy',
   },
   'ocean-body': {
     url: versionedAssetUrl('gltf/ocean-body.glb'),

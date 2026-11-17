@@ -11,6 +11,7 @@ import {
   HalfFloatType,
   Mesh,
   Object3D,
+  PMREMGenerator,
   RayInteractable,
   UIKitMLAsset,
   Vector3,
@@ -18,7 +19,11 @@ import {
   World,
   loadUIKitMLAsset,
 } from '@iwsdk/core';
-import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
+import type {
+  Entity,
+  MeshStandardMaterial,
+  WebGLRenderTarget,
+} from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
 import {
   CannonAim,
@@ -44,6 +49,7 @@ import {
 } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
+import { SkyDomeSystem } from './sky-dome-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
 import { DieBurstSystem } from './die-burst-system.js';
@@ -276,6 +282,11 @@ let battlefieldReady = false;
 /** Whether a battle entry is currently in flight (guards double ENTER). */
 let battleStarted = false;
 /**
+ * PMREM target backing `scene.environment` after the battle entry loads the
+ * HDR. Held for the page lifetime so the renderer keeps the env map alive.
+ */
+let environmentTarget: WebGLRenderTarget | null = null;
+/**
  * Whether the loading panel already carries a transform entity — re-entries
  * after a failed load reuse the same cached document, and a second
  * createTransformEntity on one object would double-place it.
@@ -339,19 +350,20 @@ function failEntry(
 
 /**
  * One-shot battle start flow: hide the welcome panel, show the loading
- * panel, instantiate the solidified GLB models and the ocean reflection
- * cubemap, place them into the world, then ease into the battle view.
- * Re-entry after a MAIN-menu return skips straight to the view change —
- * the battlefield is already built.
+ * panel, load the HDR sky map and the solidified GLB models in parallel,
+ * then place the field and ease into the battle view. Re-entry after a
+ * MAIN-menu return skips straight to the view change — the battlefield is
+ * already built.
  *
- * All game assets are preloaded with `background` priority while the
- * welcome screen is up, so these loads are warm cache hits and the loading
- * panel only becomes visible on a slow network.
+ * The HDR is a lazily manifest-loaded asset: the welcome screen is unlit and
+ * never requests it, so the entry below is the first time it is fetched.
+ * The sky dome is fed but kept hidden while the loading panel is up, and the
+ * field objects are placed into the world only in this same entry pass.
  *
- * Lighting split: standard PBR objects (wall, cannons) are lit by the
- * scene's IBLTexture (EnvironmentSystem writes scene.environment) and need
- * no per-object setup; the ocean keeps its unlit fake-reflection shader,
- * which samples the cubemap built here from the same cached HDR texture.
+ * Lighting split: standard PBR objects (wall, cannons) are lit by the PMREM
+ * env map this flow assigns to scene.environment; the ocean keeps its unlit
+ * fake-reflection shader, which samples the cubemap built here from the same
+ * cached HDR texture.
  */
 export function startBattle(world: World): void {
   if (battleStarted) return;
@@ -367,6 +379,11 @@ export function startBattle(world: World): void {
     .find((system): system is StartPanelSystem =>
       system instanceof StartPanelSystem,
     );
+  const skyDomeSystem = world
+    .getSystems()
+    .find((system): system is SkyDomeSystem =>
+      system instanceof SkyDomeSystem,
+    );
 
   // 1. Hide the welcome panel
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
@@ -377,6 +394,9 @@ export function startBattle(world: World): void {
       new Vector3(0, 2.75, 2.75),
       new Vector3(0, 1.697, -2),
     );
+    // Battle view takes over: reveal the sky dome that was loaded (hidden)
+    // during the loading panel.
+    skyDomeSystem?.setVisible(true);
     startPanelSystem?.show();
   };
 
@@ -402,23 +422,40 @@ export function startBattle(world: World): void {
       }
       loadingPanel.visible = true;
 
-      // 3. Load game assets: HDR env + solidified GLB models
-      AssetManager.loadHDRTextureById('ocean-env.hdr')
-        .then(async (hdrTexture) => {
+      // 3. Load the battle view's assets in parallel: the HDR sky map (a lazy
+      // manifest entry, so nothing fetched it while the welcome screen was up)
+      // and the solidified GLB models. The map feeds the dome shader right
+      // away, but the dome stays hidden until the loading panel is gone.
+      Promise.all([
+        AssetManager.loadHDRTextureById('ocean-env.hdr'),
+        Promise.all([
+          AssetManager.loadGLTFById('ocean-body'),
+          AssetManager.loadGLTFById('harbor-wall'),
+          AssetManager.loadGLTFById('cannon'),
+          AssetManager.loadGLTFById('iron-guard'),
+          AssetManager.loadGLTFById('defense-pad'),
+        ]),
+      ])
+        .then(
+          ([
+            hdrTexture,
+            [oceanGltf, wallGltf, cannonGltf, ironGuardGltf, padGltf],
+          ]) => {
           // Equirect HDR -> cubemap: avoids pole stretching in reflections
           const cubeRT = new WebGLCubeRenderTarget(256, {
             type: HalfFloatType,
           });
           cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
 
-          const [oceanGltf, wallGltf, cannonGltf, ironGuardGltf, padGltf] =
-            await Promise.all([
-              AssetManager.loadGLTFById('ocean-body'),
-              AssetManager.loadGLTFById('harbor-wall'),
-              AssetManager.loadGLTFById('cannon'),
-              AssetManager.loadGLTFById('iron-guard'),
-              AssetManager.loadGLTFById('defense-pad'),
-            ]);
+          // The scene used to declare an IBLTexture, which forced the HDR to
+          // load on first paint. The same image-based lighting is applied here
+          // instead, once the player has opted into the battle view.
+          const pmrem = new PMREMGenerator(world.renderer);
+          environmentTarget = pmrem.fromEquirectangular(hdrTexture);
+          pmrem.dispose();
+          world.scene.environment = environmentTarget.texture;
+          world.scene.environmentIntensity = 1;
+          skyDomeSystem?.setSkyTexture(hdrTexture);
 
           // Swap the GLB's placeholder material for the wave shader
           const oceanObject = oceanGltf.scene;
@@ -526,7 +563,8 @@ export function startBattle(world: World): void {
           // LevelWaveSystem once the player presses START.
           loadingPanel.visible = false;
           proceed();
-        })
+          },
+        )
         .catch((err: unknown) => failEntry(world, loadingPanel, err));
     })
     .catch((err: unknown) => failEntry(world, null, err));
@@ -540,6 +578,12 @@ export function startBattle(world: World): void {
 export function returnToWelcome(world: World): void {
   battleStarted = false;
   for (const object of battlefieldObjects) object.visible = false;
+  world
+    .getSystems()
+    .find((system): system is SkyDomeSystem =>
+      system instanceof SkyDomeSystem,
+    )
+    ?.setVisible(false);
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
   if (panel) panel.visible = true;
   world
