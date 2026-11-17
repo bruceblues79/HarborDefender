@@ -182,15 +182,14 @@ export interface DefenseSlotDef {
 }
 
 /**
- * Three slots evenly spaced across a 1.8 m span (1.5× the old three-gun
- * 1.2 m row), centred on the 3.4 m wall. All three start crewed — 3 is the
- * whole battery now, and the only way a slot empties is a knockout, which
- * the player rebuilds from the wallet.
+ * Three slots evenly spaced across a 1.6 m span, centred on the 3.4 m wall.
+ * All three start crewed — 3 is the whole battery now, and the only way a
+ * slot empties is a knockout, which the player rebuilds from the wallet.
  */
 export const DEFENSE_SLOTS: DefenseSlotDef[] = [
-  { x: -0.9, unit: 'cannon' },
+  { x: -0.8, unit: 'cannon' },
   { x: 0, unit: 'cannon' },
-  { x: 0.9, unit: 'cannon' },
+  { x: 0.8, unit: 'cannon' },
 ];
 
 /** Unit ids the build panel can mount into a slot — the row order it renders. */
@@ -459,11 +458,15 @@ export const ENDLESS = {
   budgetPerWave: 0.75,
 
   // — 压力曲线（和旧 pressureMin/pressureMax 同名兼容，语义变了） —
-  /** Pressure 曲线下限 / 上限；power=3 时 pressure=pressureMax。 */
+  /**
+   * 城防缩编 3 炮（2026-11-17）：满编从 5 门降为 3 门，powerFull 同名
+   * 参数 3 → 1.8，使满炮 3 门（power=3）落回旧满炮 5 门的压力点
+   * （0.7 + 0.45 × 3 / 1.8 ≈ 1.45）；余额仍由 sustainFactor 叠加。
+   */
   pressureMin: 0.7,
   pressureMax: 1.15,
   /** pressureMin + (pressureMax - pressureMin) × min(powerRatioMax, power/powerFull) */
-  powerFull: 3,
+  powerFull: 1.8,
   powerRatioMax: 2.5,
 
   // — 续航 —
@@ -767,14 +770,16 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   'cannon->ornithopter': 25,
   'pirate-ship->cannon': COMBAT.pirateShellDamage,
   'bombardier->cannon': 6,
-  // 城防缩编 3 炮（2026-11-17）：承伤按旧 5 炮基线 × 0.6 折算 ——
+  // 城防缩编 3 炮（2026-11-17）：散兵承伤按旧 5 炮基线 × 0.6 折算 ——
   // 每门炮的承伤能力提升到 1/0.6 倍，全墙有效血量与 5 炮时一致。
   'ornithopter->cannon': 3.6,
   // Boss Islewrath gun turrets (task 029). The `islewrath-turret` core
   // unitType is a damage-matrix key, deliberately distinct from the
   // UNIT_TYPES sheet key `boss_islewrath` (underscore) — never look rows up
   // by the sheet key.
-  'islewrath-turret->cannon': 12,
+  // boss 折中档（2026-11-17）：旧值 ×0.8 —— 散兵保持 0.6 折算，boss 阶段的
+  // 联合压力单独拉回，避免 3 炮满编后 boss 战过于平顺。
+  'islewrath-turret->cannon': 16,
   // Boss Islewrath turret incoming rows (task 028/031): a city cannon shell
   // chips a flat 2% of the turret's 100-point pool.
   'cannon->islewrath-turret': 2,
@@ -919,10 +924,9 @@ export const BOSS = {
   laserAimHoldSec: 0.5,
   /**
    * Fraction of the victim's max Health deducted per beam emission.
-   * 城防缩编 3 炮（2026-11-17）：旧的 0.6 按 0.6 承伤系数折算为 0.36，
-   * 与炮塔/普通攻击者的承伤标定保持一致。
+   * boss 折中档（2026-11-17）：旧值 0.6 × 0.8 = 0.48。
    */
-  laserDamageRatio: 0.36,
+  laserDamageRatio: 0.48,
   /**
    * Damage-corridor half-width (m) around the beam centre line. Applies to
    * collateral defenders only — the locked core always takes the hit.
@@ -1000,8 +1004,8 @@ export const DEATH_LIGHT = {
   /** Seconds between two beats (lightning tempo). */
   intervalSec: 3,
   /** Fraction of the victim's MAX Health a lightning bolt deducts.
-   * 城防缩编 3 炮（2026-11-17）：0.75 × 0.6 承伤系数 = 0.45。 */
-  damageRatio: 0.45,
+   * boss 折中档（2026-11-17）：旧值 0.75 × 0.8 = 0.6。 */
+  damageRatio: 0.6,
   /** Seconds the bolt visual stays up (instant on, instant off). */
   boltLifeSec: 0.2,
   /** The beat that fires the sweep instead of a lightning (1-based). */
@@ -1015,8 +1019,8 @@ export const DEATH_LIGHT = {
   /** Seconds the wall-to-wall sweep takes. */
   sweepSec: 1,
   /** Fraction of MAX Health a defender loses when the sweep crosses it.
-   * 城防缩编 3 炮（2026-11-17）：0.5 × 0.6 承伤系数 = 0.3。 */
-  sweepDamageRatio: 0.3,
+   * boss 折中档（2026-11-17）：旧值 0.5 × 0.8 = 0.4。 */
+  sweepDamageRatio: 0.4,
   /** Damage-corridor half-width (m) around the sweeping beam's centre line. */
   sweepDamageRadius: 0.3,
   /**
