@@ -33,14 +33,14 @@ const AIM_SNAP_RAD = 1.5 * DEG2RAD;
  * - Beat clock (state 'idle'): every DEATH_LIGHT.intervalSec a beat fires.
  *   Beats 1..3 fire a LIGHTNING bolt — an instant jagged segment between the
  *   chief's hit core and one random surviving defender core that deducts
- *   75% of the victim's MAX Health. The 4th beat (t = 12 s after the rise)
+ *   45% of the victim's MAX Health. The 4th beat (t = 12 s after the rise)
  *   starts the SWEEP instead.
  * - Sweep (aiming -> hold -> forming -> sweeping): the head yaws onto one
  *   end of the wall at aimTurnSpeedDeg, holds aimHoldSec, the red beam
- *   forms over formSec (no charge-up), then sweeps across ALL five defense
+ *   forms over formSec (no charge-up), then sweeps across ALL defense
  *   slots over sweepSec — the beam tracks a point walking the wall's sea
  *   face between the two span ends while the head's yaw follows. Every live
- *   defender core the corridor crosses loses 50% of its MAX Health, once
+ *   defender core the corridor crosses loses 30% of its MAX Health, once
  *   per unit per sweep (the claimed-set guard). When the sweep ends the
  *   beat count restarts: the next lightning comes intervalSec later.
  *

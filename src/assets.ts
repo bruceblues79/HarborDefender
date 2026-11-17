@@ -84,12 +84,6 @@ export default defineAssets({
     name: 'Ocean Body',
     priority: 'background',
   },
-  'iron-guard': {
-    url: publicAssetUrl('gltf/iron-guard.glb'),
-    type: AssetType.GLTF,
-    name: 'Iron Guard',
-    priority: 'background',
-  },
   'defense-pad': {
     url: publicAssetUrl('gltf/defense-pad.glb'),
     type: AssetType.GLTF,

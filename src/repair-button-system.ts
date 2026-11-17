@@ -32,8 +32,7 @@ import { COMBAT, REPAIR_BUTTON } from './level-config.js';
  * 守方血条上的维修按钮。
  *
  * 只给守方炮台（faction `defender` / unitType `cannon`）建按钮——海盗船与
- * Boss 装甲件也有 Health，但维修它们等于花玩家金币给敌人回血；钢铁卫士沿用
- * 旧规则（不可维修，不出现按钮）。
+ * Boss 装甲件也有 Health，但维修它们等于花玩家金币给敌人回血。
  *
  * 按钮是一个独立的根级实体，每帧把自己的世界变换对齐到目标单位血条 rig 的
  * 左缘上方：这样它随血条一起 billboard，又不会嵌进单位实体的射线子树，按到

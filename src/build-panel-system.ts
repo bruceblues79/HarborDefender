@@ -28,13 +28,11 @@ import {
   DEFENSE_SLOTS,
   ECONOMY,
   PLACEABLE_UNITS,
-  UNIQUE_UNITS,
   WALL_CENTER_Z,
 } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
 import {
   getDefenseSlotInfo,
-  hasLiveDefenseUnit,
   replaceDefenseUnit,
 } from './battle-setup.js';
 
@@ -240,19 +238,8 @@ export class BuildPanelSystem extends createSystem({
       const row = this.rows.get(unitId);
       if (!row) continue;
       const price = this.priceFor(unitId);
-      let next: string;
-      if (
-        // UNIQUE_UNITS (全场唯一): a live carrier anywhere grays its row in
-        // every other slot's dock — same "cannot buy" look as an unmet
-        // price, zero new styles. Refreshes per frame, so building or
-        // losing the carrier flips every open dock live.
-        (UNIQUE_UNITS.has(unitId) && hasLiveDefenseUnit(unitId)) ||
-        price > money
-      ) {
-        next = 'dock-unit-off';
-      } else {
-        next = 'dock-unit';
-      }
+      const next: string =
+        price > money ? 'dock-unit-off' : 'dock-unit';
       this.setUnitClass(unitId, row, next);
     }
   }
@@ -310,10 +297,6 @@ export class BuildPanelSystem extends createSystem({
     // can never buy into an occupied slot.
     const info = getDefenseSlotInfo(slot);
     if (info && !info.entity.hasComponent(Destroyed)) return;
-    // UNIQUE_UNITS (全场唯一): one live iron-guard anywhere forbids a
-    // second — the row already renders grayed, this is the stale-click
-    // guard behind it.
-    if (UNIQUE_UNITS.has(unitId) && hasLiveDefenseUnit(unitId)) return;
     const price = this.priceFor(unitId);
     const money = director.getValue(Wallet, 'money') as number;
     if (money < price) return;

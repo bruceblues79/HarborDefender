@@ -34,7 +34,6 @@ import {
   HitCore,
   OceanTag,
   Repairing,
-  Taunt,
 } from './components.js';
 import {
   COMBAT,
@@ -142,13 +141,8 @@ function decorateCombatPrototype(
  * build-panel purchases — a purchase into a destroyed slot is this mount
  * with the old occupant stripped first (replaceDefenseUnit below).
  *
- * Kit by unit id:
- * - cannon: RayInteractable + CannonAim + CannonFire (the aim/fire loop) and
- *   HitCore(faction defender, unitType 'cannon').
- * - iron-guard (钢铁卫士): never fires, never aims — no RayInteractable, no
- *   CannonAim/CannonFire. Carries Taunt (嘲讽) so raiders always roll it as
- *   their target, and the same defender HitCore keyed 'iron-guard' so the
- *   DAMAGE_MATRIX charges its fixed 2% per hit.
+ * Kit: RayInteractable + CannonAim + CannonFire (the aim/fire loop) and
+ * HitCore(faction defender, unitType 'cannon').
  */
 function mountDefenseUnit(
   world: World,
@@ -173,18 +167,13 @@ function mountDefenseUnit(
   // CannonAim hands it to the shared aim system, with per-entity yaw and
   // pitch limits so each mount's traverse/elevation envelope rides the same
   // component.
-  if (unitId === 'cannon') {
-    unitEntity.addComponent(RayInteractable);
-    unitEntity.addComponent(CannonAim);
-    unitEntity.addComponent(CannonFire, { unitType: 'cannon' });
-  } else {
-    // 钢铁卫士：嘲讽坦位 —— 在场即劫持普通攻击者索敌。
-    unitEntity.addComponent(Taunt);
-  }
+  unitEntity.addComponent(RayInteractable);
+  unitEntity.addComponent(CannonAim);
+  unitEntity.addComponent(CannonFire, { unitType: 'cannon' });
   // Defender hit core: enemy shells arriving within this radius are
   // consumed by ShellHitSystem, which charges the unit's health pool per
   // hit (knockout = Destroyed tag + hidden). unitType keys the
-  // DAMAGE_MATRIX row — iron-guard takes a flat 2% from every attacker.
+  // DAMAGE_MATRIX row.
   unitEntity.addComponent(HitCore, {
     radius: COMBAT.defenderCoreRadius,
     faction: 'defender',
@@ -217,18 +206,6 @@ export function getDefenseSlotInfo(
 }
 
 /**
- * Whether a live (not Destroyed) occupant of `unitId` stands in any slot —
- * the single truth UNIQUE_UNITS panels consult: one live iron-guard anywhere
- * forbids building a second.
- */
-export function hasLiveDefenseUnit(unitId: DefenseUnitId): boolean {
-  return defenseEntities.some(
-    (entry) =>
-      entry.unit === unitId && !entry.entity.hasComponent(Destroyed),
-  );
-}
-
-/**
  * Strip a slot's occupant without mounting a replacement: the unit loses
  * its combat components (every combat query drops it this frame), is hidden
  * and is forgotten by the battery registry — hidden forever like a knockout,
@@ -242,7 +219,6 @@ export function removeDefenseUnit(world: World, slotIndex: number): void {
   const { entity } = old;
   entity.removeComponent(CannonAim);
   entity.removeComponent(CannonFire);
-  entity.removeComponent(Taunt);
   entity.removeComponent(HitCore);
   entity.removeComponent(Health);
   entity.removeComponent(Destroyed);
@@ -276,7 +252,7 @@ export function replaceDefenseUnit(
 /**
  * Battlefield persistence: the ocean, wall and cannons are built once per
  * page load and kept alive across MAIN-menu round trips (hidden, never
- * disposed — the iron-guard/pad geometry is shared with the cached GLTF
+ * disposed — the pad geometry is shared with the cached GLTF
  * prototypes, so disposing it would poison the AssetManager cache). Their
  * runtime state resets on every (re)entry: cannon aim returns to level.
  */
@@ -324,8 +300,8 @@ const defenseEntities: DefenseEntity[] = [];
 /**
  * Unit prototypes loaded once by startBattle; build-panel purchases clone
  * from them exactly like the initial battery does. `defensePrototypes` maps
- * every DefenseUnitId to its mounted prototype (cannon carries the muzzle
- * helper; iron-guard is a static bust with only hit_core).
+ * each DefenseUnitId to its mounted prototype (the cannon carries the muzzle
+ * helper).
  */
 const defensePrototypes = new Map<DefenseUnitId, Object3D>();
 
@@ -437,7 +413,6 @@ export function startBattle(world: World): void {
         AssetManager.loadHDRTextureById('ocean-env.hdr'),
         Promise.all([
           AssetManager.loadGLTFById('ocean-body'),
-          AssetManager.loadGLTFById('iron-guard'),
           AssetManager.loadGLTFById('defense-pad'),
         ]),
         new Promise<{ wall: Object3D; cannon: Object3D }>((resolve) => {
@@ -449,7 +424,7 @@ export function startBattle(world: World): void {
         .then(
           ([
             hdrTexture,
-            [oceanGltf, ironGuardGltf, padGltf],
+            [oceanGltf, padGltf],
             { wall: wallObject, cannon: cannonProto },
           ]) => {
           // Equirect HDR -> cubemap: avoids pole stretching in reflections
@@ -507,19 +482,15 @@ export function startBattle(world: World): void {
           battlefieldObjects.push(wallObject);
 
           // The defense battery: one clone per DEFENSE_SLOTS entry across the
-          // central 3 m of the 3.4 m wall, muzzles facing the sea (-Z).
+          // central 1.8 m of the 3.4 m wall, muzzles facing the sea (-Z).
           // Cloning keeps geometry/materials shared while each gun_rotate
           // pivot stays independent; the prototype carries the muzzle and
           // hit_core helpers, so every clone is an armed, targetable
           // combatant. The active level may re-crew the slots
-          // (LevelSpec.initialUnits — the design boss stage opens with a
-          // full five-gun battery); the slots' own units are the default.
+          // (LevelSpec.initialUnits — the design boss stage opens fully
+          // crewed); the slots' own units are the default.
           decorateCombatPrototype(cannonProto, 0, -0.2);
           defensePrototypes.set('cannon', cannonProto);
-          const ironGuardPrototype = ironGuardGltf.scene;
-          // 钢铁卫士不开火不瞄准：无 gun_rotate 可挂 muzzle，只挂 hit_core。
-          decorateCombatPrototype(ironGuardPrototype, 0, 0);
-          defensePrototypes.set('iron-guard', ironGuardPrototype);
           const initialUnits =
             activeLevelList[0]?.initialUnits ??
             DEFENSE_SLOTS.map((slot) => slot.unit);
@@ -608,8 +579,7 @@ export function returnToWelcome(world: World): void {
  * barrel pitch back to the spawn elevation (stock half-raised).
  * `CannonAim` stays the single truth — CannonAimSystem re-applies the pose
  * to the transforms on its next frame. Shared by the MAIN-menu battlefield
- * re-entry and the pause menu's RESTART. Units without an aim kit (the
- * iron-guard bust) have nothing to reset.
+ * re-entry and the pause menu's RESTART.
  */
 export function resetCannonAim(): void {
   for (const { entity, defaultPitchDeg } of defenseEntities) {
@@ -639,9 +609,8 @@ export function restoreCannons(): void {
  * Re-crew the battery to the active level's initialUnits (level-switch):
  * every occupant is restored first, then slots whose mounted unit differs
  * from the level's wish are stripped and remounted. A null wish means an
- * empty slot (the endless gate leaves the wing slots to the player). Level
- * lists without initialUnits fall back to the slot defaults. Callers are the
- * LevelWaveSystem's beginLevel / restartLevel.
+ * empty slot. Level lists without initialUnits fall back to the slot
+ * defaults. Callers are the LevelWaveSystem's beginLevel / restartLevel.
  */
 export function syncBatteryToLevel(world: World): void {
   restoreCannons();
