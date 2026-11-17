@@ -271,20 +271,20 @@ export const SPAWN_HALF_WIDTH: number = SPAWN_FAN.width / 2;
  */
 export const ECONOMY = {
   /** Money the run starts (and every RESTART / MAIN re-entry) with. */
-  startMoney: 200,
+  startMoney: 320,
   /** Bounty credited the instant an attacker unit dies (unified price). */
   killReward: 200,
   /** Health points restored per second while a unit repairs (100 pool). */
   repairHpPerSecond: 10,
-  /** Money drained per second while a unit repairs (修满 110 金). */
-  repairCostPerSecond: 11,
+  /** Money drained per second while a unit repairs (修满 180 金). */
+  repairCostPerSecond: 18,
   /**
    * Book value per unit id: the ONLY price knob — an empty or destroyed
    * slot builds at full value. There is no trade-in: a live occupant's
    * button simply stays hidden.
    */
   unitValues: {
-    cannon: 200,
+    cannon: 320,
   } as Record<DefenseUnitId, number>,
 };
 
@@ -427,7 +427,7 @@ export const gameLevels: LevelSpec[] = [];
  */
 export const endlessLevel: LevelSpec = {
   name: 'endless',
-  startMoney: 200,
+  startMoney: 320,
   // 守方 3 加农炮：省略 initialUnits，沿用 DEFENSE_SLOTS 默认（三炮全满，
   // 槽位只在被击毁后由玩家重建）。
   waves: [{ units: ['pirate-ship', 'pirate-ship', 'pirate-ship'] }],
