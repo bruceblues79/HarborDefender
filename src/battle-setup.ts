@@ -48,6 +48,8 @@ import {
   WALL_SEA_FACE_Z,
 } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
+import { createCannon } from './scene-assets/cannon.scene-asset.js';
+import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
 import { SkyDomeSystem } from './sky-dome-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
@@ -274,8 +276,8 @@ export function replaceDefenseUnit(
 /**
  * Battlefield persistence: the ocean, wall and cannons are built once per
  * page load and kept alive across MAIN-menu round trips (hidden, never
- * disposed — their geometry/materials are shared with the cached GLTF
- * prototypes, so disposing them would poison the AssetManager cache). Their
+ * disposed — the iron-guard/pad geometry is shared with the cached GLTF
+ * prototypes, so disposing it would poison the AssetManager cache). Their
  * runtime state resets on every (re)entry: cannon aim returns to level.
  */
 let battlefieldReady = false;
@@ -350,10 +352,10 @@ function failEntry(
 
 /**
  * One-shot battle start flow: hide the welcome panel, show the loading
- * panel, load the HDR sky map and the solidified GLB models in parallel,
- * then place the field and ease into the battle view. Re-entry after a
- * MAIN-menu return skips straight to the view change — the battlefield is
- * already built.
+ * panel, load the HDR sky map and the remaining GLB models while the harbor
+ * wall and cannon are built in code, then place the field and ease into the
+ * battle view. Re-entry after a MAIN-menu return skips straight to the view
+ * change — the battlefield is already built.
  *
  * The HDR is a lazily manifest-loaded asset: the welcome screen is unlit and
  * never requests it, so the entry below is the first time it is fetched.
@@ -424,22 +426,31 @@ export function startBattle(world: World): void {
 
       // 3. Load the battle view's assets in parallel: the HDR sky map (a lazy
       // manifest entry, so nothing fetched it while the welcome screen was up)
-      // and the solidified GLB models. The map feeds the dome shader right
-      // away, but the dome stays hidden until the loading panel is gone.
+      // and the GLB models. The map feeds the dome shader right away, but the
+      // dome stays hidden until the loading panel is gone.
+      //
+      // The harbor wall and cannon are no longer solidified GLBs: they are
+      // built in code as soon as loading starts, one frame after the panel is
+      // shown so it paints first. The entry gate below waits for that bake —
+      // the panel never hides before both prototypes exist.
       Promise.all([
         AssetManager.loadHDRTextureById('ocean-env.hdr'),
         Promise.all([
           AssetManager.loadGLTFById('ocean-body'),
-          AssetManager.loadGLTFById('harbor-wall'),
-          AssetManager.loadGLTFById('cannon'),
           AssetManager.loadGLTFById('iron-guard'),
           AssetManager.loadGLTFById('defense-pad'),
         ]),
+        new Promise<{ wall: Object3D; cannon: Object3D }>((resolve) => {
+          requestAnimationFrame(() => {
+            resolve({ wall: createHarborWall(), cannon: createCannon() });
+          });
+        }),
       ])
         .then(
           ([
             hdrTexture,
-            [oceanGltf, wallGltf, cannonGltf, ironGuardGltf, padGltf],
+            [oceanGltf, ironGuardGltf, padGltf],
+            { wall: wallObject, cannon: cannonProto },
           ]) => {
           // Equirect HDR -> cubemap: avoids pole stretching in reflections
           const cubeRT = new WebGLCubeRenderTarget(256, {
@@ -482,11 +493,10 @@ export function startBattle(world: World): void {
           battlefieldObjects.push(oceanObject);
 
           // Place harbor wall at the ocean body's maxZ edge
-          const wallObject = wallGltf.scene;
           bakeWallFaceMottle(wallObject);
           wallObject.position.set(0, 0.55, WALL_CENTER_Z);
-          // Runtime-instantiated GLB meshes keep three.js defaults
-          // (both false); scene-JSON assets get these via content flags.
+          // Runtime-instantiated meshes keep three.js defaults (both false);
+          // scene-JSON assets get these via content flags.
           wallObject.traverse((child: Object3D) => {
             if ((child as Mesh).isMesh) {
               child.castShadow = true;
@@ -504,7 +514,6 @@ export function startBattle(world: World): void {
           // combatant. The active level may re-crew the slots
           // (LevelSpec.initialUnits — the design boss stage opens with a
           // full five-gun battery); the slots' own units are the default.
-          const cannonProto = cannonGltf.scene;
           decorateCombatPrototype(cannonProto, 0, -0.2);
           defensePrototypes.set('cannon', cannonProto);
           const ironGuardPrototype = ironGuardGltf.scene;

@@ -154,7 +154,7 @@ export const OCEAN_PLANE_SIZE = 15;
 export const OCEAN_FAR_Z: number = OCEAN.centerZ - OCEAN.length / 2;
 
 /**
- * Harbor wall placement — kept in step with `harbor-wall.glb` (a
+ * Harbor wall placement — kept in step with `harbor-wall.scene-asset.ts` (a
  * 3.4 × 0.5 × 0.4 m block) and its transform in battle-setup.ts. The block is
  * only 0.4 m deep in z and straddles the water's edge: its seaward face sits
  * exactly on the ocean's near edge (z = -1.5), so beyond it there is only wall.

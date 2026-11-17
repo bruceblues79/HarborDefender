@@ -84,18 +84,6 @@ export default defineAssets({
     name: 'Ocean Body',
     priority: 'background',
   },
-  'harbor-wall': {
-    url: publicAssetUrl('gltf/harbor-wall.glb'),
-    type: AssetType.GLTF,
-    name: 'Harbor Wall',
-    priority: 'background',
-  },
-  cannon: {
-    url: publicAssetUrl('gltf/cannon.glb'),
-    type: AssetType.GLTF,
-    name: 'Cannon',
-    priority: 'background',
-  },
   'iron-guard': {
     url: publicAssetUrl('gltf/iron-guard.glb'),
     type: AssetType.GLTF,
