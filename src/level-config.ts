@@ -182,14 +182,14 @@ export interface DefenseSlotDef {
 }
 
 /**
- * Three slots evenly spaced across a 1.6 m span, centred on the 3.4 m wall.
+ * Three slots evenly spaced across a 1.5 m span, centred on the 3.4 m wall.
  * All three start crewed — 3 is the whole battery now, and the only way a
  * slot empties is a knockout, which the player rebuilds from the wallet.
  */
 export const DEFENSE_SLOTS: DefenseSlotDef[] = [
-  { x: -0.8, unit: 'cannon' },
+  { x: -0.75, unit: 'cannon' },
   { x: 0, unit: 'cannon' },
-  { x: 0.8, unit: 'cannon' },
+  { x: 0.75, unit: 'cannon' },
 ];
 
 /** Unit ids the build panel can mount into a slot — the row order it renders. */
@@ -1027,7 +1027,7 @@ export const DEATH_LIGHT = {
    * Sweep aim line: the beam tracks a point on the wall's SEA face level
    * with the mounted units' core centres — flat, barely dipping, so the
    * graze never digs into the wall masonry — while its x walks the slot row
-   * past both end slots (x ±0.9 plus a margin).
+   * past both end slots (x ±0.75 plus a margin).
    */
   sweepAimY: 1.05,
   sweepSpanX: 1.35,
