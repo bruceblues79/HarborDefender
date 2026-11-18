@@ -216,6 +216,10 @@ export class LevelWaveSystem extends createSystem({
     this.director = director;
 
     for (const [type, def] of Object.entries(UNIT_TYPES)) {
+      // The pirate hull is no longer a solidified GLB: battle-setup builds
+      // the prototype while the loading panel is up and injects it through
+      // setUnitPrototype before any wave spawns.
+      if (type === 'pirate-ship') continue;
       AssetManager.loadGLTFById(def.assetId)
         .then((gltf) => {
           // Boss hulls already ship every functional node; generic decoration
@@ -228,6 +232,16 @@ export class LevelWaveSystem extends createSystem({
           console.error(`LevelWaveSystem: failed to load unit "${type}"`, err),
         );
     }
+  }
+
+  /**
+   * Adopt a runtime-built unit prototype (battle-setup bakes the pirate hull
+   * during the loading panel). Decoration matches the GLB path, so clones
+   * spawn from it identically.
+   */
+  setUnitPrototype(typeId: string, prototype: Object3D): void {
+    decorateShipPrototype(prototype);
+    this.prototypes.set(typeId, prototype);
   }
 
   /**

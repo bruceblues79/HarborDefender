@@ -90,12 +90,6 @@ export default defineAssets({
     name: 'Defense Pad',
     priority: 'background',
   },
-  'pirate-ship': {
-    url: publicAssetUrl('gltf/pirate-ship-v2.glb'),
-    type: AssetType.GLTF,
-    name: 'Pirate Ship',
-    priority: 'background',
-  },
   bombardier: {
     url: publicAssetUrl('gltf/bombardier-v3.glb'),
     type: AssetType.GLTF,

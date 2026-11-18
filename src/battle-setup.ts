@@ -50,6 +50,8 @@ import type { DefenseUnitId } from './level-config.js';
 import { createCannon } from './scene-assets/cannon.scene-asset.js';
 import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
+import { createPirateShip } from './scene-assets/pirate-ship.scene-asset.js';
+import { LevelWaveSystem } from './level-wave-system.js';
 import { SkyDomeSystem } from './sky-dome-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
@@ -415,18 +417,34 @@ export function startBattle(world: World): void {
           AssetManager.loadGLTFById('ocean-body'),
           AssetManager.loadGLTFById('defense-pad'),
         ]),
-        new Promise<{ wall: Object3D; cannon: Object3D }>((resolve) => {
-          requestAnimationFrame(() => {
-            resolve({ wall: createHarborWall(), cannon: createCannon() });
-          });
-        }),
+        new Promise<{ wall: Object3D; cannon: Object3D; ship: Object3D }>(
+          (resolve) => {
+            requestAnimationFrame(() => {
+              resolve({
+                wall: createHarborWall(),
+                cannon: createCannon(),
+                ship: createPirateShip(),
+              });
+            });
+          },
+        ),
       ])
         .then(
           ([
             hdrTexture,
             [oceanGltf, padGltf],
-            { wall: wallObject, cannon: cannonProto },
+            { wall: wallObject, cannon: cannonProto, ship: shipProto },
           ]) => {
+          // The pirate hull is baked in code like the wall and cannon: hand
+          // the prototype to the wave director before the START gates open;
+          // every attacker is a clone of it.
+          world
+            .getSystems()
+            .find(
+              (system): system is LevelWaveSystem =>
+                system instanceof LevelWaveSystem,
+            )
+            ?.setUnitPrototype('pirate-ship', shipProto);
           // Equirect HDR -> cubemap: avoids pole stretching in reflections
           const cubeRT = new WebGLCubeRenderTarget(256, {
             type: HalfFloatType,
