@@ -133,6 +133,8 @@ function normalFrom(albedo: HTMLCanvasElement, strength: number): HTMLCanvasElem
 }
 
 const ATLAS = 1024;
+/** 粗糙度+金属度与法线用 512 图集，颜色仍为 1024。 */
+const AUX_ATLAS = ATLAS >> 1;
 
 /** 图集分格（像素坐标，canvas 左上为原点）。改这里必须同步 uvRect。 */
 const CELL = {
@@ -340,8 +342,8 @@ function buildBronzeCell(): CellMaps {
 /** 把各分格拼进三张图集：颜色、roughness+metalness（G/B）、法线。 */
 function buildAtlas() {
   const [colorCanvas, colorCtx] = makeCanvas(ATLAS);
-  const [rmCanvas, rmCtx] = makeCanvas(ATLAS);
-  const [normalCanvas, normalCtx] = makeCanvas(ATLAS);
+  const [rmCanvas, rmCtx] = makeCanvas(AUX_ATLAS);
+  const [normalCanvas, normalCtx] = makeCanvas(AUX_ATLAS);
 
   const builders: Record<CellName, () => CellMaps> = {
     wood: buildWoodCell,
@@ -355,8 +357,8 @@ function buildAtlas() {
     const cell = CELL[name];
     const maps = builders[name]();
     colorCtx.drawImage(maps.color, cell.x, cell.y);
-    rmCtx.drawImage(maps.rm, cell.x, cell.y);
-    normalCtx.drawImage(maps.normal, cell.x, cell.y);
+    rmCtx.drawImage(maps.rm, cell.x >> 1, cell.y >> 1, cell.size >> 1, cell.size >> 1);
+    normalCtx.drawImage(maps.normal, cell.x >> 1, cell.y >> 1, cell.size >> 1, cell.size >> 1);
   }
 
   return {

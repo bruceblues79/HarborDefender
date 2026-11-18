@@ -113,21 +113,28 @@ function texture(canvas: HTMLCanvasElement, srgb: boolean): THREE.CanvasTexture 
   return tex;
 }
 
-function normalFrom(albedo: HTMLCanvasElement, strength: number): HTMLCanvasElement {
+function normalFrom(
+  albedo: HTMLCanvasElement,
+  strength: number,
+  outSize: number = albedo.width,
+): HTMLCanvasElement {
   const size = albedo.width;
+  const step = Math.max(1, Math.round(size / outSize));
   const src = albedo.getContext('2d')!.getImageData(0, 0, size, size).data;
-  const [canvas, ctx] = makeCanvas(size);
-  const image = ctx.createImageData(size, size);
+  const [canvas, ctx] = makeCanvas(outSize);
+  const image = ctx.createImageData(outSize, outSize);
   const lum = (x: number, y: number) => {
     const i = ((((y % size) + size) % size) * size + (((x % size) + size) % size)) * 4;
     return (src[i] * 0.299 + src[i + 1] * 0.587 + src[i + 2] * 0.114) / 255;
   };
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const dx = (lum(x - 1, y) - lum(x + 1, y)) * strength;
-      const dy = (lum(x, y - 1) - lum(x, y + 1)) * strength;
+  for (let y = 0; y < outSize; y++) {
+    const sy = y * step;
+    for (let x = 0; x < outSize; x++) {
+      const sx = x * step;
+      const dx = (lum(sx - step, sy) - lum(sx + step, sy)) * strength;
+      const dy = (lum(sx, sy - step) - lum(sx, sy + step)) * strength;
       const inv = 1 / Math.hypot(dx, dy, 1);
-      const i = (y * size + x) * 4;
+      const i = (y * outSize + x) * 4;
       image.data[i] = (dx * inv * 0.5 + 0.5) * 255;
       image.data[i + 1] = (dy * inv * 0.5 + 0.5) * 255;
       image.data[i + 2] = (inv * 0.5 + 0.5) * 255;
@@ -144,7 +151,7 @@ function mapsFrom(albedo: HTMLCanvasElement, rm: HTMLCanvasElement, normalStreng
   return {
     map: texture(albedo, true),
     rm: texture(rm, false),
-    normalMap: texture(normalFrom(albedo, normalStrength), false),
+    normalMap: texture(normalFrom(albedo, normalStrength, albedo.width >> 1), false),
   };
 }
 
@@ -182,9 +189,11 @@ function buildStoneMaps(): Maps {
   }
 
   const [albedo, ctx] = makeCanvas(size);
-  const [rm, rctx] = makeCanvas(size);
+  // 粗糙度/金属度与法线按 512 输出，颜色保留 1024
+  const auxSize = size >> 1;
+  const [rm, rctx] = makeCanvas(auxSize);
   const image = ctx.createImageData(size, size);
-  const rimage = rctx.createImageData(size, size);
+  const rimage = rctx.createImageData(auxSize, auxSize);
 
   for (let y = 0; y < size; y++) {
     const cy = Math.floor(y / cw);
@@ -273,10 +282,11 @@ function buildStoneMaps(): Maps {
       image.data[i + 2] = THREE.MathUtils.clamp(b, 0, 1) * 255;
       image.data[i + 3] = 255;
 
-      rimage.data[i] = 128;
-      rimage.data[i + 1] = rough * 255;
-      rimage.data[i + 2] = 0;
-      rimage.data[i + 3] = 255;
+      const ri = ((y >> 1) * auxSize + (x >> 1)) * 4;
+      rimage.data[ri] = 128;
+      rimage.data[ri + 1] = rough * 255;
+      rimage.data[ri + 2] = 0;
+      rimage.data[ri + 3] = 255;
     }
   }
   ctx.putImageData(image, 0, 0);
