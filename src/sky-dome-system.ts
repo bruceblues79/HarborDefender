@@ -5,8 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { AssetManager, ShaderMaterial, createSystem } from '@iwsdk/core';
-import type { Color, Mesh, Object3D } from '@iwsdk/core';
+import { ShaderMaterial, createSystem } from '@iwsdk/core';
+import type { Color, Mesh, Object3D, Texture } from '@iwsdk/core';
 import { SkyDome } from './components.js';
 import { createSkyDomeMesh } from './scene-assets/sky-dome.scene-asset.js';
 
@@ -17,35 +17,30 @@ type NumberUniform = { value: number };
 type ColorUniform = { value: Color };
 
 /**
- * Owns the sky dome: creates the mesh entity, feeds it the ocean's HDR sky map
- * once loaded, and mirrors the SkyDome inspector fields into the shader.
+ * Owns the sky dome: creates the mesh entity (hidden), accepts the ocean's HDR
+ * sky map once the battle entry loads it, and mirrors the SkyDome inspector
+ * fields into the shader.
  *
- * The dome is visible in every mode; only its passthrough mask is gated. In an
- * XR session with alpha-blend passthrough it becomes the partial-immersion
- * disc; with no session (or an opaque session) the mask is off and the sphere
- * covers the whole sky.
+ * The dome belongs to the battle view only. The welcome and loading screens
+ * render a flat neutral backdrop, so the dome starts hidden and is revealed by
+ * the battle entry once its loading panel is gone. Its passthrough mask is
+ * gated separately: in an XR session with alpha-blend passthrough it becomes
+ * the partial-immersion disc; with no session (or an opaque session) the mask
+ * is off and the sphere covers the whole sky.
  */
 export class SkyDomeSystem extends createSystem({
   domes: { required: [SkyDome] },
 }) {
   private maskOn = false;
+  private dome: Mesh | null = null;
 
   init(): void {
     const dome = createSkyDomeMesh();
+    // Nothing fetches the HDR before ENTER GAME, so the dome must not show its
+    // flat fallback over the welcome screen.
+    dome.visible = false;
+    this.dome = dome;
     this.world.createTransformEntity(dome).addComponent(SkyDome);
-
-    // Same texture the ocean reflects; the dome shows a flat fallback until it
-    // arrives (the asset is preloaded at background priority).
-    AssetManager.loadHDRTextureById('ocean-env.hdr').then(
-      (texture) => {
-        const material = dome.material as ShaderMaterial;
-        material.uniforms.uSkyMap.value = texture;
-        material.needsUpdate = true;
-      },
-      (err: unknown) => {
-        console.warn('Sky dome: HDR sky map failed to load, keeping the fallback.', err);
-      },
-    );
 
     const sync = (): void => this.syncSessionState();
     this.xrManager.addEventListener('sessionstart', sync);
@@ -55,6 +50,19 @@ export class SkyDomeSystem extends createSystem({
       this.xrManager.removeEventListener('sessionend', sync);
     });
     this.syncSessionState();
+  }
+
+  /** Hand the freshly loaded HDR sky map to the dome shader. */
+  setSkyTexture(texture: Texture): void {
+    const material = this.dome?.material as ShaderMaterial | undefined;
+    if (!material) return;
+    material.uniforms.uSkyMap.value = texture;
+    material.needsUpdate = true;
+  }
+
+  /** Reveal the sky for the battle view / hide it again on MAIN-menu return. */
+  setVisible(visible: boolean): void {
+    if (this.dome) this.dome.visible = visible;
   }
 
   update(_delta: number, _time: number): void {

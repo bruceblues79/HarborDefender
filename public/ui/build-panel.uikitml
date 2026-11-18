@@ -188,8 +188,5 @@
     <button id="row-cannon" class="dock-unit">
       <svg class="unit-icon" src="ui/icons/cannon.svg?v=0.1.297" ></svg>
     </button>
-    <button id="row-iron-guard" class="dock-unit">
-      <svg class="unit-icon" src="ui/icons/iron-guard.svg?v=0.1.297" ></svg>
-    </button>
   </Panel>
 </Panel>

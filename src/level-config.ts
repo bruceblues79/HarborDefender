@@ -154,10 +154,11 @@ export const OCEAN_PLANE_SIZE = 15;
 export const OCEAN_FAR_Z: number = OCEAN.centerZ - OCEAN.length / 2;
 
 /**
- * Harbor wall placement — kept in step with `harbor-wall.glb` (a
- * 3.4 × 0.5 × 0.4 m block) and its transform in battle-setup.ts. The block is
- * only 0.4 m deep in z and straddles the water's edge: its seaward face sits
- * exactly on the ocean's near edge (z = -1.5), so beyond it there is only wall.
+ * Harbor wall placement — kept in step with `harbor-wall.scene-asset.ts` and
+ * its transform in battle-setup.ts. The v5 model is 3.0 m long and 0.5 m deep
+ * (seaward face z = -1.6, 0.1 m past the ocean's near edge at z = -1.5).
+ * WALL_WIDTH / WALL_DEPTH_Z stay at the combat reference values below: the
+ * berth band and the burst-chunk water test read them, not the mesh.
  */
 export const WALL_CENTER_Z = -1.3;
 /** Wall width across x (m) — the berth band may span the wall's full face. */
@@ -172,7 +173,7 @@ export const WALL_LAND_FACE_Z: number = WALL_CENTER_Z + WALL_DEPTH_Z / 2;
  * Editing a slot's `unit` swaps what stands there; no system code changes.
  * x is the slot centre across the wall (m); every mount faces the sea (-Z).
  */
-export type DefenseUnitId = 'cannon' | 'iron-guard';
+export type DefenseUnitId = 'cannon';
 
 export interface DefenseSlotDef {
   /** Slot centre x across the wall (m). */
@@ -182,30 +183,18 @@ export interface DefenseSlotDef {
 }
 
 /**
- * Five slots evenly spaced across the central 3 m of the 3.4 m wall
- * (0.2 m margin each side), matching the historical cannon row. The run
- * starts with three cannons; the two remaining slots open empty — the
- * player builds them up from the starting gold.
+ * Three slots evenly spaced across a 1.5 m span, centred on the 3.4 m wall.
+ * All three start crewed — 3 is the whole battery now, and the only way a
+ * slot empties is a knockout, which the player rebuilds from the wallet.
  */
 export const DEFENSE_SLOTS: DefenseSlotDef[] = [
-  { x: -1.2, unit: null },
-  { x: -0.6, unit: 'cannon' },
+  { x: -0.75, unit: 'cannon' },
   { x: 0, unit: 'cannon' },
-  { x: 0.6, unit: 'cannon' },
-  { x: 1.2, unit: null },
+  { x: 0.75, unit: 'cannon' },
 ];
 
 /** Unit ids the build panel can mount into a slot — the row order it renders. */
-export const PLACEABLE_UNITS: DefenseUnitId[] = ['cannon', 'iron-guard'];
-
-/**
- * 全场唯一单位：这些 unit id 在任意槽位存活一只时，其余空槽一律禁建
- * （面板行置灰、点击拒绝），直到这只毁灭。唯一性是全局事实，不是每槽
- * 属性 —— 钢铁卫士的嘲讽由它独自承担，多只没有意义。
- */
-export const UNIQUE_UNITS: ReadonlySet<DefenseUnitId> = new Set([
-  'iron-guard',
-]);
+export const PLACEABLE_UNITS: DefenseUnitId[] = ['cannon'];
 
 /**
  * 维修按钮：挂在每个守方炮台血条的左缘上方，只在血量不满且可维修时出现。
@@ -283,22 +272,20 @@ export const SPAWN_HALF_WIDTH: number = SPAWN_FAN.width / 2;
  */
 export const ECONOMY = {
   /** Money the run starts (and every RESTART / MAIN re-entry) with. */
-  startMoney: 200,
+  startMoney: 320,
   /** Bounty credited the instant an attacker unit dies (unified price). */
   killReward: 200,
   /** Health points restored per second while a unit repairs (100 pool). */
   repairHpPerSecond: 10,
-  /** Money drained per second while a unit repairs (修满 110 金). */
-  repairCostPerSecond: 11,
+  /** Money drained per second while a unit repairs (修满 180 金). */
+  repairCostPerSecond: 18,
   /**
    * Book value per unit id: the ONLY price knob — an empty or destroyed
    * slot builds at full value. There is no trade-in: a live occupant's
    * button simply stays hidden.
    */
   unitValues: {
-    cannon: 200,
-    // 钢铁卫士：2500 金一只（嘲讽承伤坦位，boss 承伤 90% 减免）。
-    'iron-guard': 2500,
+    cannon: 320,
   } as Record<DefenseUnitId, number>,
 };
 
@@ -420,7 +407,7 @@ export const designList: LevelSpec[] = [
   {
     name: 'design',
     startMoney: 9999,
-    initialUnits: ['cannon', 'cannon', 'cannon', 'cannon', 'cannon'],
+    initialUnits: ['cannon', 'cannon', 'cannon'],
     waves: [
       {
         units: ['boss_islewrath'],
@@ -441,9 +428,9 @@ export const gameLevels: LevelSpec[] = [];
  */
 export const endlessLevel: LevelSpec = {
   name: 'endless',
-  startMoney: 200,
-  // 守方 3 加农炮：省略 initialUnits，沿用 DEFENSE_SLOTS 默认（中央三炮，
-  // 两翼 x±1.2 空位留给玩家自建）。
+  startMoney: 320,
+  // 守方 3 加农炮：省略 initialUnits，沿用 DEFENSE_SLOTS 默认（三炮全满，
+  // 槽位只在被击毁后由玩家重建）。
   waves: [{ units: ['pirate-ship', 'pirate-ship', 'pirate-ship'] }],
 };
 export const endlessList: LevelSpec[] = [endlessLevel];
@@ -472,16 +459,18 @@ export const ENDLESS = {
   budgetPerWave: 0.75,
 
   // — 压力曲线（和旧 pressureMin/pressureMax 同名兼容，语义变了） —
-  /** Pressure 曲线下限 / 上限；power=3 时 pressure=pressureMax。 */
+  /**
+   * 城防缩编 3 炮（2026-11-17）：满编从 5 门降为 3 门，powerFull 同名
+   * 参数 3 → 1.8，使满炮 3 门（power=3）落回旧满炮 5 门的压力点
+   * （0.7 + 0.45 × 3 / 1.8 ≈ 1.45）；余额仍由 sustainFactor 叠加。
+   */
   pressureMin: 0.7,
   pressureMax: 1.15,
   /** pressureMin + (pressureMax - pressureMin) × min(powerRatioMax, power/powerFull) */
-  powerFull: 3,
+  powerFull: 1.8,
   powerRatioMax: 2.5,
 
-  // — 卫士 & 续航 —
-  /** iron-guard 的 power 权重：承伤不输出，按 1.5×当前血量比计入。 */
-  guardPowerWeight: 1.5,
+  // — 续航 —
   /** 剩余钱（修完 + 建完之后）转 sustainFactor：1 + min(sustainMax, excess / sustainDiv) */
   sustainDiv: 4000,
   sustainMax: 0.5,
@@ -622,8 +611,9 @@ export const COMBAT = {
    */
   /** City-cannon shell damage (20% of a 100-point health pool). */
   shellDamage: 20,
-  /** Pirate-ship shell damage (15% of a 100-point health pool). */
-  pirateShellDamage: 15,
+  /** Pirate-ship shell damage (9% of a 100-point health pool — the old 15
+   * scaled by the 3-gun defender's 0.6 incoming-damage factor below). */
+  pirateShellDamage: 9,
   /** Health pool every combatant shares (ships and cannons alike). */
   unitHealth: 100,
   /** Seconds between two shots from one pirate ship that is in fire range. */
@@ -766,9 +756,6 @@ export const TRAJECTORY_PREVIEW = {
  */
 export const DEFENDER_BAR_Y: Record<DefenseUnitId, number> = {
   cannon: 0.186 + COMBAT.healthBarDefenderMarginY,
-  // 钢铁卫士：静态雕塑剪影，实测导出顶点 0.345（0.75x 定稿后的盔顶冠羽），
-  // 共享 0.12 边距即可（不需要炮车那样为抬起的炮管预留的大边距）。
-  'iron-guard': 0.345 + COMBAT.healthBarMarginY,
 };
 
 /**
@@ -783,26 +770,23 @@ export const DAMAGE_MATRIX: Record<string, number> = {
   'cannon->bombardier': 25,
   'cannon->ornithopter': 25,
   'pirate-ship->cannon': COMBAT.pirateShellDamage,
-  'bombardier->cannon': 10,
-  'ornithopter->cannon': 6,
+  'bombardier->cannon': 6,
+  // 城防缩编 3 炮（2026-11-17）：散兵承伤按旧 5 炮基线 × 0.6 折算 ——
+  // 每门炮的承伤能力提升到 1/0.6 倍，全墙有效血量与 5 炮时一致。
+  'ornithopter->cannon': 3.6,
   // Boss Islewrath gun turrets (task 029). The `islewrath-turret` core
   // unitType is a damage-matrix key, deliberately distinct from the
   // UNIT_TYPES sheet key `boss_islewrath` (underscore) — never look rows up
   // by the sheet key.
-  'islewrath-turret->cannon': 20,
+  // boss 折中档（2026-11-17）：旧值 ×0.8 —— 散兵保持 0.6 折算，boss 阶段的
+  // 联合压力单独拉回，避免 3 炮满编后 boss 战过于平顺。
+  'islewrath-turret->cannon': 16,
   // Boss Islewrath turret incoming rows (task 028/031): a city cannon shell
   // chips a flat 2% of the turret's 100-point pool.
   'cannon->islewrath-turret': 2,
   // Pirate chief head (task 031): every defender shell chips a flat 2% of
   // its 100-point pool.
   'cannon->islewrath-chief': 2,
-  // 钢铁卫士（iron-guard）：普通攻击者承伤固定 2% —— 一发只扣 2%。
-  // boss 炮塔单独一行 0.2（boss 伤害 90% 减免，2026-11-01；boss 本就无视
-  // 嘲讽——FreeLockTargetSystem 均匀随机索敌，不读 Taunt）。
-  'pirate-ship->iron-guard': 2,
-  'bombardier->iron-guard': 2,
-  'ornithopter->iron-guard': 2,
-  'islewrath-turret->iron-guard': 0.2,
 };
 
 /**
@@ -939,8 +923,11 @@ export const BOSS = {
    * unchanged (mirrors the gun turrets' aimHoldSec beat).
    */
   laserAimHoldSec: 0.5,
-  /** Fraction of the victim's max Health deducted per beam emission. */
-  laserDamageRatio: 0.6,
+  /**
+   * Fraction of the victim's max Health deducted per beam emission.
+   * boss 折中档（2026-11-17）：旧值 0.6 × 0.8 = 0.48。
+   */
+  laserDamageRatio: 0.48,
   /**
    * Damage-corridor half-width (m) around the beam centre line. Applies to
    * collateral defenders only — the locked core always takes the hit.
@@ -1006,7 +993,7 @@ export const BOSS_CHIEF = {
  * - SWEEP (死光扫射): every `sweepEveryBeats`-th beat (intervalSec x 4 = 12 s
  *   after the rise) replaces the lightning: the head yaws to one end of the
  *   wall, holds `aimHoldSec`, the red beam forms over `formSec` (no charge
- *   up), then sweeps across ALL five defense slots over `sweepSec` — a yaw
+ *   up), then sweeps across ALL defense slots over `sweepSec` — a yaw
  *   arc tracking a point level with the mounted units' core centres (flat,
  *   barely dipping — the beam grazes the rampart line without digging into
  *   the wall). Every live defender core the beam crosses loses
@@ -1017,8 +1004,9 @@ export const BOSS_CHIEF = {
 export const DEATH_LIGHT = {
   /** Seconds between two beats (lightning tempo). */
   intervalSec: 3,
-  /** Fraction of the victim's MAX Health a lightning bolt deducts. */
-  damageRatio: 0.75,
+  /** Fraction of the victim's MAX Health a lightning bolt deducts.
+   * boss 折中档（2026-11-17）：旧值 0.75 × 0.8 = 0.6。 */
+  damageRatio: 0.6,
   /** Seconds the bolt visual stays up (instant on, instant off). */
   boltLifeSec: 0.2,
   /** The beat that fires the sweep instead of a lightning (1-based). */
@@ -1031,15 +1019,16 @@ export const DEATH_LIGHT = {
   formSec: 0.1,
   /** Seconds the wall-to-wall sweep takes. */
   sweepSec: 1,
-  /** Fraction of MAX Health a defender loses when the sweep crosses it. */
-  sweepDamageRatio: 0.5,
+  /** Fraction of MAX Health a defender loses when the sweep crosses it.
+   * boss 折中档（2026-11-17）：旧值 0.5 × 0.8 = 0.4。 */
+  sweepDamageRatio: 0.4,
   /** Damage-corridor half-width (m) around the sweeping beam's centre line. */
   sweepDamageRadius: 0.3,
   /**
    * Sweep aim line: the beam tracks a point on the wall's SEA face level
    * with the mounted units' core centres — flat, barely dipping, so the
    * graze never digs into the wall masonry — while its x walks the slot row
-   * past both end slots (x ±1.2 plus a margin).
+   * past both end slots (x ±0.75 plus a margin).
    */
   sweepAimY: 1.05,
   sweepSpanX: 1.35,

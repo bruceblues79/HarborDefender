@@ -9,10 +9,10 @@
   The lowercase <button> is a plain HTML-like element, so its size is fully
   controlled by the styles below instead of the Horizon kit Button defaults.
 
-  Panel surface: stock glass preset over a light-grey background; the hex8
-  alpha channel (0.75) doubles as the panel surface opacity (0.25 see-through)
-  and overrides the Horizon Panel's black default. (UIKitML style blocks do
-  not support CSS comments.)
+  Panel surface: the stock Horizon panel without the glass material class, so
+  it stays unlit and reads the same before any environment map is loaded; the
+  flat light-grey fill keeps the dark text readable on the neutral backdrop.
+  (UIKitML style blocks do not support CSS comments.)
 -->
 <style>
   .panel-root {
@@ -25,8 +25,7 @@
     padding-right: 4;
     padding-bottom: 4;
     padding-left: 4;
-    panel-material-class: glass;
-    background-color: #ffffffaa;
+    background-color: #e8e8e8;
   }
 
   .title-section {

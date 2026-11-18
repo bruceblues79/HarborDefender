@@ -2,9 +2,9 @@
   Loading overlay panel.
   100 × 50 UIKit units = 1 m × 0.5 m at scale 1.
   Faces +Z by default.
-  Same glass surface as the main menu panels (panel-material-class: glass
-  plus a hex8 alpha background); text is dark for contrast on the light
-  glass — white text would wash out exactly like on a white plate.
+  Same unlit default Horizon panel as the welcome screen: no glass material
+  class, so it renders identically before any environment map is available.
+  Text is dark for contrast on the light fill.
 -->
 <style>
   .panel-root {
@@ -14,8 +14,7 @@
     height: 50;
     justify-content: center;
     align-items: center;
-    panel-material-class: glass;
-    background-color: #ffffffaa;
+    background-color: #e8e8e8;
     border-radius: 4;
   }
 

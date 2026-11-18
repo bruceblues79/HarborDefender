@@ -1,7 +1,8 @@
 /**
- * One-shot asset solidification: builds the ocean body, harbor wall and
- * cannon procedurally (same code that used to run at app runtime) and
- * exports them as binary glTF files under public/gltf/.
+ * One-shot asset solidification: builds the remaining procedural models
+ * (same code that used to run at app runtime) and exports them as binary
+ * glTF files under public/gltf/. The harbor wall and cannon are no longer
+ * solidified — the app builds them in code when battle loading starts.
  *
  * Run with: npm run export-assets
  *
@@ -32,7 +33,6 @@ import {
   Shape,
   SphereGeometry,
   SRGBColorSpace,
-  TorusGeometry,
   Vector2,
   Vector3,
 } from '@iwsdk/core';
@@ -138,120 +138,8 @@ function valueNoise3(x: number, y: number, z: number): number {
   return acc;
 }
 
-interface Blotch {
-  cx: number;
-  cy: number;
-  cz: number;
-  radius: number;
-  strength: number;
-}
-
-/**
- * Harbor wall: a 3.4 × 0.5 × 0.4 m block of weathered stone.
- * Origin is the box centre; the flat +Y top face is the placement surface.
- *
- * Mottling is baked into vertex colours (no textures): a 3D fractal value
- * noise field plus a handful of large soft blotches sampled at each vertex.
- * Segments are 48×8×6 (~2.9k triangles) so the blotch blocks stay broad and
- * low-poly rather than finely speckled.
- */
-function createHarborWallExport(): Object3D {
-  const geometry = new BoxGeometry(3.4, 0.5, 0.4, 48, 8, 6);
-
-  // Slight irregularity: position-derived offsets. Identical positions get
-  // identical offsets, so split corner verts stay welded (no cracks).
-  const pos = geometry.attributes.position;
-  const AMP_XZ = 0.01;
-  const AMP_Y = 0.005; // keep the +Y placement surface near-flat
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-    const ox = Math.sin(y * 9.1 + z * 5.3) * Math.sin(z * 7.7 + x * 3.1);
-    const oy = Math.sin(z * 8.3 + x * 4.9) * Math.sin(x * 6.1 + y * 5.7);
-    const oz = Math.sin(x * 7.9 + y * 6.3) * Math.sin(y * 8.7 + z * 4.1);
-    pos.setXYZ(i, x + ox * AMP_XZ, y + oy * AMP_Y, z + oz * AMP_XZ);
-  }
-  geometry.computeVertexNormals();
-
-  // Large soft blotches scattered through the wall volume (toroidal-free:
-  // vertex colours have no seams to wrap across).
-  const rand = makeRandom(20261012);
-  const blotches: Blotch[] = [];
-  const BLOTCHES = 26;
-  for (let b = 0; b < BLOTCHES; b++) {
-    blotches.push({
-      cx: (rand() - 0.5) * 3.6,
-      cy: (rand() - 0.5) * 0.62,
-      cz: (rand() - 0.5) * 0.52,
-      radius: 0.08 + rand() * 0.14,
-      strength: 0.3 + rand() * 0.3,
-    });
-  }
-
-  const colors = new Float32Array(pos.count * 3);
-  const color = new Color();
-  for (let i = 0; i < pos.count; i++) {
-    const px = pos.getX(i);
-    const py = pos.getY(i);
-    const pz = pos.getZ(i);
-
-    // Fractal grain, normalised to ~0..1
-    const h =
-      (valueNoise3(px * 3, py * 3, pz * 3) * 0.55 +
-        valueNoise3(px * 7, py * 7, pz * 7) * 0.3 +
-        valueNoise3(px * 15, py * 15, pz * 15) * 0.15) /
-      1.0;
-
-    // Strongest blotch wins; hard cell edge with a narrow rim
-    let stain = 0;
-    for (const b of blotches) {
-      const dx = px - b.cx;
-      const dy = py - b.cy;
-      const dz = pz - b.cz;
-      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (d < b.radius) {
-        const t = d / b.radius;
-        const f = t < 0.75 ? 1 : 1 - (t - 0.75) / 0.25;
-        const v = f * b.strength;
-        if (v > stain) stain = v;
-      }
-    }
-
-    const jitter = (rand() - 0.5) * 0.05;
-    const brightness = 0.82 + h * 0.24 + jitter;
-    const stainShade = 1 - stain * 0.14;
-    color.setRGB(
-      0.56 * brightness * stainShade,
-      0.56 * brightness * stainShade,
-      0.55 * brightness * stainShade,
-      SRGBColorSpace,
-    );
-    colors[i * 3 + 0] = color.r;
-    colors[i * 3 + 1] = color.g;
-    colors[i * 3 + 2] = color.b;
-  }
-  geometry.setAttribute('color', new BufferAttribute(colors, 3));
-
-  const material = new MeshStandardMaterial({
-    name: 'harbor-wall-stone',
-    color: 0xffffff,
-    roughness: 0.75,
-    metalness: 0,
-    vertexColors: true,
-  });
-
-  const mesh = new Mesh(geometry, material);
-  mesh.name = 'harbor-wall-mesh';
-
-  const root = new Object3D();
-  root.name = 'harbor-wall';
-  root.add(mesh);
-  return root;
-}
-
 // ---------------------------------------------------------------------------
-// Cannon (verbatim move from the old runtime scene-asset)
+// Cannon parts shared by the pirate ship deck gun
 // ---------------------------------------------------------------------------
 
 /**
@@ -361,84 +249,6 @@ const BARREL_COLOR = 0x494e54;
 const BORE_COLOR = 0x0b0c0e;
 
 /**
- * Wooden sea-coast carriage: two sloped cheek brackets, front/rear
- * transoms, four solid truck wheels and a breeching quoin wedge.
- * Built in cannon-root space; wheel bottoms sit on the y = 0 floor.
- */
-function buildCarriage(rand: () => number): BufferGeometry {
-  const parts: BufferGeometry[] = [];
-
-  // Cheek plates: trapezoid in the Z-Y plane (low at the muzzle end -Z,
-  // rising toward the breech +Z), extruded along X.
-  const cheekShape = new Shape();
-  cheekShape.moveTo(-0.115, 0.045);
-  cheekShape.lineTo(-0.115, 0.118);
-  cheekShape.lineTo(0.135, 0.162);
-  cheekShape.lineTo(0.135, 0.045);
-  cheekShape.closePath();
-  const cheekExtrude = new ExtrudeGeometry(cheekShape, {
-    depth: 0.025,
-    bevelEnabled: true,
-    bevelThickness: 0.002,
-    bevelSize: 0.002,
-    bevelSegments: 1,
-  });
-  // Extrusion runs along shape-local +Z; swing it to world X.
-  cheekExtrude.rotateY(-Math.PI / 2);
-  const cheekPlus = cheekExtrude.clone();
-  cheekPlus.translate(0.1, 0, 0);
-  const cheekMinus = cheekExtrude.clone();
-  cheekMinus.translate(-0.075, 0, 0);
-  paint(cheekPlus, CHEEK_COLOR, 0.04, rand);
-  paint(cheekMinus, CHEEK_COLOR, 0.04, rand);
-  parts.push(cheekPlus, cheekMinus);
-
-  // Four solid truck wheels (no independent spin required).
-  const wheelGeo = new CylinderGeometry(0.052, 0.052, 0.024, 14);
-  wheelGeo.rotateZ(Math.PI / 2); // cylinder axis Y -> X
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      const wheel = wheelGeo.clone();
-      wheel.translate(sx * 0.114, 0.052, sz * 0.1);
-      paint(wheel, WHEEL_COLOR, 0.045, rand);
-      parts.push(wheel);
-    }
-  }
-
-  // Cross transoms tying the cheeks together, front and rear.
-  const frontTransom = new BoxGeometry(0.15, 0.025, 0.03);
-  frontTransom.translate(0, 0.095, -0.09);
-  paint(frontTransom, TRANSOM_COLOR, 0.035, rand);
-  parts.push(frontTransom);
-
-  const rearTransom = new BoxGeometry(0.15, 0.03, 0.035);
-  rearTransom.translate(0, 0.138, 0.115);
-  paint(rearTransom, TRANSOM_COLOR, 0.035, rand);
-  parts.push(rearTransom);
-
-  // Quoin: wedge under the breech supporting elevation.
-  const quoinShape = new Shape();
-  quoinShape.moveTo(0.02, 0.128);
-  quoinShape.lineTo(0.13, 0.108);
-  quoinShape.lineTo(0.13, 0.075);
-  quoinShape.lineTo(0.02, 0.075);
-  quoinShape.closePath();
-  const quoin = new ExtrudeGeometry(quoinShape, {
-    depth: 0.08,
-    bevelEnabled: true,
-    bevelThickness: 0.002,
-    bevelSize: 0.002,
-    bevelSegments: 1,
-  });
-  quoin.rotateY(-Math.PI / 2);
-  quoin.translate(0.04, 0, 0); // centre on X
-  paint(quoin, QUOIN_COLOR, 0.035, rand);
-  parts.push(quoin);
-
-  return mergeParts(parts);
-}
-
-/**
  * Iron barrel assembly in gun_rotate-local space: the lathed barrel
  * profile (muzzle swell, two astragal rings, reinforced breech,
  * cascabel), side trunnions and cascabel knob. The trunnion axis runs
@@ -491,178 +301,6 @@ function buildBarrel(rand: () => number): BufferGeometry {
   paint(cascabelGeo, BARREL_COLOR, 0.03, rand);
 
   return mergeParts([barrelGeo, trunnionPlus, trunnionMinus, cascabelGeo]);
-}
-
-/**
- * Medieval harbour-defence cannon.
- *
- * - Origin: centre of the wheel contact rectangle; y = 0 is the floor.
- * - Forward: muzzle points -Z (toward the sea), breech toward +Z.
- * - `gun_rotate` is the elevation pivot at the trunnion axis
- *   (0, 0.15, 0). Positive rotation.x lifts the muzzle; the barrel mesh
- *   is its only child so future aim systems rotate this node directly.
- * - Two draw calls: one merged wood carriage, one merged iron barrel.
- *   All colour comes from vertex colors; material base colour is white.
- */
-export function createCannonExport(): Object3D {
-  const rand = makeRandom(20261013);
-
-  const woodMaterial = new MeshStandardMaterial({
-    name: 'cannon-wood',
-    color: 0xffffff,
-    roughness: 0.7,
-    metalness: 0,
-    vertexColors: true,
-  });
-  const ironMaterial = new MeshStandardMaterial({
-    name: 'cannon-iron',
-    color: 0xffffff,
-    roughness: 0.5,
-    metalness: 1,
-    vertexColors: true,
-  });
-
-  const carriageMesh = new Mesh(buildCarriage(rand), woodMaterial);
-  carriageMesh.name = 'cannon-carriage';
-
-  const barrelMesh = new Mesh(buildBarrel(rand), ironMaterial);
-  barrelMesh.name = 'cannon-barrel';
-
-  const gunRotate = new Object3D();
-  gunRotate.name = 'gun_rotate';
-  gunRotate.position.set(0, 0.15, 0);
-  gunRotate.add(barrelMesh);
-
-  const root = new Object3D();
-  root.name = 'cannon';
-  root.add(carriageMesh);
-  root.add(gunRotate);
-
-  return root;
-}
-
-// ---------------------------------------------------------------------------
-// Iron guard (钢铁卫士) — half-body knight bust on a plinth, one merged steel
-// mesh, all colour baked into vertex colors (metalness 1 / roughness 0.1)
-// ---------------------------------------------------------------------------
-
-/** 钢铁卫士金属灰调色板：每个部件一个基色 + 少量明度抖动。 */
-const GUARD_PLINTH = 0x3f444c;
-const GUARD_CUIRASS = 0x9aa3ad;
-const GUARD_PAULDRON = 0x7b848f;
-const GUARD_GORGET = 0x6a727d;
-const GUARD_HELM = 0xaab2bc;
-const GUARD_CREST = 0x565e69;
-const GUARD_SLIT = 0x171b21;
-const GUARD_ARM = 0x6a727d;
-const GUARD_SHIELD = 0x848d98;
-const GUARD_SHIELD_RIM = 0x5b636e;
-const GUARD_BOSS = 0x454c56;
-
-/**
- * 钢铁卫士：戴盔重甲的半身骑士，持圆盾，金属灰主色调。
- *
- * - 原点在底座底面中心（挂载时落在 pad 顶面），正面朝 -Z（面海，
- *   与炮口朝向约定一致）；观察缝与盾牌都在 -Z 侧。
- * - 整体尺寸按用户定稿缩小 25%（scale 0.75）：全高 0.345 m（冠羽顶），
- *   横向 ~0.32 m（盾缘），与 0.6 m 槽距、0.4 m 炮车协调；低模基元，
- *   无贴图。
- * - 固有色全部烘进顶点色，材质基色为白，metalness 1 / roughness 0.1。
- * - 单一合并 mesh（iron-guard-mesh）一次 draw call；无 gun_rotate、
- *   无 muzzle —— 本单位不开火不瞄准，hit_core 由运行时的
- *   decorateCombatPrototype 挂在包围盒中心。
- */
-export function createIronGuardExport(): Object3D {
-  const rand = makeRandom(20261031);
-  const parts: BufferGeometry[] = [];
-
-  // 底座：矮圆台，读作雕像剖面的截断基座。
-  const plinth = new CylinderGeometry(0.125, 0.15, 0.035, 12);
-  plinth.translate(0, 0.0175, 0);
-  paint(plinth, GUARD_PLINTH, 0.03, rand);
-  parts.push(plinth);
-
-  // 胸甲：上宽下窄的圆台（肩宽腰窄的半身剪影）。
-  const cuirass = new CylinderGeometry(0.12, 0.095, 0.2, 12);
-  cuirass.translate(0, 0.135, 0);
-  paint(cuirass, GUARD_CUIRASS, 0.025, rand);
-  parts.push(cuirass);
-
-  // 肩甲：两枚压扁的半球扣在肩线上。
-  for (const side of [-1, 1]) {
-    const pauldron = new SphereGeometry(0.055, 8, 6);
-    pauldron.scale(1, 0.8, 1);
-    pauldron.translate(side * 0.125, 0.23, 0);
-    paint(pauldron, GUARD_PAULDRON, 0.025, rand);
-    parts.push(pauldron);
-  }
-
-  // 护颈：头盔与胸甲之间的过渡环。
-  const gorget = new CylinderGeometry(0.055, 0.068, 0.045, 10);
-  gorget.translate(0, 0.255, 0);
-  paint(gorget, GUARD_GORGET, 0.02, rand);
-  parts.push(gorget);
-
-  // 大头盔：直筒圆台（great helm），平顶。
-  const helm = new CylinderGeometry(0.075, 0.082, 0.145, 12);
-  helm.translate(0, 0.35, 0);
-  paint(helm, GUARD_HELM, 0.02, rand);
-  parts.push(helm);
-
-  // 盔顶冠羽：背脊上的薄鳍片（缩放前全模型最高点 0.46）。
-  const crest = new BoxGeometry(0.014, 0.045, 0.16);
-  crest.translate(0, 0.4375, 0.005);
-  paint(crest, GUARD_CREST, 0.02, rand);
-  parts.push(crest);
-
-  // 面甲观察缝：贴在盔体前表面 (-Z) 的深色薄板。
-  const slit = new BoxGeometry(0.105, 0.02, 0.014);
-  slit.translate(0, 0.36, -0.081);
-  paint(slit, GUARD_SLIT, 0, rand);
-  parts.push(slit);
-
-  // 持盾臂：从躯干右侧斜伸向盾后的小臂块。
-  const arm = new BoxGeometry(0.045, 0.045, 0.11);
-  arm.rotateX(0.5);
-  arm.translate(0.08, 0.185, -0.075);
-  paint(arm, GUARD_ARM, 0.02, rand);
-  parts.push(arm);
-
-  // 圆盾：盘面朝 -Z，外缘箍环 + 盾心凸台。
-  const shield = new CylinderGeometry(0.085, 0.085, 0.016, 14);
-  shield.rotateX(Math.PI / 2);
-  shield.translate(0.125, 0.2, -0.145);
-  paint(shield, GUARD_SHIELD, 0.02, rand);
-  parts.push(shield);
-
-  const shieldRim = new TorusGeometry(0.083, 0.009, 6, 16);
-  shieldRim.translate(0.125, 0.2, -0.145);
-  paint(shieldRim, GUARD_SHIELD_RIM, 0.02, rand);
-  parts.push(shieldRim);
-
-  const shieldBoss = new SphereGeometry(0.022, 8, 6);
-  shieldBoss.translate(0.125, 0.2, -0.158);
-  paint(shieldBoss, GUARD_BOSS, 0.02, rand);
-  parts.push(shieldBoss);
-
-  const material = new MeshStandardMaterial({
-    name: 'iron-guard-steel',
-    color: 0xffffff,
-    metalness: 1,
-    roughness: 0.1,
-    vertexColors: true,
-  });
-
-  // 用户定稿：整体缩小 25%（0.75x）—— 烘进合并顶点而非挂载 scale，
-  // 保证 hit_core 定位、血条挂点等运行时推导都建立在最终尺寸上。
-  const mesh = new Mesh(mergeParts(parts), material);
-  mesh.geometry.scale(0.75, 0.75, 0.75);
-  mesh.name = 'iron-guard-mesh';
-
-  const root = new Object3D();
-  root.name = 'iron-guard';
-  root.add(mesh);
-  return root;
 }
 
 // ---------------------------------------------------------------------------
@@ -2313,10 +1951,6 @@ async function exportGLB(root: Object3D, file: string): Promise<void> {
 
 mkdirSync(OUT_DIR, { recursive: true });
 await exportGLB(createOceanBodyExport(), 'ocean-body.glb');
-await exportGLB(createHarborWallExport(), 'harbor-wall.glb');
-await exportGLB(createCannonExport(), 'cannon.glb');
-// iron-guard: 钢铁卫士半身骑士（嘲讽承伤守方单位）。
-await exportGLB(createIronGuardExport(), 'iron-guard.glb');
 // pirate-ship-v2: the deck gun dropped the naval wheel carriage for a
 // fixed pedestal + turntable; the renamed file isolates the node-structure
 // change from any stale cached GLB.

@@ -74,30 +74,14 @@ export default defineAssets({
     url: publicAssetUrl('textures/kloofendal_partly_cloudy_puresky_1k.hdr'),
     type: AssetType.HDRTexture,
     name: 'Ocean Environment HDR',
-    priority: 'background',
+    // Never prefetched: the welcome / loading screens are unlit, so the sky map
+    // is requested explicitly once the player presses ENTER GAME.
+    priority: 'lazy',
   },
   'ocean-body': {
     url: versionedAssetUrl('gltf/ocean-body.glb'),
     type: AssetType.GLTF,
     name: 'Ocean Body',
-    priority: 'background',
-  },
-  'harbor-wall': {
-    url: publicAssetUrl('gltf/harbor-wall.glb'),
-    type: AssetType.GLTF,
-    name: 'Harbor Wall',
-    priority: 'background',
-  },
-  cannon: {
-    url: publicAssetUrl('gltf/cannon.glb'),
-    type: AssetType.GLTF,
-    name: 'Cannon',
-    priority: 'background',
-  },
-  'iron-guard': {
-    url: publicAssetUrl('gltf/iron-guard.glb'),
-    type: AssetType.GLTF,
-    name: 'Iron Guard',
     priority: 'background',
   },
   'defense-pad': {

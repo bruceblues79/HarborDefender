@@ -9,7 +9,11 @@
     <link rel="icon" href="data:," />
     <title>HarborDefender</title>
   </head>
-  <body style="margin: 0; overscroll-behavior: none">
+  <body
+    style="margin: 0; overscroll-behavior: none; background-color: #b8b8b8"
+  >
+    <!-- Neutral backdrop: the WebGL canvas is transparent until the battle
+         view renders its own sky, so the flat grey shows behind UI panels. -->
     <div id="scene-container"></div>
     <script type="module" src="/src/index.ts"></script>
   </body>

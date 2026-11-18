@@ -11,6 +11,7 @@ import {
   HalfFloatType,
   Mesh,
   Object3D,
+  PMREMGenerator,
   RayInteractable,
   UIKitMLAsset,
   Vector3,
@@ -18,7 +19,11 @@ import {
   World,
   loadUIKitMLAsset,
 } from '@iwsdk/core';
-import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
+import type {
+  Entity,
+  MeshStandardMaterial,
+  WebGLRenderTarget,
+} from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
 import {
   CannonAim,
@@ -29,7 +34,6 @@ import {
   HitCore,
   OceanTag,
   Repairing,
-  Taunt,
 } from './components.js';
 import {
   COMBAT,
@@ -43,7 +47,10 @@ import {
   WALL_SEA_FACE_Z,
 } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
+import { createCannon } from './scene-assets/cannon.scene-asset.js';
+import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
+import { SkyDomeSystem } from './sky-dome-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
 import { DieBurstSystem } from './die-burst-system.js';
@@ -134,13 +141,8 @@ function decorateCombatPrototype(
  * build-panel purchases — a purchase into a destroyed slot is this mount
  * with the old occupant stripped first (replaceDefenseUnit below).
  *
- * Kit by unit id:
- * - cannon: RayInteractable + CannonAim + CannonFire (the aim/fire loop) and
- *   HitCore(faction defender, unitType 'cannon').
- * - iron-guard (钢铁卫士): never fires, never aims — no RayInteractable, no
- *   CannonAim/CannonFire. Carries Taunt (嘲讽) so raiders always roll it as
- *   their target, and the same defender HitCore keyed 'iron-guard' so the
- *   DAMAGE_MATRIX charges its fixed 2% per hit.
+ * Kit: RayInteractable + CannonAim + CannonFire (the aim/fire loop) and
+ * HitCore(faction defender, unitType 'cannon').
  */
 function mountDefenseUnit(
   world: World,
@@ -165,18 +167,13 @@ function mountDefenseUnit(
   // CannonAim hands it to the shared aim system, with per-entity yaw and
   // pitch limits so each mount's traverse/elevation envelope rides the same
   // component.
-  if (unitId === 'cannon') {
-    unitEntity.addComponent(RayInteractable);
-    unitEntity.addComponent(CannonAim);
-    unitEntity.addComponent(CannonFire, { unitType: 'cannon' });
-  } else {
-    // 钢铁卫士：嘲讽坦位 —— 在场即劫持普通攻击者索敌。
-    unitEntity.addComponent(Taunt);
-  }
+  unitEntity.addComponent(RayInteractable);
+  unitEntity.addComponent(CannonAim);
+  unitEntity.addComponent(CannonFire, { unitType: 'cannon' });
   // Defender hit core: enemy shells arriving within this radius are
   // consumed by ShellHitSystem, which charges the unit's health pool per
   // hit (knockout = Destroyed tag + hidden). unitType keys the
-  // DAMAGE_MATRIX row — iron-guard takes a flat 2% from every attacker.
+  // DAMAGE_MATRIX row.
   unitEntity.addComponent(HitCore, {
     radius: COMBAT.defenderCoreRadius,
     faction: 'defender',
@@ -209,18 +206,6 @@ export function getDefenseSlotInfo(
 }
 
 /**
- * Whether a live (not Destroyed) occupant of `unitId` stands in any slot —
- * the single truth UNIQUE_UNITS panels consult: one live iron-guard anywhere
- * forbids building a second.
- */
-export function hasLiveDefenseUnit(unitId: DefenseUnitId): boolean {
-  return defenseEntities.some(
-    (entry) =>
-      entry.unit === unitId && !entry.entity.hasComponent(Destroyed),
-  );
-}
-
-/**
  * Strip a slot's occupant without mounting a replacement: the unit loses
  * its combat components (every combat query drops it this frame), is hidden
  * and is forgotten by the battery registry — hidden forever like a knockout,
@@ -234,7 +219,6 @@ export function removeDefenseUnit(world: World, slotIndex: number): void {
   const { entity } = old;
   entity.removeComponent(CannonAim);
   entity.removeComponent(CannonFire);
-  entity.removeComponent(Taunt);
   entity.removeComponent(HitCore);
   entity.removeComponent(Health);
   entity.removeComponent(Destroyed);
@@ -268,13 +252,18 @@ export function replaceDefenseUnit(
 /**
  * Battlefield persistence: the ocean, wall and cannons are built once per
  * page load and kept alive across MAIN-menu round trips (hidden, never
- * disposed — their geometry/materials are shared with the cached GLTF
- * prototypes, so disposing them would poison the AssetManager cache). Their
+ * disposed — the pad geometry is shared with the cached GLTF
+ * prototypes, so disposing it would poison the AssetManager cache). Their
  * runtime state resets on every (re)entry: cannon aim returns to level.
  */
 let battlefieldReady = false;
 /** Whether a battle entry is currently in flight (guards double ENTER). */
 let battleStarted = false;
+/**
+ * PMREM target backing `scene.environment` after the battle entry loads the
+ * HDR. Held for the page lifetime so the renderer keeps the env map alive.
+ */
+let environmentTarget: WebGLRenderTarget | null = null;
 /**
  * Whether the loading panel already carries a transform entity — re-entries
  * after a failed load reuse the same cached document, and a second
@@ -311,8 +300,8 @@ const defenseEntities: DefenseEntity[] = [];
 /**
  * Unit prototypes loaded once by startBattle; build-panel purchases clone
  * from them exactly like the initial battery does. `defensePrototypes` maps
- * every DefenseUnitId to its mounted prototype (cannon carries the muzzle
- * helper; iron-guard is a static bust with only hit_core).
+ * each DefenseUnitId to its mounted prototype (the cannon carries the muzzle
+ * helper).
  */
 const defensePrototypes = new Map<DefenseUnitId, Object3D>();
 
@@ -339,19 +328,20 @@ function failEntry(
 
 /**
  * One-shot battle start flow: hide the welcome panel, show the loading
- * panel, instantiate the solidified GLB models and the ocean reflection
- * cubemap, place them into the world, then ease into the battle view.
- * Re-entry after a MAIN-menu return skips straight to the view change —
- * the battlefield is already built.
+ * panel, load the HDR sky map and the remaining GLB models while the harbor
+ * wall and cannon are built in code, then place the field and ease into the
+ * battle view. Re-entry after a MAIN-menu return skips straight to the view
+ * change — the battlefield is already built.
  *
- * All game assets are preloaded with `background` priority while the
- * welcome screen is up, so these loads are warm cache hits and the loading
- * panel only becomes visible on a slow network.
+ * The HDR is a lazily manifest-loaded asset: the welcome screen is unlit and
+ * never requests it, so the entry below is the first time it is fetched.
+ * The sky dome is fed but kept hidden while the loading panel is up, and the
+ * field objects are placed into the world only in this same entry pass.
  *
- * Lighting split: standard PBR objects (wall, cannons) are lit by the
- * scene's IBLTexture (EnvironmentSystem writes scene.environment) and need
- * no per-object setup; the ocean keeps its unlit fake-reflection shader,
- * which samples the cubemap built here from the same cached HDR texture.
+ * Lighting split: standard PBR objects (wall, cannons) are lit by the PMREM
+ * env map this flow assigns to scene.environment; the ocean keeps its unlit
+ * fake-reflection shader, which samples the cubemap built here from the same
+ * cached HDR texture.
  */
 export function startBattle(world: World): void {
   if (battleStarted) return;
@@ -367,6 +357,11 @@ export function startBattle(world: World): void {
     .find((system): system is StartPanelSystem =>
       system instanceof StartPanelSystem,
     );
+  const skyDomeSystem = world
+    .getSystems()
+    .find((system): system is SkyDomeSystem =>
+      system instanceof SkyDomeSystem,
+    );
 
   // 1. Hide the welcome panel
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
@@ -377,6 +372,9 @@ export function startBattle(world: World): void {
       new Vector3(0, 2.75, 2.75),
       new Vector3(0, 1.697, -2),
     );
+    // Battle view takes over: reveal the sky dome that was loaded (hidden)
+    // during the loading panel.
+    skyDomeSystem?.setVisible(true);
     startPanelSystem?.show();
   };
 
@@ -402,23 +400,48 @@ export function startBattle(world: World): void {
       }
       loadingPanel.visible = true;
 
-      // 3. Load game assets: HDR env + solidified GLB models
-      AssetManager.loadHDRTextureById('ocean-env.hdr')
-        .then(async (hdrTexture) => {
+      // 3. Load the battle view's assets in parallel: the HDR sky map (a lazy
+      // manifest entry, so nothing fetched it while the welcome screen was up)
+      // and the GLB models. The map feeds the dome shader right away, but the
+      // dome stays hidden until the loading panel is gone.
+      //
+      // The harbor wall and cannon are no longer solidified GLBs: they are
+      // built in code as soon as loading starts, one frame after the panel is
+      // shown so it paints first. The entry gate below waits for that bake —
+      // the panel never hides before both prototypes exist.
+      Promise.all([
+        AssetManager.loadHDRTextureById('ocean-env.hdr'),
+        Promise.all([
+          AssetManager.loadGLTFById('ocean-body'),
+          AssetManager.loadGLTFById('defense-pad'),
+        ]),
+        new Promise<{ wall: Object3D; cannon: Object3D }>((resolve) => {
+          requestAnimationFrame(() => {
+            resolve({ wall: createHarborWall(), cannon: createCannon() });
+          });
+        }),
+      ])
+        .then(
+          ([
+            hdrTexture,
+            [oceanGltf, padGltf],
+            { wall: wallObject, cannon: cannonProto },
+          ]) => {
           // Equirect HDR -> cubemap: avoids pole stretching in reflections
           const cubeRT = new WebGLCubeRenderTarget(256, {
             type: HalfFloatType,
           });
           cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
 
-          const [oceanGltf, wallGltf, cannonGltf, ironGuardGltf, padGltf] =
-            await Promise.all([
-              AssetManager.loadGLTFById('ocean-body'),
-              AssetManager.loadGLTFById('harbor-wall'),
-              AssetManager.loadGLTFById('cannon'),
-              AssetManager.loadGLTFById('iron-guard'),
-              AssetManager.loadGLTFById('defense-pad'),
-            ]);
+          // The scene used to declare an IBLTexture, which forced the HDR to
+          // load on first paint. The same image-based lighting is applied here
+          // instead, once the player has opted into the battle view.
+          const pmrem = new PMREMGenerator(world.renderer);
+          environmentTarget = pmrem.fromEquirectangular(hdrTexture);
+          pmrem.dispose();
+          world.scene.environment = environmentTarget.texture;
+          world.scene.environmentIntensity = 1;
+          skyDomeSystem?.setSkyTexture(hdrTexture);
 
           // Swap the GLB's placeholder material for the wave shader
           const oceanObject = oceanGltf.scene;
@@ -445,11 +468,10 @@ export function startBattle(world: World): void {
           battlefieldObjects.push(oceanObject);
 
           // Place harbor wall at the ocean body's maxZ edge
-          const wallObject = wallGltf.scene;
           bakeWallFaceMottle(wallObject);
           wallObject.position.set(0, 0.55, WALL_CENTER_Z);
-          // Runtime-instantiated GLB meshes keep three.js defaults
-          // (both false); scene-JSON assets get these via content flags.
+          // Runtime-instantiated meshes keep three.js defaults (both false);
+          // scene-JSON assets get these via content flags.
           wallObject.traverse((child: Object3D) => {
             if ((child as Mesh).isMesh) {
               child.castShadow = true;
@@ -460,20 +482,15 @@ export function startBattle(world: World): void {
           battlefieldObjects.push(wallObject);
 
           // The defense battery: one clone per DEFENSE_SLOTS entry across the
-          // central 3 m of the 3.4 m wall, muzzles facing the sea (-Z).
+          // central 1.8 m of the 3.0 m wall, muzzles facing the sea (-Z).
           // Cloning keeps geometry/materials shared while each gun_rotate
           // pivot stays independent; the prototype carries the muzzle and
           // hit_core helpers, so every clone is an armed, targetable
           // combatant. The active level may re-crew the slots
-          // (LevelSpec.initialUnits — the design boss stage opens with a
-          // full five-gun battery); the slots' own units are the default.
-          const cannonProto = cannonGltf.scene;
+          // (LevelSpec.initialUnits — the design boss stage opens fully
+          // crewed); the slots' own units are the default.
           decorateCombatPrototype(cannonProto, 0, -0.2);
           defensePrototypes.set('cannon', cannonProto);
-          const ironGuardPrototype = ironGuardGltf.scene;
-          // 钢铁卫士不开火不瞄准：无 gun_rotate 可挂 muzzle，只挂 hit_core。
-          decorateCombatPrototype(ironGuardPrototype, 0, 0);
-          defensePrototypes.set('iron-guard', ironGuardPrototype);
           const initialUnits =
             activeLevelList[0]?.initialUnits ??
             DEFENSE_SLOTS.map((slot) => slot.unit);
@@ -526,7 +543,8 @@ export function startBattle(world: World): void {
           // LevelWaveSystem once the player presses START.
           loadingPanel.visible = false;
           proceed();
-        })
+          },
+        )
         .catch((err: unknown) => failEntry(world, loadingPanel, err));
     })
     .catch((err: unknown) => failEntry(world, null, err));
@@ -540,6 +558,12 @@ export function startBattle(world: World): void {
 export function returnToWelcome(world: World): void {
   battleStarted = false;
   for (const object of battlefieldObjects) object.visible = false;
+  world
+    .getSystems()
+    .find((system): system is SkyDomeSystem =>
+      system instanceof SkyDomeSystem,
+    )
+    ?.setVisible(false);
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
   if (panel) panel.visible = true;
   world
@@ -555,8 +579,7 @@ export function returnToWelcome(world: World): void {
  * barrel pitch back to the spawn elevation (stock half-raised).
  * `CannonAim` stays the single truth — CannonAimSystem re-applies the pose
  * to the transforms on its next frame. Shared by the MAIN-menu battlefield
- * re-entry and the pause menu's RESTART. Units without an aim kit (the
- * iron-guard bust) have nothing to reset.
+ * re-entry and the pause menu's RESTART.
  */
 export function resetCannonAim(): void {
   for (const { entity, defaultPitchDeg } of defenseEntities) {
@@ -586,9 +609,8 @@ export function restoreCannons(): void {
  * Re-crew the battery to the active level's initialUnits (level-switch):
  * every occupant is restored first, then slots whose mounted unit differs
  * from the level's wish are stripped and remounted. A null wish means an
- * empty slot (the endless gate leaves the wing slots to the player). Level
- * lists without initialUnits fall back to the slot defaults. Callers are the
- * LevelWaveSystem's beginLevel / restartLevel.
+ * empty slot. Level lists without initialUnits fall back to the slot
+ * defaults. Callers are the LevelWaveSystem's beginLevel / restartLevel.
  */
 export function syncBatteryToLevel(world: World): void {
   restoreCannons();

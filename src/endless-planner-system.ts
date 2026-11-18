@@ -108,7 +108,7 @@ export class EndlessPlannerSystem extends createSystem({
   }
 
   /**
-   * 每一波都重新估玩家的真实承受能力：炮台血量 × 修满购买力 + 卫士权重 + 空槽重建购买力。
+   * 每一波都重新估玩家的真实承受能力：炮台血量 × 修满购买力 + 空槽重建购买力。
    * 钱只通过修理/重建转成战力，剩余钱算 sustainFactor，不重复乘。
    */
   private estimateCapacity(money: number): {
@@ -119,32 +119,22 @@ export class EndlessPlannerSystem extends createSystem({
     let cannonCurrentSum = 0;
     let cannonMaxSum = 0;
     let cannonCount = 0;
-    let guardHpSum = 0;
-    let guardCount = 0;
 
     for (const core of this.queries.cores.entities) {
       if (core.getValue(HitCore, 'faction') !== 'defender') continue;
       if (core.hasComponent(Destroyed)) continue;
 
-      const unitType = core.getValue(HitCore, 'unitType');
       const current = Number(core.getValue(Health, 'current'));
       const max = Number(core.getValue(Health, 'max'));
-
-      if (unitType === 'iron-guard') {
-        guardCount++;
-        guardHpSum += current / max;
-      } else {
-        // 炮台（包括未来的新防御单位，都按 cannon 处理）
-        cannonCount++;
-        cannonCurrentSum += current;
-        cannonMaxSum += max;
-      }
+      cannonCount++;
+      cannonCurrentSum += current;
+      cannonMaxSum += max;
     }
 
     const totalSlots = DEFENSE_SLOTS.length;
-    const emptySlots = totalSlots - (cannonCount + guardCount);
+    const emptySlots = totalSlots - cannonCount;
 
-    // 修理成本（只算炮台，卫士不可修）
+    // 修理成本
     const repairCostPerHp =
       ECONOMY.repairCostPerSecond / ECONOMY.repairHpPerSecond;
     const missingHp = cannonMaxSum - cannonCurrentSum;
@@ -152,11 +142,10 @@ export class EndlessPlannerSystem extends createSystem({
     const repairSpend = Math.min(money, repairCost);
     const hpFactor = repairCost > 0 ? repairSpend / repairCost : 1;
 
-    // currentPower：炮台按当前血量 + 可修部分补满；卫士按 1.5×当前血量（不可修）
+    // currentPower：炮台按当前血量 + 可修部分补满
     const cannonHpRatioCurrent = cannonMaxSum > 0 ? cannonCurrentSum / cannonMaxSum : 0;
     const currentPower =
-      cannonCount * (cannonHpRatioCurrent + (1 - cannonHpRatioCurrent) * hpFactor) +
-      ENDLESS.guardPowerWeight * guardHpSum;
+      cannonCount * (cannonHpRatioCurrent + (1 - cannonHpRatioCurrent) * hpFactor);
 
     // 重建：修完剩下的钱能在空槽里建几门炮
     const moneyAfterRepair = money - repairSpend;
