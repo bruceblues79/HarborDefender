@@ -482,7 +482,7 @@ export function startBattle(world: World): void {
           battlefieldObjects.push(wallObject);
 
           // The defense battery: one clone per DEFENSE_SLOTS entry across the
-          // central 1.8 m of the 3.4 m wall, muzzles facing the sea (-Z).
+          // central 1.8 m of the 3.0 m wall, muzzles facing the sea (-Z).
           // Cloning keeps geometry/materials shared while each gun_rotate
           // pivot stays independent; the prototype carries the muzzle and
           // hit_core helpers, so every clone is an armed, targetable

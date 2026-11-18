@@ -154,10 +154,11 @@ export const OCEAN_PLANE_SIZE = 15;
 export const OCEAN_FAR_Z: number = OCEAN.centerZ - OCEAN.length / 2;
 
 /**
- * Harbor wall placement — kept in step with `harbor-wall.scene-asset.ts` (a
- * 3.4 × 0.5 × 0.4 m block) and its transform in battle-setup.ts. The block is
- * only 0.4 m deep in z and straddles the water's edge: its seaward face sits
- * exactly on the ocean's near edge (z = -1.5), so beyond it there is only wall.
+ * Harbor wall placement — kept in step with `harbor-wall.scene-asset.ts` and
+ * its transform in battle-setup.ts. The v5 model is 3.0 m long and 0.5 m deep
+ * (seaward face z = -1.6, 0.1 m past the ocean's near edge at z = -1.5).
+ * WALL_WIDTH / WALL_DEPTH_Z stay at the combat reference values below: the
+ * berth band and the burst-chunk water test read them, not the mesh.
  */
 export const WALL_CENTER_Z = -1.3;
 /** Wall width across x (m) — the berth band may span the wall's full face. */
