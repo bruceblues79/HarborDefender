@@ -321,6 +321,23 @@ function failEntry(
 }
 
 /**
+ * 等待下一帧。沉浸会话里 2D 页面可能被隐藏，window.requestAnimationFrame
+ * 不再触发（渲染仍由 XR 帧循环驱动），此时只能挂 world.onXRFrame。
+ */
+function nextFrame(world: World): Promise<void> {
+  return new Promise((resolve) => {
+    if (!world.session) {
+      requestAnimationFrame(() => resolve());
+      return;
+    }
+    const stop = world.onXRFrame(() => {
+      stop();
+      resolve();
+    });
+  });
+}
+
+/**
  * One-shot battle start flow: hide the welcome panel, show the loading
  * panel, load the HDR sky map and the remaining GLB models while the harbor
  * wall and cannon are built in code, then place the field and ease into the
@@ -412,23 +429,16 @@ export function startBattle(world: World): void {
           AssetManager.loadGLTFById('ocean-body'),
           AssetManager.loadGLTFById('defense-pad'),
         ]),
-        new Promise<{
-          wall: Object3D;
-          cannon: Object3D;
-          ship: Object3D;
-          ornithopter: Object3D;
-          bombardier: Object3D;
-        }>((resolve) => {
-          requestAnimationFrame(() => {
-            resolve({
-              wall: createHarborWall(),
-              cannon: createCannon(),
-              ship: createPirateShip(),
-              ornithopter: createOrnithopter(),
-              bombardier: createBombardier(),
-            });
-          });
-        }),
+        (async () => {
+          await nextFrame(world);
+          return {
+            wall: createHarborWall(),
+            cannon: createCannon(),
+            ship: createPirateShip(),
+            ornithopter: createOrnithopter(),
+            bombardier: createBombardier(),
+          };
+        })(),
       ])
         .then(
           ([
