@@ -337,6 +337,9 @@ function nextFrame(world: World): Promise<void> {
   });
 }
 
+/** loading 面板的最短停留时间；构建本身很快，靠它保证玩家看到过渡画面。 */
+const LOADING_MIN_MS = 1000;
+
 /**
  * One-shot battle start flow: hide the welcome panel, show the loading
  * panel, load the HDR sky map and the remaining GLB models while the harbor
@@ -431,6 +434,8 @@ export function startBattle(world: World): void {
         ]),
         (async () => {
           await nextFrame(world);
+          // 先让面板真正呈现一帧，再停留 LOADING_MIN_MS，构建才不会把它挡在屏幕外。
+          await new Promise((resolve) => setTimeout(resolve, LOADING_MIN_MS));
           return {
             wall: createHarborWall(),
             cannon: createCannon(),
