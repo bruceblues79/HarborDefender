@@ -7,6 +7,7 @@
 
 import { RayDisplayMode, type RayPointer, UIKitMLAsset, World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
+import { AudioSystem, unlockAudio } from './audio-system.js';
 import { BallisticSystem } from './ballistic-system.js';
 import { BillboardSystem } from './billboard-system.js';
 import { startBattle } from './battle-setup.js';
@@ -180,13 +181,24 @@ World.create(
   // 维修按钮：血条（30）之后的视图 + 命令层，按钮对齐本帧的血条左缘上方；
   // 同一个系统消费 Pressed 并切换目标炮台的 Repairing 标签。
   world.registerSystem(RepairButtonSystem, { priority: 31 });
+  // 音频导演：只读游戏状态驱动配乐与音效，放在所有玩法系统之后。
+  world.registerSystem(AudioSystem, { priority: 40 });
   installXRButton(world);
 
   // Keep the welcome panel turned toward the viewer in browser and XR alike.
   world.getSceneEntity('welcome-panel')?.addComponent(Billboard);
 
+  // 标题曲与海浪在 welcome 面板出现后就开始排队（浏览器允许则直接出声）；
+  // 首次手势只负责解锁共享 AudioContext，战斗音效在后台继续合成。
+  const unlock = (): void => unlockAudio();
+  window.addEventListener('pointerdown', unlock, { once: true, passive: true });
+  window.addEventListener('keydown', unlock, { once: true });
+
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
   panel
     ?.getElementById('enter-game-button')
-    ?.addEventListener('click', () => startBattle(world));
+    ?.addEventListener('click', () => {
+      unlockAudio();
+      startBattle(world);
+    });
 });
