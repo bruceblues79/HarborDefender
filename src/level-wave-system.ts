@@ -40,7 +40,6 @@ import {
   WakeSource,
   Wallet,
   WaveIntermission,
-  WingFlap,
 } from './components.js';
 import {
   activeLevelList,
@@ -619,14 +618,10 @@ export class LevelWaveSystem extends createSystem({
       });
     }
     // The rotor is also a unit-sheet fact: PropellerSpinSystem turns the
-    // model's `propellers` children for as long as the unit lives. Driven
-    // wings are the same deal: WingFlapSystem swings `wing_left`/`wing_right`
-    // around their shoulder axle.
+    // model's `propellers` children for as long as the unit lives — the
+    // bombardier's main disc and the ornithopter's nose propeller alike.
     if (def.rotor) {
       entity.addComponent(PropellerSpin);
-    }
-    if (def.flap) {
-      entity.addComponent(WingFlap);
     }
     // Boss hull: navigation runs as usual, while the four baked gun
     // turrets are independent combat parts (their own state machines and

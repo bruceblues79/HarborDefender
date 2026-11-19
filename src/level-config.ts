@@ -45,8 +45,6 @@ export interface UnitTypeDef {
   fireInterval: number;
   /** Driven rotor node — PropellerSpinSystem spins `propellers` children. */
   rotor: boolean;
-  /** Driven wing pivots — WingFlapSystem swings `wing_left`/`wing_right`. */
-  flap: boolean;
   /** Hurls pooled stones — PirateFireSystem picks the free-stone pool. */
   stone: boolean;
   /** Disturbs the ocean surface (WakeSource); flyers never touch water. */
@@ -350,7 +348,7 @@ export const SHIP_STOP_Z_MAX: number =
 /** Ships float just below the wave crest at the surface. */
 export const SHIP_Y = 0.66;
 
-/** Spin of the bombardier's rotor nodes, radians per second. */
+/** Spin of a flying unit's rotor nodes, radians per second. */
 export const PROPELLER_SPIN_RAD = 8;
 
 /**
@@ -826,9 +824,6 @@ export const ORNITHOPTER = {
   stopZMax: -4.8,
   /** Uniform model scale — 1.0 matches the retired GLB's on-screen size. */
   scale: 1,
-  /** Wing flap frequency (rad/s) and swing amplitude (rad). */
-  flapSpeed: 40,
-  flapAmplitude: 0.35,
 };
 
 /**
@@ -1054,7 +1049,6 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     armed: true,
     fireInterval: COMBAT.pirateFireInterval,
     rotor: false,
-    flap: false,
     stone: false,
     wake: true,
     stopZMin: SHIP_STOP_Z_MIN,
@@ -1072,7 +1066,6 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     armed: true,
     fireInterval: COMBAT.bombardierFireInterval,
     rotor: true,
-    flap: false,
     stone: false,
     wake: false,
     stopZMin: FLYER_STOP_Z_MIN,
@@ -1081,16 +1074,15 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   ornithopter: {
     assetId: 'ornithopter',
     scale: ORNITHOPTER.scale,
-    // Measured from the runtime prototype's tail-fin tip (0.17) plus the
-    // shared bar margin. Local model units — `scale` 0.9 carries it at spawn.
-    barY: 0.17 + COMBAT.healthBarMarginY,
+    // Measured from the runtime prototype's propeller-disc top (propY 0.005 +
+    // propRadius 0.235 = 0.24) plus the shared bar margin. Local model units.
+    barY: 0.24 + COMBAT.healthBarMarginY,
     movement: 'default-ship',
     faction: 'attacker',
     cruiseY: ORNITHOPTER.y,
     armed: true,
     fireInterval: COMBAT.ornithopterFireInterval,
-    rotor: false,
-    flap: true,
+    rotor: true,
     stone: true,
     wake: false,
     stopZMin: ORNITHOPTER.stopZMin,
@@ -1114,7 +1106,6 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     armed: false,
     fireInterval: 0,
     rotor: false,
-    flap: false,
     stone: false,
     wake: true,
     wakeRadius: BOSS.wakeRadius,
