@@ -823,8 +823,8 @@ export const ORNITHOPTER = {
   /** Berth band: far out at -6.75, nearest at -4.8. */
   stopZMin: -6.75,
   stopZMax: -4.8,
-  /** Uniform model scale — 0.9 reads 10% smaller next to the bombardier. */
-  scale: 0.9,
+  /** Uniform model scale — 1.0 matches the retired GLB's on-screen size. */
+  scale: 1,
   /** Wing flap frequency (rad/s) and swing amplitude (rad). */
   flapSpeed: 40,
   flapAmplitude: 0.35,
