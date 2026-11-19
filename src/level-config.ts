@@ -1079,9 +1079,9 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   ornithopter: {
     assetId: 'ornithopter',
     scale: ORNITHOPTER.scale,
-    // Measured GLB subtree top 0.165 (wing shoulders at rest) + the shared
-    // bar margin. Local GLB units — `scale` 0.9 carries it at spawn.
-    barY: 0.165 + COMBAT.healthBarMarginY,
+    // Measured from the runtime prototype's tail-fin tip (0.17) plus the
+    // shared bar margin. Local model units — `scale` 0.9 carries it at spawn.
+    barY: 0.17 + COMBAT.healthBarMarginY,
     movement: 'default-ship',
     faction: 'attacker',
     cruiseY: ORNITHOPTER.y,

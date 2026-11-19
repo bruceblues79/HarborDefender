@@ -1,6 +1,12 @@
 {
   "version": "iwsdk.scene.v1",
   "units": "meters",
+  "components": {
+    "com.iwsdk.components.IBLTexture": {
+      "src": "ocean-env.hdr",
+      "intensity": 1
+    }
+  },
   "resources": {},
   "environment": {
     "shadows": true,

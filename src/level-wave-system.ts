@@ -216,10 +216,10 @@ export class LevelWaveSystem extends createSystem({
     this.director = director;
 
     for (const [type, def] of Object.entries(UNIT_TYPES)) {
-      // The pirate hull is no longer a solidified GLB: battle-setup builds
-      // the prototype while the loading panel is up and injects it through
-      // setUnitPrototype before any wave spawns.
-      if (type === 'pirate-ship') continue;
+      // The pirate hull and the ornithopter are no longer solidified GLBs:
+      // battle-setup builds their prototypes while the loading panel is up
+      // and injects them through setUnitPrototype before any wave spawns.
+      if (type === 'pirate-ship' || type === 'ornithopter') continue;
       AssetManager.loadGLTFById(def.assetId)
         .then((gltf) => {
           // Boss hulls already ship every functional node; generic decoration
