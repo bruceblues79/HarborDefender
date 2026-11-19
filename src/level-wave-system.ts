@@ -496,7 +496,7 @@ export class LevelWaveSystem extends createSystem({
       x: this.rollStopX(),
       z: this.rollZ(def.stopZMin, def.stopZMax),
     };
-    let bestRoom = this.roominess(best.x, best.z);
+    let bestRoom = this.roominess(best.x, best.z, def);
     for (
       let attempt = 1;
       attempt < STOP_ROLL_TRIES && bestRoom < 1;
@@ -504,7 +504,7 @@ export class LevelWaveSystem extends createSystem({
     ) {
       const x = this.rollStopX();
       const z = this.rollZ(def.stopZMin, def.stopZMax);
-      const room = this.roominess(x, z);
+      const room = this.roominess(x, z, def);
       if (room < bestRoom) continue;
       best = { x, z };
       bestRoom = room;
@@ -515,21 +515,25 @@ export class LevelWaveSystem extends createSystem({
   /**
    * Distance from a candidate stop to the nearest existing claim, normalised
    * so 1 means "exactly at the required spacing" and anything below it means
-   * the hulls would be closer than intended.
+   * the hulls would be closer than intended. The spacing comes from the
+   * candidate's own unit sheet (stopGapX/Z), so wide hulls like the
+   * bombardier reserve the footprint their rotor disc actually needs.
    */
-  private roominess(x: number, z: number): number {
+  private roominess(x: number, z: number, def: UnitTypeDef): number {
+    const gapX = def.stopGapX ?? STOP_MIN_GAP_X;
+    const gapZ = def.stopGapZ ?? STOP_MIN_GAP_Z;
     let room = Number.POSITIVE_INFINITY;
     for (const entity of this.queries.attackers.entities) {
       const object = entity.object3D;
       if (object) {
-        const px = (x - object.position.x) / STOP_MIN_GAP_X;
-        const pz = (z - object.position.z) / STOP_MIN_GAP_Z;
+        const px = (x - object.position.x) / gapX;
+        const pz = (z - object.position.z) / gapZ;
         room = Math.min(room, Math.hypot(px, pz));
       }
       const dx =
-        (x - Number(entity.getValue(ShipMovement, 'targetX'))) / STOP_MIN_GAP_X;
+        (x - Number(entity.getValue(ShipMovement, 'targetX'))) / gapX;
       const dz =
-        (z - Number(entity.getValue(ShipMovement, 'targetZ'))) / STOP_MIN_GAP_Z;
+        (z - Number(entity.getValue(ShipMovement, 'targetZ'))) / gapZ;
       room = Math.min(room, Math.hypot(dx, dz));
     }
     return room;

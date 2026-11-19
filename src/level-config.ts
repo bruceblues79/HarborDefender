@@ -58,6 +58,13 @@ export interface UnitTypeDef {
   stopZMin: number;
   stopZMax: number;
   /**
+   * Stop-slot spacing this unit demands from other attackers (m). Optional:
+   * falls back to STOP_MIN_GAP_X / STOP_MIN_GAP_Z — only wide-footprint
+   * hulls widen it (the bombardier's 1.38 m rotor disc).
+   */
+  stopGapX?: number;
+  stopGapZ?: number;
+  /**
    * Boss-carrier flag: the spawn pipeline skips the generic root HitCore and
    * Health (the boss's four gun turrets are assembled as independent combat
    * parts instead; the hull itself is not a target). Carries no behaviour of
@@ -1070,6 +1077,10 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     wake: false,
     stopZMin: FLYER_STOP_Z_MIN,
     stopZMax: FLYER_STOP_Z_MAX,
+    // 主旋翼直径 1.38 m：沿用 0.8 m 的船用横距会让相邻旋翼穿插。1.5 m 恰好
+    // 在 3.4 m 宽 × 1.55 m 深的停机带里排下 3 × 2 六个位，层容量不必下调。
+    stopGapX: 1.5,
+    stopGapZ: 1.5,
   },
   ornithopter: {
     assetId: 'ornithopter',
