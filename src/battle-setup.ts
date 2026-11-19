@@ -42,6 +42,7 @@ import {
   WALL_SEA_FACE_Z,
 } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
+import { createBombardier } from './scene-assets/bombardier.scene-asset.js';
 import { createCannon } from './scene-assets/cannon.scene-asset.js';
 import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
@@ -416,6 +417,7 @@ export function startBattle(world: World): void {
           cannon: Object3D;
           ship: Object3D;
           ornithopter: Object3D;
+          bombardier: Object3D;
         }>((resolve) => {
           requestAnimationFrame(() => {
             resolve({
@@ -423,6 +425,7 @@ export function startBattle(world: World): void {
               cannon: createCannon(),
               ship: createPirateShip(),
               ornithopter: createOrnithopter(),
+              bombardier: createBombardier(),
             });
           });
         }),
@@ -436,11 +439,12 @@ export function startBattle(world: World): void {
               cannon: cannonProto,
               ship: shipProto,
               ornithopter: ornithopterProto,
+              bombardier: bombardierProto,
             },
           ]) => {
-          // The pirate hull and the ornithopter are baked in code like the
-          // wall and cannon: hand both prototypes to the wave director before
-          // the START gates open; every attacker is a clone of them.
+          // Every attacker hull is baked in code like the wall and cannon:
+          // hand all prototypes to the wave director before the START gates
+          // open; every attacker is a clone of them.
           const waveSystem = world
             .getSystems()
             .find(
@@ -449,6 +453,7 @@ export function startBattle(world: World): void {
             );
           waveSystem?.setUnitPrototype('pirate-ship', shipProto);
           waveSystem?.setUnitPrototype('ornithopter', ornithopterProto);
+          waveSystem?.setUnitPrototype('bombardier', bombardierProto);
           // Equirect HDR -> cubemap: avoids pole stretching in reflections
           const cubeRT = new WebGLCubeRenderTarget(256, {
             type: HalfFloatType,

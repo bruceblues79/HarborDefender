@@ -91,12 +91,6 @@ export default defineAssets({
     name: 'Defense Pad',
     priority: 'background',
   },
-  bombardier: {
-    url: publicAssetUrl('gltf/bombardier-v3.glb'),
-    type: AssetType.GLTF,
-    name: 'Bombardier',
-    priority: 'background',
-  },
   'boss-islewrath': {
     url: publicAssetUrl('gltf/boss-islewrath-v3.glb'),
     type: AssetType.GLTF,

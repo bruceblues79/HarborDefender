@@ -1062,7 +1062,8 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   bombardier: {
     assetId: 'bombardier',
     scale: 1,
-    // Measured GLB subtree top 0.359 (propeller disc) + the shared bar margin.
+    // Measured from the runtime prototype's mast-cap tip (0.359) + the shared
+    // bar margin.
     barY: 0.359 + COMBAT.healthBarMarginY,
     movement: 'default-flyer',
     faction: 'attacker',
