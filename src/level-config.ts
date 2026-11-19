@@ -542,13 +542,14 @@ export const COMBAT = {
    */
   gravity: 15.0,
   /**
-   * Muzzle speed (m/s) — one gun fires everything. 13.75 + gravity 15.0 is
-   * the 11.0 / 12.0 pair scaled by 1.25: drag-loaded arcs keep their layering
-   * but reach ~7.25 m, enough for the pushed-out far berth (-8.0). Keep the
-   * two values moving together — scaling both preserves the flight time and
-   * only changes the reach.
+   * Muzzle speed (m/s) — one gun fires everything. Raised to 16.0 (2026-11-19)
+   * with gravity held at 15.0 so the battery can reach the lifted bombardier
+   * cruise plane (FLYER_Y 3.3): the far stop needs ~2.3 m of rise over the
+   * muzzle, and 16.0 reaches ~3.7 m there. Only the defender shell arcs get
+   * longer / flatter; gravity stays shared, so stones and attacker intercepts
+   * keep their tuned fall.
    */
-  shellSpeed: 13.75,
+  shellSpeed: 16.0,
   /**
    * Linear air drag (1/s) on defender shells only: dv/dt = -drag·v + g.
    * Pirate and boss intercepts solve vacuum trajectories, so their shells
@@ -794,12 +795,12 @@ export const DAMAGE_MATRIX: Record<string, number> = {
  * 2026-10-30): previously derived from the cannon's 45° apex, which would
  * drift with the retuned shellSpeed — the flyer's berth band and firing
  * geometry are tuned against this plane, so it is pinned instead of
- * re-derived. Value equals the last derived runtime result (v0 7.45 era).
- * Under the drag-loaded v0 12 lob the band stays bracketed: the near stop
- * takes the steepest lobs, the far stop a comfortable ~40-52° arc through
- * the core.
+ * re-derived. Lifted 2.857 -> 3.3 (2026-11-19): the rebuilt hull reads
+ * visually crowded against the ornithopter band below, so the cruise plane
+ * moves up together with the 16.0 shell speed. The far stop then needs
+ * ~2.3 m of rise over the muzzle, comfortably inside the new reach.
  */
-export const FLYER_Y = 2.857;
+export const FLYER_Y = 3.3;
 
 /**
  * The bombardier's berth band, shifted 1.5 m out with the ship band: far out
