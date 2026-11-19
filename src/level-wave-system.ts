@@ -44,9 +44,9 @@ import {
 import {
   activeLevelList,
   COMBAT,
+  endlessList,
   ENDLESS,
   ECONOMY,
-  endlessList,
   OCEAN_FAR_Z,
   BOSS,
   PACING,
@@ -215,11 +215,16 @@ export class LevelWaveSystem extends createSystem({
     this.director = director;
 
     for (const [type, def] of Object.entries(UNIT_TYPES)) {
-      // The pirate hull, the ornithopter and the bombardier are no longer
-      // solidified GLBs: battle-setup builds their prototypes while the
+      // The pirate hull, the ornithopter, the bombardier and the boss are no
+      // longer solidified GLBs: battle-setup builds their prototypes while the
       // loading panel is up and injects them through setUnitPrototype before
       // any wave spawns.
-      if (type === 'pirate-ship' || type === 'ornithopter' || type === 'bombardier') continue;
+      if (
+        type === 'pirate-ship' ||
+        type === 'ornithopter' ||
+        type === 'bombardier' ||
+        type === 'boss_islewrath'
+      ) continue;
       AssetManager.loadGLTFById(def.assetId)
         .then((gltf) => {
           // Boss hulls already ship every functional node; generic decoration
@@ -240,15 +245,16 @@ export class LevelWaveSystem extends createSystem({
    * spawn from it identically.
    */
   setUnitPrototype(typeId: string, prototype: Object3D): void {
-    decorateShipPrototype(prototype);
+    // Boss hulls bake their own rig (per-seat gun_rotate/muzzle/hit_core);
+    // the generic deck-gun/bbox decoration would wrap a gun_rotate_N and add
+    // a spurious hull core, so they skip it exactly like the GLB path.
+    if (!UNIT_TYPES[typeId]?.boss) decorateShipPrototype(prototype);
     this.prototypes.set(typeId, prototype);
   }
 
   /**
-   * Hand control to the endless level. Called after the START panel dismisses:
-   * the run always opens the DDT-driven endless list (three cannons, 200 g,
-   * generated waves). The design sandbox list stays parked — switching to it
-   * is a deliberate request-level change, not a player-facing mode.
+   * Hand control to the active level list. Called after the START panel
+   * dismisses.
    */
   beginLevel(): void {
     setActiveLevelList(endlessList);
@@ -702,6 +708,31 @@ export class LevelWaveSystem extends createSystem({
         gun: false,
       },
     ];
+    // Chief-head mount seat (task 031): captured HERE at assembly, the only
+    // moment the pivot node is guaranteed to exist — the laser turret's
+    // death strips its whole subtree (pivot included) from the hull clone,
+    // so a phase-two-time worldToLocal read finds nothing and would seat
+    // the head at the hull origin, buried inside the island rock. The seat
+    // is the pivot's position accumulated over the parent chain EXCLUDING
+    // the hull root: root.position is a world coordinate, not hull-local,
+    // and the head parents under the hull, so including it would
+    // double-count the hull's world position and plant the head out at sea.
+    const laserPivot = root.getObjectByName('gun_rotate_laser');
+    if (laserPivot) {
+      let mx = 0;
+      let my = 0;
+      let mz = 0;
+      let node: Object3D | null = laserPivot;
+      while (node && node !== root) {
+        mx += node.position.x;
+        my += node.position.y;
+        mz += node.position.z;
+        node = node.parent;
+      }
+      boss.addComponent(ChiefMount, { x: mx, y: my, z: mz });
+    } else {
+      console.error('LevelWaveSystem: boss hull has no "gun_rotate_laser"');
+    }
     for (const spec of parts) {
       const wrapper = root.getObjectByName(spec.wrapper);
       if (!wrapper) continue;
@@ -779,31 +810,6 @@ export class LevelWaveSystem extends createSystem({
         nodeName: spec.core,
         reward: RewardTier.BossTurret,
       });
-    }
-    // Chief-head mount seat (task 031): captured HERE at assembly, the only
-    // moment the pivot node is guaranteed to exist — the laser turret's
-    // death strips its whole subtree (pivot included) from the hull clone,
-    // so a phase-two-time worldToLocal read finds nothing and would seat
-    // the head at the hull origin, buried inside the island rock. The seat
-    // is the pivot's position accumulated over the parent chain EXCLUDING
-    // the hull root: root.position is a world coordinate, not hull-local,
-    // and the head parents under the hull, so including it would
-    // double-count the hull's world position and plant the head out at sea.
-    const laserPivot = root.getObjectByName('gun_rotate_laser');
-    if (laserPivot) {
-      let mx = 0;
-      let my = 0;
-      let mz = 0;
-      let node: Object3D | null = laserPivot;
-      while (node && node !== root) {
-        mx += node.position.x;
-        my += node.position.y;
-        mz += node.position.z;
-        node = node.parent;
-      }
-      boss.addComponent(ChiefMount, { x: mx, y: my, z: mz });
-    } else {
-      console.error('LevelWaveSystem: boss hull has no "gun_rotate_laser"');
     }
   }
 

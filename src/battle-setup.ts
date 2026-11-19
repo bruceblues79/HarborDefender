@@ -43,11 +43,14 @@ import {
 } from './level-config.js';
 import type { DefenseUnitId } from './level-config.js';
 import { createBombardier } from './scene-assets/bombardier.scene-asset.js';
+import { createBossIslewrath } from './scene-assets/boss-islewrath.scene-asset.js';
 import { createCannon } from './scene-assets/cannon.scene-asset.js';
 import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
 import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
 import { createOrnithopter } from './scene-assets/ornithopter.scene-asset.js';
+import { createPirateChief } from './scene-assets/pirate-chief.scene-asset.js';
 import { createPirateShip } from './scene-assets/pirate-ship.scene-asset.js';
+import { setChiefPrototype } from './boss-chief-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
 import { SkyDomeSystem } from './sky-dome-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
@@ -442,6 +445,8 @@ export function startBattle(world: World): void {
             ship: createPirateShip(),
             ornithopter: createOrnithopter(),
             bombardier: createBombardier(),
+            boss: createBossIslewrath(),
+            chief: createPirateChief(),
           };
         })(),
       ])
@@ -455,6 +460,8 @@ export function startBattle(world: World): void {
               ship: shipProto,
               ornithopter: ornithopterProto,
               bombardier: bombardierProto,
+              boss: bossProto,
+              chief: chiefProto,
             },
           ]) => {
           // Every attacker hull is baked in code like the wall and cannon:
@@ -469,6 +476,8 @@ export function startBattle(world: World): void {
           waveSystem?.setUnitPrototype('pirate-ship', shipProto);
           waveSystem?.setUnitPrototype('ornithopter', ornithopterProto);
           waveSystem?.setUnitPrototype('bombardier', bombardierProto);
+          waveSystem?.setUnitPrototype('boss_islewrath', bossProto);
+          setChiefPrototype(chiefProto);
           // Equirect HDR -> cubemap: avoids pole stretching in reflections
           const cubeRT = new WebGLCubeRenderTarget(256, {
             type: HalfFloatType,

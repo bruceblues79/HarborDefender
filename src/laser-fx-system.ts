@@ -37,8 +37,8 @@ const PARTICLE_LOOPS = 2;
 /** Muzzle glow sphere radius at full charge (fresnel: blue rim, white core). */
 const GLOW_RADIUS = 0.168;
 /** Beam radii: white-hot inner core, deep-blue inverted-normal outer glow. */
-const BEAM_CORE_RADIUS = 0.0504;
-const BEAM_GLOW_RADIUS = 0.1152;
+const BEAM_CORE_RADIUS = 0.1008;
+const BEAM_GLOW_RADIUS = 0.2304;
 /** Draw after every default transparent object (SpawnFade hulls, bars). */
 const FX_RENDER_ORDER = 10;
 

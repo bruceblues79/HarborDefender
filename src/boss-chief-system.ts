@@ -5,11 +5,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { AssetManager, createSystem, Object3D } from '@iwsdk/core';
+import { createSystem } from '@iwsdk/core';
 import type {
   Entity,
   Mesh,
   MeshStandardMaterial,
+  Object3D,
 } from '@iwsdk/core';
 import {
   ChiefDeathLight,
@@ -31,6 +32,17 @@ import {
   RewardTier,
   SPAWN_FADE_DURATION,
 } from './level-config.js';
+
+/** Injected by battle-setup once the loading panel has baked the head. */
+let injectedChiefPrototype: Object3D | null = null;
+
+/**
+ * Adopt the runtime-built pirate chief head (battle-setup bakes it during
+ * loading, same as every other previously solidified unit GLB).
+ */
+export function setChiefPrototype(prototype: Object3D): void {
+  injectedChiefPrototype = prototype;
+}
 
 /**
  * Phase-two chief head (海盗头领) — task 031. Once every boss turret is gone
@@ -58,19 +70,6 @@ export class BossChiefSystem extends createSystem({
   rising: { required: [IslewrathChief, ChiefRise] },
   directors: { required: [LevelDirector] },
 }) {
-  /** pirate-chief prototype loaded once in init; null until it arrives. */
-  private chiefPrototype: Object3D | null = null;
-
-  init(): void {
-    AssetManager.loadGLTFById('pirate-chief')
-      .then((gltf) => {
-        this.chiefPrototype = gltf.scene;
-      })
-      .catch((err: unknown) =>
-        console.error('BossChiefSystem: failed to load "pirate-chief"', err),
-      );
-  }
-
   update(delta: number): void {
     if (this.paused() || this.over() || !this.gameRunning()) return;
     this.tickPending(delta);
@@ -105,7 +104,7 @@ export class BossChiefSystem extends createSystem({
    * so a freshly mounted head never doubles.
    */
   private tryMountChief(): void {
-    if (this.chiefPrototype === null) return;
+    if (injectedChiefPrototype === null) return;
     if (this.queries.chiefs.entities.size > 0) return;
     if (this.queries.bossTurrets.entities.size > 0) return;
     for (const boss of this.queries.bosses.entities) {
@@ -143,7 +142,7 @@ export class BossChiefSystem extends createSystem({
    * child parented under the hull needs.
    */
   private mountChief(boss: Entity, mountX: number, mountY: number, mountZ: number): void {
-    const prototype = this.chiefPrototype;
+    const prototype = injectedChiefPrototype;
     if (!prototype) return;
     const head = prototype.clone(true);
 

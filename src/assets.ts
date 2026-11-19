@@ -91,16 +91,4 @@ export default defineAssets({
     name: 'Defense Pad',
     priority: 'background',
   },
-  'boss-islewrath': {
-    url: publicAssetUrl('gltf/boss-islewrath-v3.glb'),
-    type: AssetType.GLTF,
-    name: 'Boss Islewrath',
-    priority: 'background',
-  },
-  'pirate-chief': {
-    url: publicAssetUrl('gltf/pirate-chief.glb'),
-    type: AssetType.GLTF,
-    name: 'Pirate Chief',
-    priority: 'background',
-  },
 });

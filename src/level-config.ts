@@ -856,14 +856,15 @@ export const BOSS = {
   wakeRadius: 3.75,
   /**
    * Explicit bar heights (carrier-local y) for the armour-part wrappers'
-   * health bars. The turret subtrees are deterministic baked geometry, so
-   * the bars pin to known tops (gun barrel top 0.176, laser barrel top
-   * 0.465) plus the shared bar margin (0.12) instead of deriving from
-   * runtime bounding boxes — a deep child spawned mid-frame carries a stale
-   * ancestor matrix, and the bbox path would float the bar.
+   * health bars. The turret subtrees are deterministic baked geometry, so the
+   * bars pin to known tops instead of deriving from runtime bounding boxes —
+   * a deep child spawned mid-frame carries a stale ancestor matrix, and the
+   * bbox path would float the bar. 数值按 2026-11-19 新怒岛号模型几何重算：
+   * 炮管最大半径 0.085 × gunScale 0.75 ≈ 0.064（取 hit_core 高度 0.075），
+   * 激光炮壳体最大半径 0.29 × laserScale 0.675 ≈ 0.196。
    */
-  turretBarY: 0.176 + COMBAT.healthBarMarginY,
-  laserBarY: 0.465 + COMBAT.healthBarMarginY,
+  turretBarY: 0.075 + COMBAT.healthBarMarginY,
+  laserBarY: 0.196 + COMBAT.healthBarMarginY,
   /**
    * Turret fire rhythm (task 029): each gun loops
    * fire -> pause -> retarget/turn -> hold -> fire. Every shot is a
@@ -962,12 +963,12 @@ export const BOSS_CHIEF = {
   riseDelay: 0.5,
   /** Hull-local depth the head starts SUNK into the citadel drum — a short
    *  travel for the stocky bust: the helmet crest still peeks above the
-   *  rim at the start of the rise. */
-  riseSink: 0.22,
-  /** Hull-local y at rest relative to the laser pivot seat — 0: the bust
-   *  sits DIRECTLY on the drum (no neck; the model's flange bottom leaves a
-   *  0.004 local gap so it never z-fights the drum cap). */
-  riseY: 0,
+   *  rim at the start of the rise. 新塔顶在 1.16，落座 1.16 时以 0.45 的
+   *  下沉量保持旧模型的上升行程。 */
+  riseSink: 0.45,
+  /** Hull-local y at rest relative to the laser pivot seat — 新模型激光枢轴
+   *  比中央塔顶高 0.16（1.32 vs 1.16），下移同样的量让头部落座在塔顶。 */
+  riseY: -0.16,
   /** Seconds the emerge-from-the-citadel rise takes. */
   riseSec: 1.2,
   /** Health pool: the same normalised 100-point sheet as every unit. */
@@ -1105,12 +1106,9 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     scale: 1.5,
     movement: 'default-ship',
     faction: 'attacker',
-    // Waterline seat (v0.1.180): two draft orders consolidated — the surface
-    // cuts the mesa at model +0.35, so the hull skirt is fully buried and
-    // the basalt mesa itself rises straight out of the sea, the floating-
-    // island read. Going deeper would drown the mesa base and the front
-    // gun seats, and sink the bow ram's visible tip below the waves.
-    cruiseY: OCEAN.surfaceY - 0.35,
+    // 水线（2026-11-19 换新怒岛号）：新模型的船体在 y≈0.05 收口，原点即
+    // 水线；旧岛船为半沉效果专门压深 0.35，新船直接落在洋面上。
+    cruiseY: OCEAN.surfaceY,
     // Unarmed at the sheet level: the boss systems drive the turrets, the
     // shared PirateCannon deck-gun path never touches this hull. The turret
     // cadence lives in BOSS's rhythm knobs, not the unit sheet.

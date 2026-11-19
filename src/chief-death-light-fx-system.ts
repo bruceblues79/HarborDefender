@@ -35,8 +35,8 @@ const BOLT_JOINT_OVERLAP = 1.12;
 /** Beam widths (m): red cross-slice glow, near-white hot core inside. */
 const BOLT_GLOW_WIDTH = 0.065;
 const BOLT_CORE_WIDTH = 0.024;
-const SWEEP_GLOW_WIDTH = 0.18;
-const SWEEP_CORE_WIDTH = 0.075;
+const SWEEP_GLOW_WIDTH = 0.225;
+const SWEEP_CORE_WIDTH = 0.09375;
 /** Draw after every default transparent object (SpawnFade hulls, bars). */
 const FX_RENDER_ORDER = 10;
 
