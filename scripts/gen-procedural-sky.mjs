@@ -19,14 +19,13 @@ const WIDTH = 1024;
 const HEIGHT = 512;
 
 // --- 云层参数（后续调视觉只改这一段） ---
-const CLOUD_SCALE = 0.85;
-const CLOUD_WARP = 1.5;
-const CLOUD_COVERAGE = 0.50;
+const CLOUD_SCALE = 3.4;
+const CLOUD_WARP = 0.35;
+const CLOUD_COVERAGE = 0.42;
 const CLOUD_SOFTNESS = 0.16;
-const CLOUD_HEIGHT = 1.9; // 云层在投影坐标里的高度切片，给噪声第三维
-const HAZE_SCALE = 2.4; // 高层薄卷云
+const HAZE_SCALE = 4.2; // 高层薄卷云
 const SHADOW_STEPS = 5;
-const SHADOW_STEP = 0.14;
+const SHADOW_STEP = 0.02;
 const SHADOW_ABSORB = 2.6;
 
 // --- 大气参数 ---
@@ -35,45 +34,53 @@ const HORIZON = [0.56, 0.68, 0.86];
 const SUN_TINT = [1.0, 0.955, 0.90];
 const SUN_GLOW_STRENGTH = 2.1;
 
-// 32 位整数哈希，确定性且不依赖随机源。
-function hash2(ix, iy) {
-  let h = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263)) | 0;
+function hash3(ix, iy, iz) {
+  let h = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263) + Math.imul(iz, 1274126177)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 }
 
-function valueNoise2(x, y) {
+function valueNoise3(x, y, z) {
   const xi = Math.floor(x);
   const yi = Math.floor(y);
+  const zi = Math.floor(z);
   const xf = x - xi;
   const yf = y - yi;
+  const zf = z - zi;
   const u = xf * xf * (3 - 2 * xf);
   const v = yf * yf * (3 - 2 * yf);
-  const a = hash2(xi, yi);
-  const b = hash2(xi + 1, yi);
-  const c = hash2(xi, yi + 1);
-  const d = hash2(xi + 1, yi + 1);
-  return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
+  const w = zf * zf * (3 - 2 * zf);
+  const c000 = hash3(xi, yi, zi);
+  const c100 = hash3(xi + 1, yi, zi);
+  const c010 = hash3(xi, yi + 1, zi);
+  const c110 = hash3(xi + 1, yi + 1, zi);
+  const c001 = hash3(xi, yi, zi + 1);
+  const c101 = hash3(xi + 1, yi, zi + 1);
+  const c011 = hash3(xi, yi + 1, zi + 1);
+  const c111 = hash3(xi + 1, yi + 1, zi + 1);
+  const x00 = c000 * (1 - u) + c100 * u;
+  const x10 = c010 * (1 - u) + c110 * u;
+  const x01 = c001 * (1 - u) + c101 * u;
+  const x11 = c011 * (1 - u) + c111 * u;
+  const y0 = x00 * (1 - v) + x10 * v;
+  const y1 = x01 * (1 - v) + x11 * v;
+  return y0 * (1 - w) + y1 * w;
 }
 
-function fbm(x, y, octaves) {
+function fbm3(x, y, z, octaves) {
   let sum = 0;
   let amp = 0.5;
   let norm = 0;
   for (let i = 0; i < octaves; i++) {
-    sum += valueNoise2(x, y) * amp;
+    sum += valueNoise3(x, y, z) * amp;
     norm += amp;
     x = x * 2.02 + 17.3;
     y = y * 2.02 - 9.1;
+    z = z * 2.02 + 5.7;
     amp *= 0.5;
   }
   return sum / norm;
-}
-
-// ridged 项专门做云的絮状侵蚀边缘。
-function ridged(x, y) {
-  return 1 - Math.abs(fbm(x, y, 4) * 2 - 1);
 }
 
 function clamp01(v) {
@@ -89,23 +96,21 @@ function mix(a, b, t) {
   return a + (b - a) * t;
 }
 
-// 云平面投影坐标：仰角越低越远，接近地平线时 clamp 防止无限拉伸。
-function projectToCloudPlane(dir, scale) {
-  const y = Math.max(dir.y, 0.035);
-  return [dir.x / y * scale, dir.z / y * scale];
-}
-
-function cloudDensity(px, pz) {
-  const qx = fbm(px * 0.9 + 11.3, pz * 0.9 - 4.1, 4);
-  const qz = fbm(px * 0.9 - 7.7, pz * 0.9 + 2.9, 4);
-  const wx = px + (qx - 0.5) * CLOUD_WARP;
-  const wz = pz + (qz - 0.5) * CLOUD_WARP;
-  const base = fbm(wx, wz, 5);
-  const detail = ridged(wx * 2.7 + 31.7, wz * 2.7 - 12.4);
-  const n = base * 0.76 + detail * 0.24;
-  // 高度切片：让不同仰角的云看到噪声的不同层，弱化平铺感。
-  const slab = valueNoise2(wx * 0.35 + CLOUD_HEIGHT, wz * 0.35 - CLOUD_HEIGHT) * 0.06;
-  return clamp01(n + slab);
+// 云密度直接在方向空间采样 3D 噪声：球面上各向同性，不会出现投影拉伸造成的弧线。
+function cloudDensityDir(dx, dy, dz) {
+  const s = CLOUD_SCALE;
+  let bx = dx * s;
+  let by = dy * s;
+  let bz = dz * s;
+  // 小幅度域扭曲，只做局部翻卷；幅度过大会重新形成大尺度弧。
+  bx += (fbm3(bx * 0.9 + 3.1, by * 0.9 + 7.3, bz * 0.9 - 2.1, 2) - 0.5) * CLOUD_WARP;
+  by += (fbm3(bx * 0.9 - 5.7, by * 0.9 + 1.9, bz * 0.9 + 4.3, 2) - 0.5) * CLOUD_WARP;
+  bz += (fbm3(bx * 0.9 + 9.4, by * 0.9 - 6.2, bz * 0.9 + 0.8, 2) - 0.5) * CLOUD_WARP;
+  // 三个尺度叠加：低频给大团块，中频给块间过渡，高频给零散小块。
+  const large = fbm3(bx + 11.3, by - 4.1, bz + 2.7, 4);
+  const mid = fbm3(bx * 2.2 - 7.7, by * 2.2 + 2.9, bz * 2.2 + 5.5, 4);
+  const small = fbm3(bx * 4.6 + 31.7, by * 4.6 - 12.4, bz * 4.6 + 8.2, 3);
+  return clamp01(large * 0.62 + mid * 0.27 + small * 0.11);
 }
 
 function sampleSky(dir, sunDir) {
@@ -127,22 +132,21 @@ function sampleSky(dir, sunDir) {
 function sampleCloud(dir, sunDir) {
   if (dir.y <= 0.02) return null;
 
-  const [px, pz] = projectToCloudPlane(dir, CLOUD_SCALE);
-  const dens = cloudDensity(px, pz);
+  const dens = cloudDensityDir(dir.x, dir.y, dir.z);
 
   // 主积云：软阈值转成覆盖率。越靠地平线越薄，模拟远云的视觉压缩。
   const horizonFade = smoothstep(0.02, 0.16, dir.y);
   const alpha = smoothstep(CLOUD_COVERAGE, CLOUD_COVERAGE + CLOUD_SOFTNESS, dens) * horizonFade;
   if (alpha <= 0.001) return null;
 
-  // 云的自阴影：沿太阳的水平投影方向（云的厚度投影）累积遮挡。
+  // 云的自阴影：沿太阳的水平方向在方向空间累积遮挡。
   const hLen = Math.hypot(sunDir[0], sunDir[2]) || 1e-4;
   const sx = (sunDir[0] / hLen) * SHADOW_STEP;
   const sz = (sunDir[2] / hLen) * SHADOW_STEP;
   let occ = 0;
   let w = 1;
   for (let i = 1; i <= SHADOW_STEPS; i++) {
-    const o = cloudDensity(px + sx * i, pz + sz * i);
+    const o = cloudDensityDir(dir.x + sx * i, dir.y, dir.z + sz * i);
     occ += Math.max(o - CLOUD_COVERAGE, 0) * w;
     w *= 0.78;
   }
@@ -152,10 +156,10 @@ function sampleCloud(dir, sunDir) {
   const mu = Math.max(dir.x * sunDir[0] + dir.y * sunDir[1] + dir.z * sunDir[2], 0);
   const phase = 1 + 2.8 * Math.pow(mu, 6);
 
-  const lit = SUN_TINT[0] * 2.3 * light * phase;
-  const litG = SUN_TINT[1] * 2.25 * light * phase;
-  const litB = SUN_TINT[2] * 2.2 * light * phase;
-  const shadow = [ZENITH[0] * 1.6, ZENITH[1] * 1.5, ZENITH[2] * 1.4];
+  const lit = SUN_TINT[0] * 1.5 * light * phase;
+  const litG = SUN_TINT[1] * 1.45 * light * phase;
+  const litB = SUN_TINT[2] * 1.4 * light * phase;
+  const shadow = [ZENITH[0] * 1.0, ZENITH[1] * 0.95, ZENITH[2] * 0.9];
 
   return { rgb: [shadow[0] + lit, shadow[1] + litG, shadow[2] + litB], alpha };
 }
@@ -163,9 +167,9 @@ function sampleCloud(dir, sunDir) {
 // 高层薄卷云：细密、半透明，铺在所有积云之上，与积云覆盖率无关。
 function hazeAlpha(dir) {
   if (dir.y <= 0.05) return 0;
-  const [hx, hz] = projectToCloudPlane(dir, HAZE_SCALE);
   const fade = smoothstep(0.05, 0.22, dir.y);
-  return smoothstep(0.55, 0.80, fbm(hx + 5.2, hz - 3.1, 4)) * 0.20 * fade;
+  const h = fbm3(dir.x * HAZE_SCALE + 5.2, dir.y * HAZE_SCALE - 3.1, dir.z * HAZE_SCALE + 1.4, 4);
+  return smoothstep(0.55, 0.80, h) * 0.20 * fade;
 }
 
 function equirectDir(col, row) {
