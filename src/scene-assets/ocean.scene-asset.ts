@@ -79,7 +79,7 @@ const float MASK_FADE = 0.06;
 // farness in main): the near rim keeps the narrow width that reads as a clean
 // blend into the wall, the sides widen, and the far rim gets the widest, calmest
 // dissolve — otherwise the grazing angle collapses that edge into a hard arc.
-const float MASK_FADE_FAR = 0.28;
+const float MASK_FADE_FAR = 0.32;
 const vec2 MASK_CENTER = vec2(0.5, 0.4725);
 
 // Hash-based value noise (2D), quintic-interpolated (C2-continuous) so the

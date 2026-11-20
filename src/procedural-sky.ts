@@ -36,7 +36,7 @@ const SUN_TINT = [1.0, 0.955, 0.9];
  * 负海拔下沉：`-y` 超过 DEEP_START 开始向 DEEP_BLUE 过渡，到 DEEP_END
  * 完全沉入。球面下半部分因此是从高空俯瞰的深海，而不是平涂的地平线色。
  */
-const DEEP_START = 0.10;
+const DEEP_START = 0.07;
 const DEEP_END = 0.8;
 const DEEP_BLUE = [0.012, 0.05, 0.16];
 
