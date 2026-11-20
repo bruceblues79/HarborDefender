@@ -292,7 +292,7 @@ function buildStoneMaps(): Maps {
   ctx.putImageData(image, 0, 0);
   rctx.putImageData(rimage, 0, 0);
 
-  return mapsFrom(albedo, rm, 2.4);
+  return mapsFrom(albedo, rm, 3.2);
 }
 
 // ---------------------------------------------------------------- materials
