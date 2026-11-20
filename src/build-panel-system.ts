@@ -14,6 +14,7 @@ import {
 } from '@iwsdk/core';
 import type { Text } from '@pmndrs/uikit';
 import type { Entity, Object3D } from '@iwsdk/core';
+import { gameAudio } from './audio-system.js';
 import {
   Billboard,
   BuildOpen,
@@ -299,11 +300,15 @@ export class BuildPanelSystem extends createSystem({
     if (info && !info.entity.hasComponent(Destroyed)) return;
     const price = this.priceFor(unitId);
     const money = director.getValue(Wallet, 'money') as number;
-    if (money < price) return;
+    if (money < price) {
+      gameAudio.play('build-fail');
+      return;
+    }
 
     director.setValue(Wallet, 'money', money - price);
     const next = replaceDefenseUnit(this.world, slot, unitId);
     if (next.object3D) next.object3D.visible = true;
+    gameAudio.play('build');
     this.closePanel();
   }
 

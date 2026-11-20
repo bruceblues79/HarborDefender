@@ -7,6 +7,7 @@
 
 import { RayDisplayMode, type RayPointer, UIKitMLAsset, World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
+import { AudioSystem, unlockAudio } from './audio-system.js';
 import { BallisticSystem } from './ballistic-system.js';
 import { BillboardSystem } from './billboard-system.js';
 import { startBattle } from './battle-setup.js';
@@ -45,7 +46,6 @@ import { SpawnFadeSystem } from './spawn-fade-system.js';
 import { SplashSystem } from './splash-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { TrajectoryPreviewSystem } from './trajectory-preview-system.js';
-import { WingFlapSystem } from './wing-flap-system.js';
 import { installXRButton } from './xr-button.js';
 import { installHandPriorityArbitration } from './xr-hand-arbitration.js';
 
@@ -69,6 +69,13 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
       });
     });
 }
+
+// 标题曲与海浪在 welcome 面板出现后就开始排队（浏览器允许则直接出声）；
+// 任何一次手势都会解锁共享 AudioContext。监听常驻且早于 World.create 注册：
+// 加载期间的点击也能算数，退出 XR 后引擎挂起上下文时下一次点击同样能恢复。
+const unlock = (): void => unlockAudio();
+window.addEventListener('pointerdown', unlock, { passive: true });
+window.addEventListener('keydown', unlock);
 
 World.create(
   document.getElementById('scene-container') as HTMLDivElement,
@@ -109,10 +116,8 @@ World.create(
   world.registerSystem(TrajectoryPreviewSystem, { priority: 9 });
   world.registerSystem(ShipMovementSystem, { priority: 10 });
   // Rotor spin rides the simulation tier: same march cadence as movement,
-  // frozen by the same pause/hold tags. Wing flap keeps the ornithopter's
-  // canvas beating on the same tier.
+  // frozen by the same pause/hold tags.
   world.registerSystem(PropellerSpinSystem, { priority: 10 });
-  world.registerSystem(WingFlapSystem, { priority: 10 });
   // Both fire systems draw from one shell pool at the same priority; pirate
   // is registered second and its live hasComponent guard keeps the two from
   // ever handing out the same shell in a frame.
@@ -164,7 +169,7 @@ World.create(
   world.registerSystem(PanelScaleSystem, { priority: 30 });
   world.registerSystem(StartPanelSystem, { priority: 30 });
   // Pause-menu orchestrator: watches GameStarted, owns the pause tag and the
-  // head-following call button / menu panels.
+  // wall-anchored call button / menu panels.
   world.registerSystem(MenuSystem, { priority: 32 });
   // End-of-run result panel: qualifies on GameOver (victory / defeat) and
   // hands RESTART / MAIN to MenuSystem's shared reset sequences.
@@ -183,6 +188,8 @@ World.create(
   // 维修按钮：血条（30）之后的视图 + 命令层，按钮对齐本帧的血条左缘上方；
   // 同一个系统消费 Pressed 并切换目标炮台的 Repairing 标签。
   world.registerSystem(RepairButtonSystem, { priority: 31 });
+  // 音频导演：只读游戏状态驱动配乐与音效，放在所有玩法系统之后。
+  world.registerSystem(AudioSystem, { priority: 40 });
   installXRButton(world);
 
   // Keep the welcome panel turned toward the viewer in browser and XR alike.
@@ -191,5 +198,8 @@ World.create(
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
   panel
     ?.getElementById('enter-game-button')
-    ?.addEventListener('click', () => startBattle(world));
+    ?.addEventListener('click', () => {
+      unlockAudio();
+      startBattle(world);
+    });
 });

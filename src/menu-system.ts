@@ -7,19 +7,14 @@
 
 import {
   createSystem,
-  FollowBehavior,
-  Follower,
   Object3D,
-  Quaternion,
   RayInteractable,
   UIKitMLAsset,
-  Vector3,
   VisibilityState,
   loadUIKitMLAsset,
 } from '@iwsdk/core';
 import type { Entity } from '@iwsdk/core';
 import {
-  Billboard,
   CameraBlocker,
   GameOver,
   GamePaused,
@@ -29,6 +24,7 @@ import {
 import { StartPanelSystem } from './start-panel-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
 import { recycleCombatEffects, returnToWelcome } from './battle-setup.js';
+import { WALL_LAND_FACE_Z } from './level-config.js';
 
 /** Scale the call button shrinks to while the menu is open (hidden, not removed). */
 const CALL_HIDDEN_SCALE = 0.001;
@@ -43,62 +39,56 @@ const CALL_VISIBLE_SCALE = 1.5;
  */
 const MENU_SCALE = 1 / 2;
 /**
- * Per-environment factors on top of the baseline (user tuning v0.1.122 +
- * v0.1.124): XR shrinks the call button 1/3 then grows it 1/4 —
- * 1 × 2/3 × 5/4 = 5/6 — and keeps the menu size; flat mode grows the
- * button 1/3 and the menu by 2x of itself (x3 of baseline).
+ * Per-environment button factors on top of the baseline (user tuning v0.1.122
+ * + v0.1.124): XR shrinks the call button 1/3 then grows it 1/4 —
+ * 1 × 2/3 × 5/4 = 5/6 — and flat mode grows it 1/3. The opened panel now
+ * shares one size in both environments: the wall anchor replaces the
+ * head-relative/flat stand-off difference that the old ×3 flat factor served.
  */
-const MENU_FACTORS_XR = { call: 5 / 6, menu: 1 };
-const MENU_FACTORS_FLAT = { call: 4 / 3, menu: 3 };
+const MENU_PANEL_SCALE = 1.2;
+const MENU_FACTORS_XR = { call: 5 / 6, menu: MENU_PANEL_SCALE };
+const MENU_FACTORS_FLAT = { call: 4 / 3, menu: MENU_PANEL_SCALE };
 /** Pause-menu height, metres (150 × 100 UIKit units at scale 1). */
 const MENU_HEIGHT = 1.0;
 /** Seconds for the expand / collapse animation. */
 const MENU_ANIM_TIME = 0.25;
-/** XR: anchor distance ahead of the head along head yaw, metres. */
-const MENU_XR_FORWARD = 2.5;
 /**
- * XR: anchor lift above head centre, metres. Was 0.85 (flat view's ~19°
- * elevation), then shrunk to 2/3 with the menu sizes, then nudged up
- * 0.015 + 0.03. Tunable by feel.
+ * Fixed world anchor on the wall's land face: wall max z + 6 cm (keeps the
+ * glass layers clear of the stone), centred across x, vertically at the
+ * wall body's centre with a slight upward bias (body spans y 0.30–0.80,
+ * centre 0.55). No head-follow and no billboard — the rig faces +Z, the same
+ * way the land face does, and both flat and XR view it front-on.
  */
-const MENU_XR_LIFT = 0.612;
+const MENU_ANCHOR = { x: 0, y: 0.6, z: WALL_LAND_FACE_Z + 0.06 };
 /**
- * Flat mode: fixed world anchor over the water, ahead of the wall, high
- * enough that the default battle view projects it near the DOM ENTER-XR
- * button's screen spot (upper edge of the frame). The orbit camera moves on
- * every pitch change, so a camera-relative anchor made the menu bob
- * vertically; a world anchor + Billboard(lockY) keeps it perfectly still
- * while still facing the camera.
+ * Rig-local gap between the anchor (button centre) and the panel's bottom
+ * edge: clears the largest button (flat, radius 0.22 rig-local) plus 0.2.
  */
-const MENU_FLAT_ANCHOR = { x: 0, y: 3.495, z: -3.5 };
+const MENU_PANEL_BOTTOM = 0.42;
 
 type MenuMode = 'closed' | 'opening' | 'open' | 'closing';
 
 /**
  * Pause-menu orchestrator. Owns two runtime panels that load once and live
- * under one rig anchored to the player's head:
+ * under one rig anchored to the harbour wall's land face:
  *
  * - Call button: a small circular hamburger that appears once the START gate
  *   opens (GameStarted) and hides while the menu is open.
  * - Pause menu: 1.5 m × 1 m at rig scale 1 (rig runs a uniform ×1/2 shrink;
- *   per-environment factors then resize button and menu — XR: button 5/6,
- *   menu as-is; flat: button 4/3, menu 3x), expanding downward from the call
- *   button with three column buttons — MAIN (back to welcome), RESTART
- *   (rerun the level), RESUME (unpause).
+ *   the opened panel then reads 0.9 × 0.6 m in both environments), expanding
+ *   upward from the call button with three column buttons — MAIN (back to
+ *   welcome), RESTART (rerun the level), RESUME (unpause).
  *
- * Placement follows the spatial-UI guidance for compact global UI: a
- * world-space `Follower` holds the rig at a stable anchor — head-relative
- * in immersive XR (2.5 m ahead, lifted clearly above the gaze line), a fixed
- * world spot in flat desktop mode (the orbit camera moves with pitch,
- * so a camera-derived anchor would make the menu bob). The rig's own
- * Billboard(lockY) yaw keeps the panels faced toward the viewer in both
- * modes; the menu never head-locks.
+ * Placement is one fixed world anchor on the wall's max-z face: centred
+ * across x, just above the wall top. The rig faces +Z exactly like the land
+ * face, so there is no head-follow, no follower easing and no billboard;
+ * flat and XR both view it front-on. Pausing hides what would otherwise
+ * overlap the wall-top health bars, so overhanging the wall top is fine.
  *
  * Pausing is the `GamePaused` tag on the director entity: every simulation
  * system early-returns while it is present (added on open, removed on MAIN /
- * RESTART / RESUME). UI, camera, billboard and follower systems ignore the
- * tag, so the menu keeps animating and stays interactive — pausing never
- * blocks input.
+ * RESTART / RESUME). UI and camera systems ignore the tag, so the menu keeps
+ * animating and stays interactive — pausing never blocks input.
  */
 export class MenuSystem extends createSystem({
   directors: { required: [LevelDirector] },
@@ -116,11 +106,6 @@ export class MenuSystem extends createSystem({
   private menuPanel: UIKitMLAsset | null = null;
   private callButton: UIKitMLAsset | null = null;
   private panelEntity: Entity | null = null;
-  /** Standalone follow target: MenuSystem repositions it, FollowSystem chases it. */
-  private readonly anchorObject = new Object3D();
-  private readonly headPos = new Vector3();
-  private readonly headDir = new Vector3();
-  private readonly headQuat = new Quaternion();
 
   init(): void {
     // The call button and menu track GameStarted on the director entity.
@@ -134,7 +119,7 @@ export class MenuSystem extends createSystem({
     );
 
     // Load both panels once; they stay in the world (invisible when closed),
-    // repositioned next to the player's head on every open.
+    // parked on the wall anchor for the whole run.
     this.loadPanels();
   }
 
@@ -147,13 +132,14 @@ export class MenuSystem extends createSystem({
         this.callButton = callButton;
         this.menuPanel = menuPanel;
 
-        // One rig under the Follower so both panels move and face together.
-        // Uniform baseline shrink; the per-environment button/menu factors
-        // (menuFactors) ride on the panels' own rig-local scales, so the
-        // downward expansion stays proportional per environment
-        // (CALL_BUTTON_RADIUS / MENU_HEIGHT are rig-local).
+        // One rig holds both panels; it is parked on the wall anchor and
+        // never moves or turns. Uniform baseline shrink; the per-environment
+        // factors (menuFactors) ride on the panels' own rig-local scales, so
+        // the upward expansion stays proportional (CALL_BUTTON_RADIUS /
+        // MENU_HEIGHT are rig-local).
         const rig = new Object3D();
         rig.name = 'MenuRig';
+        rig.position.set(MENU_ANCHOR.x, MENU_ANCHOR.y, MENU_ANCHOR.z);
         rig.scale.setScalar(MENU_SCALE);
         rig.add(callButton);
         rig.add(menuPanel);
@@ -161,19 +147,6 @@ export class MenuSystem extends createSystem({
         this.panelRig = rig;
 
         this.panelEntity = this.world.createTransformEntity(rig);
-        // Native position follow: MenuSystem drives anchorObject each frame
-        // (head-relative in XR, fixed world spot in flat mode); FollowSystem
-        // eases the rig toward it with mild smoothing, so the panels float
-        // in space instead of head-locking. Rotation is Billboard's job.
-        this.panelEntity.addComponent(Follower, {
-          target: this.anchorObject,
-          behavior: FollowBehavior.NoRotation,
-          offsetPosition: [0, 0, 0],
-          tolerance: 0.02,
-          maxAngle: 2,
-          speed: 20,
-        });
-        this.panelEntity.addComponent(Billboard, { lockY: true });
         // One interactable covering both child panels: InputSystem ray-tests
         // the rig and its descendants, routing clicks into the UIKitML
         // documents (same pattern as the scene-authored welcome panel).
@@ -276,7 +249,6 @@ export class MenuSystem extends createSystem({
     if (this.mode !== 'closed') return;
     this.mode = 'opening';
     this.setPaused(true);
-    this.updateAnchor();
     this.menuPanel!.visible = true;
     this.applyMenuScale(0);
   }
@@ -299,7 +271,6 @@ export class MenuSystem extends createSystem({
 
   update(delta: number): void {
     if (!this.panelRig?.visible) return;
-    this.updateAnchor();
     this.updateEnvironmentFactors();
     if (this.mode === 'opening') {
       this.animProgress = Math.min(1, this.animProgress + delta / MENU_ANIM_TIME);
@@ -324,58 +295,24 @@ export class MenuSystem extends createSystem({
   }
 
   /**
-   * Drive the follow anchor. Immersive XR: the tracked head's pose — the
-   * anchor sits `MENU_XR_FORWARD` ahead along head yaw (flattened, so pitch
-   * never swings it into the ground) at `MENU_XR_LIFT` above head centre,
-   * matching the flat view's elevation so the menu never reads as eye level.
-   * Flat desktop mode: a fixed world anchor — the orbit
-   * camera changes position on every pitch, so deriving the anchor from the
-   * camera made the menu bob vertically; Billboard(lockY) alone keeps it
-   * faced toward the camera there.
-   */
-  private updateAnchor(): void {
-    const immersive =
-      this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
-    if (!immersive) {
-      this.anchorObject.position.set(
-        MENU_FLAT_ANCHOR.x,
-        MENU_FLAT_ANCHOR.y,
-        MENU_FLAT_ANCHOR.z,
-      );
-      return;
-    }
-    const head = this.world.player.head;
-    head.getWorldPosition(this.headPos);
-    head.getWorldQuaternion(this.headQuat);
-    this.headDir.set(0, 0, -1).applyQuaternion(this.headQuat);
-    this.headDir.y = 0;
-    if (this.headDir.lengthSq() < 0.0001) this.headDir.set(0, 0, -1);
-    this.headDir.normalize();
-    this.anchorObject.position
-      .copy(this.headPos)
-      .addScaledVector(this.headDir, MENU_XR_FORWARD);
-    this.anchorObject.position.y = this.headPos.y + MENU_XR_LIFT;
-  }
-
-  /**
    * Expand / collapse animation. t = 0 fully closed, t = 1 fully open. The
-   * menu grows downward from the call button: its scale goes 0.001 -> 1
-   * while its centre slides from the button's bottom edge down to the open
-   * position, so the menu's top edge stays pinned under the button. The
-   * call button shrinks away as the menu takes over. EaseOutCubic.
+   * menu grows upward from the call button: its scale goes 0.001 -> 1 while
+   * its centre slides from the button's top edge up to the open position, so
+   * the menu's bottom edge stays pinned above the button. The call button
+   * shrinks away as the menu takes over. EaseOutCubic.
    */
   private applyMenuScale(t: number): void {
     const eased = 1 - (1 - t) ** 3;
     const factors = this.menuFactors();
     if (this.menuPanel) {
-      // The menu grows downward from the call button: its top edge stays
-      // pinned under the button while its centre slides down by its own
+      // The menu grows upward from the call button: its bottom edge stays
+      // pinned above the button while its centre slides up by its own
       // (factor-scaled) half height.
       this.menuPanel.scale.setScalar(
         Math.max(CALL_HIDDEN_SCALE, eased * factors.menu),
       );
       this.menuPanel.position.y =
-        -CALL_BUTTON_RADIUS - (MENU_HEIGHT / 2) * eased * factors.menu;
+        MENU_PANEL_BOTTOM + (MENU_HEIGHT / 2) * eased * factors.menu;
     }
     if (this.callButton) {
       this.callButton.scale.setScalar(
@@ -415,7 +352,7 @@ export class MenuSystem extends createSystem({
     if (this.menuPanel) {
       this.menuPanel.scale.setScalar(menuScale);
       this.menuPanel.position.y =
-        -CALL_BUTTON_RADIUS - (MENU_HEIGHT / 2) * menuScale;
+        MENU_PANEL_BOTTOM + (MENU_HEIGHT / 2) * menuScale;
     }
   }
 

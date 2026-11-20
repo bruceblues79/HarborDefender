@@ -191,21 +191,19 @@ export class PirateFireSystem extends createSystem({
    * world space (pivot origin -> target, same atan2(-dx, -dz) convention as
    * the city guns) and converted to the pivot's local frame by subtracting
    * the hull's world yaw, so the gun tracks while the ship keeps sailing on
-   * its own heading. The pivotless flyers (bombardier, ornithopter) yaw the
-   * whole hull, which also swings their belly muzzle nose-forward for the
-   * drop.
+   * its own heading. The pivotless flyers (bombardier, ornithopter) keep
+   * their flight heading: their belly muzzle fires from wherever that heading
+   * puts it, so the hull never turns toward the target.
    */
   private aimCannon(ship: Entity): void {
     const object = ship.object3D;
     const pivot = this.gunPivots.get(ship.index);
-    if (!object) return;
-    const reference = pivot ?? object;
-    reference.getWorldPosition(this.pivotPos);
+    if (!object || !pivot) return;
+    pivot.getWorldPosition(this.pivotPos);
     const dx = Number(ship.getValue(PirateCannon, 'targetX')) - this.pivotPos.x;
     const dz = Number(ship.getValue(PirateCannon, 'targetZ')) - this.pivotPos.z;
     const worldYaw = Math.atan2(-dx, -dz);
-    if (pivot) pivot.rotation.y = worldYaw - object.rotation.y;
-    else object.rotation.y = worldYaw;
+    pivot.rotation.y = worldYaw - object.rotation.y;
   }
 
   /**

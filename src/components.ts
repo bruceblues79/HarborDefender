@@ -6,7 +6,7 @@
  */
 
 import { createComponent, defineComponents } from '@iwsdk/core';
-import { COMBAT, ECONOMY, ORNITHOPTER, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y, WAKE_RADIUS } from './level-config.js';
+import { COMBAT, ECONOMY, PROPELLER_SPIN_RAD, SHIP_STOP_Z_MIN, SHIP_Y, WAKE_RADIUS } from './level-config.js';
 
 /** Marks the ocean body entity so OceanSystem can find it via query. */
 export const OceanTag = createComponent('OceanTag', {});
@@ -94,30 +94,15 @@ export const ShipMovement = createComponent('ShipMovement', {
 });
 
 /**
- * Driven rotor of a flying unit (the bombardier's tandem propellers).
- * Presence of this component *is* the tag "has a spinning rotor":
- * PropellerSpinSystem resolves the model's `propellers` node and turns each
- * child rotor about its local +Y. A hovering flyer keeps its rotors turning,
- * so motion state does not gate the spin.
+ * Driven rotor of a flying unit (the bombardier's and ornithopter's
+ * propellers). Presence of this component *is* the tag "has a spinning
+ * rotor": PropellerSpinSystem resolves the model's `propellers` node and
+ * turns each child rotor about its local +Y. A hovering flyer keeps its
+ * rotors turning, so motion state does not gate the spin.
  */
 export const PropellerSpin = createComponent('PropellerSpin', {
   /** Rotor speed, radians per second. */
   speed: { type: 'Float32', default: PROPELLER_SPIN_RAD },
-});
-
-/**
- * Flapping wings of a flying unit (the ornithopter's canvas pair). Presence
- * of this component *is* the tag "this unit has driven wings":
- * WingFlapSystem resolves the model's `wing_left` / `wing_right` nodes and
- * swings them about their root axle with mirrored rotation.z — pure scalar
- * sine, no physics. A hovering flyer keeps flapping; motion state does not
- * gate the animation.
- */
-export const WingFlap = createComponent('WingFlap', {
-  /** Flap frequency, radians per second. */
-  speed: { type: 'Float32', default: ORNITHOPTER.flapSpeed },
-  /** Swing amplitude, radians — each wing's full excursion is ±amplitude. */
-  amplitude: { type: 'Float32', default: ORNITHOPTER.flapAmplitude },
 });
 
 /**
@@ -808,7 +793,6 @@ export default defineComponents([
   UnitTag,
   ShipMovement,
   PropellerSpin,
-  WingFlap,
   SpawnFade,
   Billboard,
   PanelScaleAnim,

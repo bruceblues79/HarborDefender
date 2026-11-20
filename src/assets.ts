@@ -74,8 +74,9 @@ export default defineAssets({
     url: publicAssetUrl('textures/kloofendal_partly_cloudy_puresky_1k.hdr'),
     type: AssetType.HDRTexture,
     name: 'Ocean Environment HDR',
-    // Never prefetched: the welcome / loading screens are unlit, so the sky map
-    // is requested explicitly once the player presses ENTER GAME.
+    // Kept out of the preloader: the scene's IBLTexture requests it once the
+    // level initialises, and battle setup re-reads the same cache entry for
+    // the sky dome and ocean cubemap.
     priority: 'lazy',
   },
   'ocean-body': {
@@ -88,36 +89,6 @@ export default defineAssets({
     url: publicAssetUrl('gltf/defense-pad.glb'),
     type: AssetType.GLTF,
     name: 'Defense Pad',
-    priority: 'background',
-  },
-  'pirate-ship': {
-    url: publicAssetUrl('gltf/pirate-ship-v2.glb'),
-    type: AssetType.GLTF,
-    name: 'Pirate Ship',
-    priority: 'background',
-  },
-  bombardier: {
-    url: publicAssetUrl('gltf/bombardier-v3.glb'),
-    type: AssetType.GLTF,
-    name: 'Bombardier',
-    priority: 'background',
-  },
-  ornithopter: {
-    url: publicAssetUrl('gltf/ornithopter.glb'),
-    type: AssetType.GLTF,
-    name: 'Ornithopter',
-    priority: 'background',
-  },
-  'boss-islewrath': {
-    url: publicAssetUrl('gltf/boss-islewrath-v3.glb'),
-    type: AssetType.GLTF,
-    name: 'Boss Islewrath',
-    priority: 'background',
-  },
-  'pirate-chief': {
-    url: publicAssetUrl('gltf/pirate-chief.glb'),
-    type: AssetType.GLTF,
-    name: 'Pirate Chief',
     priority: 'background',
   },
 });

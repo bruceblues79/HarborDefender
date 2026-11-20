@@ -40,14 +40,13 @@ import {
   WakeSource,
   Wallet,
   WaveIntermission,
-  WingFlap,
 } from './components.js';
 import {
   activeLevelList,
   COMBAT,
+  endlessList,
   ENDLESS,
   ECONOMY,
-  endlessList,
   OCEAN_FAR_Z,
   BOSS,
   PACING,
@@ -216,6 +215,16 @@ export class LevelWaveSystem extends createSystem({
     this.director = director;
 
     for (const [type, def] of Object.entries(UNIT_TYPES)) {
+      // The pirate hull, the ornithopter, the bombardier and the boss are no
+      // longer solidified GLBs: battle-setup builds their prototypes while the
+      // loading panel is up and injects them through setUnitPrototype before
+      // any wave spawns.
+      if (
+        type === 'pirate-ship' ||
+        type === 'ornithopter' ||
+        type === 'bombardier' ||
+        type === 'boss_islewrath'
+      ) continue;
       AssetManager.loadGLTFById(def.assetId)
         .then((gltf) => {
           // Boss hulls already ship every functional node; generic decoration
@@ -231,10 +240,21 @@ export class LevelWaveSystem extends createSystem({
   }
 
   /**
-   * Hand control to the endless level. Called after the START panel dismisses:
-   * the run always opens the DDT-driven endless list (three cannons, 200 g,
-   * generated waves). The design sandbox list stays parked — switching to it
-   * is a deliberate request-level change, not a player-facing mode.
+   * Adopt a runtime-built unit prototype (battle-setup bakes the pirate hull
+   * during the loading panel). Decoration matches the GLB path, so clones
+   * spawn from it identically.
+   */
+  setUnitPrototype(typeId: string, prototype: Object3D): void {
+    // Boss hulls bake their own rig (per-seat gun_rotate/muzzle/hit_core);
+    // the generic deck-gun/bbox decoration would wrap a gun_rotate_N and add
+    // a spurious hull core, so they skip it exactly like the GLB path.
+    if (!UNIT_TYPES[typeId]?.boss) decorateShipPrototype(prototype);
+    this.prototypes.set(typeId, prototype);
+  }
+
+  /**
+   * Hand control to the active level list. Called after the START panel
+   * dismisses.
    */
   beginLevel(): void {
     setActiveLevelList(endlessList);
@@ -482,7 +502,7 @@ export class LevelWaveSystem extends createSystem({
       x: this.rollStopX(),
       z: this.rollZ(def.stopZMin, def.stopZMax),
     };
-    let bestRoom = this.roominess(best.x, best.z);
+    let bestRoom = this.roominess(best.x, best.z, def);
     for (
       let attempt = 1;
       attempt < STOP_ROLL_TRIES && bestRoom < 1;
@@ -490,7 +510,7 @@ export class LevelWaveSystem extends createSystem({
     ) {
       const x = this.rollStopX();
       const z = this.rollZ(def.stopZMin, def.stopZMax);
-      const room = this.roominess(x, z);
+      const room = this.roominess(x, z, def);
       if (room < bestRoom) continue;
       best = { x, z };
       bestRoom = room;
@@ -501,21 +521,25 @@ export class LevelWaveSystem extends createSystem({
   /**
    * Distance from a candidate stop to the nearest existing claim, normalised
    * so 1 means "exactly at the required spacing" and anything below it means
-   * the hulls would be closer than intended.
+   * the hulls would be closer than intended. The spacing comes from the
+   * candidate's own unit sheet (stopGapX/Z), so wide hulls like the
+   * bombardier reserve the footprint their rotor disc actually needs.
    */
-  private roominess(x: number, z: number): number {
+  private roominess(x: number, z: number, def: UnitTypeDef): number {
+    const gapX = def.stopGapX ?? STOP_MIN_GAP_X;
+    const gapZ = def.stopGapZ ?? STOP_MIN_GAP_Z;
     let room = Number.POSITIVE_INFINITY;
     for (const entity of this.queries.attackers.entities) {
       const object = entity.object3D;
       if (object) {
-        const px = (x - object.position.x) / STOP_MIN_GAP_X;
-        const pz = (z - object.position.z) / STOP_MIN_GAP_Z;
+        const px = (x - object.position.x) / gapX;
+        const pz = (z - object.position.z) / gapZ;
         room = Math.min(room, Math.hypot(px, pz));
       }
       const dx =
-        (x - Number(entity.getValue(ShipMovement, 'targetX'))) / STOP_MIN_GAP_X;
+        (x - Number(entity.getValue(ShipMovement, 'targetX'))) / gapX;
       const dz =
-        (z - Number(entity.getValue(ShipMovement, 'targetZ'))) / STOP_MIN_GAP_Z;
+        (z - Number(entity.getValue(ShipMovement, 'targetZ'))) / gapZ;
       room = Math.min(room, Math.hypot(dx, dz));
     }
     return room;
@@ -604,14 +628,10 @@ export class LevelWaveSystem extends createSystem({
       });
     }
     // The rotor is also a unit-sheet fact: PropellerSpinSystem turns the
-    // model's `propellers` children for as long as the unit lives. Driven
-    // wings are the same deal: WingFlapSystem swings `wing_left`/`wing_right`
-    // around their shoulder axle.
+    // model's `propellers` children for as long as the unit lives — the
+    // bombardier's main disc and the ornithopter's nose propeller alike.
     if (def.rotor) {
       entity.addComponent(PropellerSpin);
-    }
-    if (def.flap) {
-      entity.addComponent(WingFlap);
     }
     // Boss hull: navigation runs as usual, while the four baked gun
     // turrets are independent combat parts (their own state machines and
@@ -688,6 +708,31 @@ export class LevelWaveSystem extends createSystem({
         gun: false,
       },
     ];
+    // Chief-head mount seat (task 031): captured HERE at assembly, the only
+    // moment the pivot node is guaranteed to exist — the laser turret's
+    // death strips its whole subtree (pivot included) from the hull clone,
+    // so a phase-two-time worldToLocal read finds nothing and would seat
+    // the head at the hull origin, buried inside the island rock. The seat
+    // is the pivot's position accumulated over the parent chain EXCLUDING
+    // the hull root: root.position is a world coordinate, not hull-local,
+    // and the head parents under the hull, so including it would
+    // double-count the hull's world position and plant the head out at sea.
+    const laserPivot = root.getObjectByName('gun_rotate_laser');
+    if (laserPivot) {
+      let mx = 0;
+      let my = 0;
+      let mz = 0;
+      let node: Object3D | null = laserPivot;
+      while (node && node !== root) {
+        mx += node.position.x;
+        my += node.position.y;
+        mz += node.position.z;
+        node = node.parent;
+      }
+      boss.addComponent(ChiefMount, { x: mx, y: my, z: mz });
+    } else {
+      console.error('LevelWaveSystem: boss hull has no "gun_rotate_laser"');
+    }
     for (const spec of parts) {
       const wrapper = root.getObjectByName(spec.wrapper);
       if (!wrapper) continue;
@@ -765,31 +810,6 @@ export class LevelWaveSystem extends createSystem({
         nodeName: spec.core,
         reward: RewardTier.BossTurret,
       });
-    }
-    // Chief-head mount seat (task 031): captured HERE at assembly, the only
-    // moment the pivot node is guaranteed to exist — the laser turret's
-    // death strips its whole subtree (pivot included) from the hull clone,
-    // so a phase-two-time worldToLocal read finds nothing and would seat
-    // the head at the hull origin, buried inside the island rock. The seat
-    // is the pivot's position accumulated over the parent chain EXCLUDING
-    // the hull root: root.position is a world coordinate, not hull-local,
-    // and the head parents under the hull, so including it would
-    // double-count the hull's world position and plant the head out at sea.
-    const laserPivot = root.getObjectByName('gun_rotate_laser');
-    if (laserPivot) {
-      let mx = 0;
-      let my = 0;
-      let mz = 0;
-      let node: Object3D | null = laserPivot;
-      while (node && node !== root) {
-        mx += node.position.x;
-        my += node.position.y;
-        mz += node.position.z;
-        node = node.parent;
-      }
-      boss.addComponent(ChiefMount, { x: mx, y: my, z: mz });
-    } else {
-      console.error('LevelWaveSystem: boss hull has no "gun_rotate_laser"');
     }
   }
 

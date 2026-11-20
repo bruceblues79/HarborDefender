@@ -45,8 +45,6 @@ export interface UnitTypeDef {
   fireInterval: number;
   /** Driven rotor node — PropellerSpinSystem spins `propellers` children. */
   rotor: boolean;
-  /** Driven wing pivots — WingFlapSystem swings `wing_left`/`wing_right`. */
-  flap: boolean;
   /** Hurls pooled stones — PirateFireSystem picks the free-stone pool. */
   stone: boolean;
   /** Disturbs the ocean surface (WakeSource); flyers never touch water. */
@@ -59,6 +57,13 @@ export interface UnitTypeDef {
   /** Berth z bounds rolled for this unit's stop point (MIN far, MAX near). */
   stopZMin: number;
   stopZMax: number;
+  /**
+   * Stop-slot spacing this unit demands from other attackers (m). Optional:
+   * falls back to STOP_MIN_GAP_X / STOP_MIN_GAP_Z — only wide-footprint
+   * hulls widen it (the bombardier's 1.38 m rotor disc).
+   */
+  stopGapX?: number;
+  stopGapZ?: number;
   /**
    * Boss-carrier flag: the spawn pipeline skips the generic root HitCore and
    * Health (the boss's four gun turrets are assembled as independent combat
@@ -350,7 +355,7 @@ export const SHIP_STOP_Z_MAX: number =
 /** Ships float just below the wave crest at the surface. */
 export const SHIP_Y = 0.66;
 
-/** Spin of the bombardier's rotor nodes, radians per second. */
+/** Spin of a flying unit's rotor nodes, radians per second. */
 export const PROPELLER_SPIN_RAD = 8;
 
 /**
@@ -542,13 +547,14 @@ export const COMBAT = {
    */
   gravity: 15.0,
   /**
-   * Muzzle speed (m/s) — one gun fires everything. 13.75 + gravity 15.0 is
-   * the 11.0 / 12.0 pair scaled by 1.25: drag-loaded arcs keep their layering
-   * but reach ~7.25 m, enough for the pushed-out far berth (-8.0). Keep the
-   * two values moving together — scaling both preserves the flight time and
-   * only changes the reach.
+   * Muzzle speed (m/s) — one gun fires everything. Raised to 16.0 (2026-11-19)
+   * with gravity held at 15.0 so the battery can reach the lifted bombardier
+   * cruise plane (FLYER_Y 3.3): the far stop needs ~2.3 m of rise over the
+   * muzzle, and 16.0 reaches ~3.7 m there. Only the defender shell arcs get
+   * longer / flatter; gravity stays shared, so stones and attacker intercepts
+   * keep their tuned fall.
    */
-  shellSpeed: 13.75,
+  shellSpeed: 16.0,
   /**
    * Linear air drag (1/s) on defender shells only: dv/dt = -drag·v + g.
    * Pirate and boss intercepts solve vacuum trajectories, so their shells
@@ -794,12 +800,12 @@ export const DAMAGE_MATRIX: Record<string, number> = {
  * 2026-10-30): previously derived from the cannon's 45° apex, which would
  * drift with the retuned shellSpeed — the flyer's berth band and firing
  * geometry are tuned against this plane, so it is pinned instead of
- * re-derived. Value equals the last derived runtime result (v0 7.45 era).
- * Under the drag-loaded v0 12 lob the band stays bracketed: the near stop
- * takes the steepest lobs, the far stop a comfortable ~40-52° arc through
- * the core.
+ * re-derived. Lifted 2.857 -> 3.3 (2026-11-19): the rebuilt hull reads
+ * visually crowded against the ornithopter band below, so the cruise plane
+ * moves up together with the 16.0 shell speed. The far stop then needs
+ * ~2.3 m of rise over the muzzle, comfortably inside the new reach.
  */
-export const FLYER_Y = 2.857;
+export const FLYER_Y = 3.3;
 
 /**
  * The bombardier's berth band, shifted 1.5 m out with the ship band: far out
@@ -823,11 +829,8 @@ export const ORNITHOPTER = {
   /** Berth band: far out at -6.75, nearest at -4.8. */
   stopZMin: -6.75,
   stopZMax: -4.8,
-  /** Uniform model scale — 0.9 reads 10% smaller next to the bombardier. */
-  scale: 0.9,
-  /** Wing flap frequency (rad/s) and swing amplitude (rad). */
-  flapSpeed: 40,
-  flapAmplitude: 0.35,
+  /** Uniform model scale — 1.0 matches the retired GLB's on-screen size. */
+  scale: 1,
 };
 
 /**
@@ -853,14 +856,15 @@ export const BOSS = {
   wakeRadius: 3.75,
   /**
    * Explicit bar heights (carrier-local y) for the armour-part wrappers'
-   * health bars. The turret subtrees are deterministic baked geometry, so
-   * the bars pin to known tops (gun barrel top 0.176, laser barrel top
-   * 0.465) plus the shared bar margin (0.12) instead of deriving from
-   * runtime bounding boxes — a deep child spawned mid-frame carries a stale
-   * ancestor matrix, and the bbox path would float the bar.
+   * health bars. The turret subtrees are deterministic baked geometry, so the
+   * bars pin to known tops instead of deriving from runtime bounding boxes —
+   * a deep child spawned mid-frame carries a stale ancestor matrix, and the
+   * bbox path would float the bar. 数值按 2026-11-19 新怒岛号模型几何重算：
+   * 炮管最大半径 0.085 × gunScale 0.75 ≈ 0.064（取 hit_core 高度 0.075），
+   * 激光炮壳体最大半径 0.29 × laserScale 0.675 ≈ 0.196。
    */
-  turretBarY: 0.176 + COMBAT.healthBarMarginY,
-  laserBarY: 0.465 + COMBAT.healthBarMarginY,
+  turretBarY: 0.075 + COMBAT.healthBarMarginY,
+  laserBarY: 0.196 + COMBAT.healthBarMarginY,
   /**
    * Turret fire rhythm (task 029): each gun loops
    * fire -> pause -> retarget/turn -> hold -> fire. Every shot is a
@@ -959,12 +963,12 @@ export const BOSS_CHIEF = {
   riseDelay: 0.5,
   /** Hull-local depth the head starts SUNK into the citadel drum — a short
    *  travel for the stocky bust: the helmet crest still peeks above the
-   *  rim at the start of the rise. */
-  riseSink: 0.22,
-  /** Hull-local y at rest relative to the laser pivot seat — 0: the bust
-   *  sits DIRECTLY on the drum (no neck; the model's flange bottom leaves a
-   *  0.004 local gap so it never z-fights the drum cap). */
-  riseY: 0,
+   *  rim at the start of the rise. 新塔顶在 1.16，落座 1.16 时以 0.45 的
+   *  下沉量保持旧模型的上升行程。 */
+  riseSink: 0.45,
+  /** Hull-local y at rest relative to the laser pivot seat — 新模型激光枢轴
+   *  比中央塔顶高 0.16（1.32 vs 1.16），下移同样的量让头部落座在塔顶。 */
+  riseY: -0.16,
   /** Seconds the emerge-from-the-citadel rise takes. */
   riseSec: 1.2,
   /** Health pool: the same normalised 100-point sheet as every unit. */
@@ -1053,7 +1057,6 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     armed: true,
     fireInterval: COMBAT.pirateFireInterval,
     rotor: false,
-    flap: false,
     stone: false,
     wake: true,
     stopZMin: SHIP_STOP_Z_MIN,
@@ -1062,7 +1065,8 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
   bombardier: {
     assetId: 'bombardier',
     scale: 1,
-    // Measured GLB subtree top 0.359 (propeller disc) + the shared bar margin.
+    // Measured from the runtime prototype's mast-cap tip (0.359) + the shared
+    // bar margin.
     barY: 0.359 + COMBAT.healthBarMarginY,
     movement: 'default-flyer',
     faction: 'attacker',
@@ -1070,25 +1074,27 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     armed: true,
     fireInterval: COMBAT.bombardierFireInterval,
     rotor: true,
-    flap: false,
     stone: false,
     wake: false,
     stopZMin: FLYER_STOP_Z_MIN,
     stopZMax: FLYER_STOP_Z_MAX,
+    // 主旋翼直径 1.38 m：沿用 0.8 m 的船用横距会让相邻旋翼穿插。1.5 m 恰好
+    // 在 3.4 m 宽 × 1.55 m 深的停机带里排下 3 × 2 六个位，层容量不必下调。
+    stopGapX: 1.5,
+    stopGapZ: 1.5,
   },
   ornithopter: {
     assetId: 'ornithopter',
     scale: ORNITHOPTER.scale,
-    // Measured GLB subtree top 0.165 (wing shoulders at rest) + the shared
-    // bar margin. Local GLB units — `scale` 0.9 carries it at spawn.
-    barY: 0.165 + COMBAT.healthBarMarginY,
+    // Measured from the runtime prototype's propeller-disc top (propY 0.005 +
+    // propRadius 0.235 = 0.24) plus the shared bar margin. Local model units.
+    barY: 0.24 + COMBAT.healthBarMarginY,
     movement: 'default-ship',
     faction: 'attacker',
     cruiseY: ORNITHOPTER.y,
     armed: true,
     fireInterval: COMBAT.ornithopterFireInterval,
-    rotor: false,
-    flap: true,
+    rotor: true,
     stone: true,
     wake: false,
     stopZMin: ORNITHOPTER.stopZMin,
@@ -1100,19 +1106,15 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     scale: 1.5,
     movement: 'default-ship',
     faction: 'attacker',
-    // Waterline seat (v0.1.180): two draft orders consolidated — the surface
-    // cuts the mesa at model +0.35, so the hull skirt is fully buried and
-    // the basalt mesa itself rises straight out of the sea, the floating-
-    // island read. Going deeper would drown the mesa base and the front
-    // gun seats, and sink the bow ram's visible tip below the waves.
-    cruiseY: OCEAN.surfaceY - 0.35,
+    // 水线（2026-11-19 换新怒岛号）：新模型的船体在 y≈0.05 收口，原点即
+    // 水线；旧岛船为半沉效果专门压深 0.35，新船直接落在洋面上。
+    cruiseY: OCEAN.surfaceY,
     // Unarmed at the sheet level: the boss systems drive the turrets, the
     // shared PirateCannon deck-gun path never touches this hull. The turret
     // cadence lives in BOSS's rhythm knobs, not the unit sheet.
     armed: false,
     fireInterval: 0,
     rotor: false,
-    flap: false,
     stone: false,
     wake: true,
     wakeRadius: BOSS.wakeRadius,

@@ -1,10 +1,18 @@
 {
   "version": "iwsdk.scene.v1",
   "units": "meters",
+  "components": {
+    "com.iwsdk.components.IBLTexture": {
+      "src": "ocean-env.hdr",
+      "intensity": 1
+    }
+  },
   "resources": {},
   "environment": {
     "shadows": true,
-    "shadowMapType": "pcf-soft"
+    "shadowMapType": "pcf-soft",
+    "toneMapping": "aces",
+    "exposure": 1.2
   },
   "nodes": [
     {
@@ -32,7 +40,7 @@
         "asset": "welcome-panel"
       },
       "transform": {
-        "position": [0, 1.25, -1.5],
+        "position": [0, 1.55, -1.5],
         "scale": 1
       },
       "components": {
