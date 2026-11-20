@@ -169,7 +169,7 @@ World.create(
   world.registerSystem(PanelScaleSystem, { priority: 30 });
   world.registerSystem(StartPanelSystem, { priority: 30 });
   // Pause-menu orchestrator: watches GameStarted, owns the pause tag and the
-  // head-following call button / menu panels.
+  // wall-anchored call button / menu panels.
   world.registerSystem(MenuSystem, { priority: 32 });
   // End-of-run result panel: qualifies on GameOver (victory / defeat) and
   // hands RESTART / MAIN to MenuSystem's shared reset sequences.
