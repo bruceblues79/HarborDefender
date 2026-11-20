@@ -191,6 +191,34 @@ class GameAudio {
     entity.setValue(AudioSource, '_playRequested', true);
   }
 
+  /**
+   * 回主界面 / 重开时调用：把仍在响的一次性音效（炮击尾音、爆炸、激光聚能等）
+   * 全部停掉并释放实例，避免战斗声音漏到下一段流程里。
+   */
+  stopSfx(): void {
+    for (const slot of this.sfx.values()) {
+      for (const entity of slot.entities) {
+        entity.setValue(AudioSource, '_stopRequested', true);
+      }
+    }
+    this.lastPlay.clear();
+  }
+
+  /**
+   * 退出 XR 会话后引擎会暂停活动实例并挂起上下文；重新排队当前段落与海浪，
+   * 这样回到 flat 模式后第一次点击就能接着听到声音。
+   */
+  replayMusic(): void {
+    if (!this.started) return;
+    for (const slot of this.music) {
+      if (!slot.playing) continue;
+      slot.entity.setValue(AudioSource, '_playRequested', true);
+    }
+    if (this.seaEntity) {
+      this.seaEntity.setValue(AudioSource, '_playRequested', true);
+    }
+  }
+
   /** 每帧平滑混音；由 AudioSystem.update 在游戏系统之后调用。 */
   update(delta: number): void {
     this.elapsed += delta;
@@ -416,7 +444,6 @@ export class AudioSystem extends createSystem({
   private readonly sweepStates = new Map<number, string>();
   private readonly boltTimers = new Map<number, number>();
   private wasPaused = false;
-  private repairTimer = 0;
 
   init(): void {
     gameAudio.attach(this.world);
@@ -470,10 +497,37 @@ export class AudioSystem extends createSystem({
       gameAudio.play('ui-click');
     });
 
+    // 维修是一次点击触发的一次性音效：进入 Repairing 时敲一下并自然衰减，
+    // 维修持续期间不再重复播放。
+    this.queries.repairing.subscribe('qualify', (unit: Entity) => {
+      this.playAt(unit, 'repair', 1);
+    });
+
     this.queries.started.subscribe('qualify', () => gameAudio.play('wave-horn'));
+    // 回主界面（MAIN）会移除 GameStarted：战斗音效全部停掉，配乐回到标题。
+    this.queries.started.subscribe('disqualify', () => {
+      gameAudio.stopSfx();
+      this.laserStates.clear();
+      this.sweepStates.clear();
+      this.boltTimers.clear();
+      gameAudio.setSection('title');
+    });
     this.queries.intermission.subscribe('qualify', () => gameAudio.play('wave-horn'));
     this.queries.buildOpen.subscribe('qualify', () => gameAudio.play('ui-open'));
     this.queries.buildOpen.subscribe('disqualify', () => gameAudio.play('ui-close'));
+
+    // 胜负面板上的 RESTART / MAIN 都会移除 GameOver：清掉残留尾音，
+    // 避免上一局的炮火声带进新一局。
+    this.queries.over.subscribe('disqualify', () => {
+      gameAudio.stopSfx();
+    });
+
+    // 退出 XR 后引擎会暂停活动实例并挂起上下文，重新排队当前段落。
+    const onXRSessionEnd = (): void => gameAudio.replayMusic();
+    this.renderer.xr.addEventListener('sessionend', onXRSessionEnd);
+    this.cleanupFuncs.push(() => {
+      this.renderer.xr.removeEventListener('sessionend', onXRSessionEnd);
+    });
 
     this.queries.over.subscribe('qualify', (director: Entity) => {
       const phase = String(director.getValue(LevelDirector, 'phase'));
@@ -499,7 +553,6 @@ export class AudioSystem extends createSystem({
     this.syncDirector();
     this.trackLasers();
     this.trackDeathLights();
-    this.trackRepair(delta);
     gameAudio.setIntensity(this.intensity());
     gameAudio.update(delta);
   }
@@ -543,7 +596,7 @@ export class AudioSystem extends createSystem({
       const previous = this.laserStates.get(laser.index);
       if (previous === state) continue;
       this.laserStates.set(laser.index, state);
-      if (state === 'charging') this.playAt(laser, 'laser-charge', 0.9);
+      if (state === 'charging') this.playAt(laser, 'laser-charge', 1);
       else if (state === 'firing') this.playAt(laser, 'laser-fire', 1);
     }
   }
@@ -570,20 +623,6 @@ export class AudioSystem extends createSystem({
           1,
         );
       }
-    }
-  }
-
-  private trackRepair(delta: number): void {
-    if (this.queries.repairing.entities.size === 0) {
-      this.repairTimer = 0;
-      return;
-    }
-    this.repairTimer -= delta;
-    if (this.repairTimer > 0) return;
-    this.repairTimer = 0.36;
-    for (const unit of this.queries.repairing.entities) {
-      this.playAt(unit, 'repair-tick', 0.8);
-      break;
     }
   }
 

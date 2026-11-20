@@ -33,7 +33,7 @@ export type SfxCue =
   | 'ui-close'
   | 'build'
   | 'build-fail'
-  | 'repair-tick'
+  | 'repair'
   | 'defender-lost'
   | 'ambience-sea';
 
@@ -358,40 +358,55 @@ export const SFX: Record<SfxCue, SfxDef> = {
     key: 'sfx/laser-charge.wav',
     pool: 2,
     positional: true,
-    volume: 0.65,
+    volume: 0.9,
     minGap: 0.4,
-    refDistance: 20,
-    rolloffFactor: 0.9,
-    maxDistance: 360,
+    refDistance: 8,
+    rolloffFactor: 0.6,
+    maxDistance: 200,
     duration: 2.1,
     render: (ctx, out) => {
-      tone(ctx, out, 'sawtooth', 70, 420, 0, 1.95, 0.34, 0.3, 1500);
-      tone(ctx, out, 'sine', 140, 840, 0, 1.95, 0.16, 0.35);
+      // 低频能量堆叠：负责体量，不承担可辨识度。
+      tone(ctx, out, 'sawtooth', 80, 300, 0, 1.95, 0.3, 0.5, 1200);
+      // 中高频升调啸叫：压在战斗低频之上，保证聚能能听见。
+      tone(ctx, out, 'sine', 320, 1180, 0, 1.9, 0.24, 1.5);
+      tone(ctx, out, 'triangle', 150, 620, 0.1, 1.8, 0.16, 1.4);
+      // 静电共鸣逐渐收紧。
       noiseVoice(ctx, out, 0, 1.9, {
         type: 'bandpass',
-        from: 350,
-        to: 2600,
-        q: 1.6,
-        peak: 0.2,
-        attack: 0.5,
+        from: 900,
+        to: 4200,
+        q: 3.2,
+        peak: 0.22,
+        attack: 1.4,
       });
+      // 临射前的上膛尖啸。
+      tone(ctx, out, 'sine', 900, 1600, 1.55, 0.5, 0.18, 0.02);
     },
   },
   'laser-fire': {
     key: 'sfx/laser-fire.wav',
     pool: 2,
     positional: true,
-    volume: 0.9,
+    volume: 0.7,
     minGap: 0.25,
     refDistance: 22,
     rolloffFactor: 0.8,
     maxDistance: 400,
-    duration: 1.15,
+    duration: 0.9,
     render: (ctx, out) => {
-      laserBeam(ctx, out, 0, 0.95, 0.7);
-      tone(ctx, out, 'sine', 70, 32, 0, 1.0, 0.8, 0.004);
-      noiseVoice(ctx, out, 0, 0.9, { type: 'highpass', from: 700, peak: 0.35 });
-      noiseVoice(ctx, out, 0.1, 0.9, { from: 1400, to: 120, peak: 0.3 });
+      laserBeam(ctx, out, 0, 0.72, 0.6);
+      // 锐利起手：短促的高频爆音先到，低频随后托住。
+      noiseVoice(ctx, out, 0, 0.06, { type: 'highpass', from: 4200, peak: 0.5 });
+      tone(ctx, out, 'sawtooth', 2600, 820, 0, 0.1, 0.3, 0.002, 6500);
+      // 高频擦音贯穿，替换掉原先厚重的低频轰鸣。
+      noiseVoice(ctx, out, 0.02, 0.68, {
+        type: 'bandpass',
+        from: 5400,
+        to: 1800,
+        q: 1.6,
+        peak: 0.22,
+      });
+      tone(ctx, out, 'sine', 70, 34, 0, 0.55, 0.45, 0.004);
     },
   },
   lightning: {
@@ -569,19 +584,43 @@ export const SFX: Record<SfxCue, SfxDef> = {
       tone(ctx, out, 'square', 112, 96, 0.12, 0.16, 0.18, 0.004, 800);
     },
   },
-  'repair-tick': {
-    key: 'sfx/repair-tick.wav',
+  repair: {
+    key: 'sfx/repair.wav',
     pool: 3,
     positional: true,
-    volume: 0.2,
-    minGap: 0.05,
-    refDistance: 6,
-    rolloffFactor: 1.5,
-    maxDistance: 80,
-    duration: 0.1,
+    volume: 0.5,
+    minGap: 0.3,
+    refDistance: 4,
+    rolloffFactor: 1.2,
+    maxDistance: 40,
+    duration: 1.5,
     render: (ctx, out) => {
-      noiseVoice(ctx, out, 0, 0.03, { type: 'highpass', from: 2400, peak: 0.5 });
-      tone(ctx, out, 'square', 1180, 1180, 0, 0.03, 0.18, 0.002, 5000);
+      // 两下扳手敲击。
+      tone(ctx, out, 'square', 1480, 1320, 0, 0.05, 0.16, 0.002, 5200);
+      tone(ctx, out, 'triangle', 320, 240, 0, 0.16, 0.3, 0.004, 2200);
+      noiseVoice(ctx, out, 0, 0.09, {
+        type: 'highpass',
+        from: 2600,
+        peak: 0.3,
+      });
+      tone(ctx, out, 'square', 1560, 1400, 0.17, 0.05, 0.14, 0.002, 5200);
+      tone(ctx, out, 'triangle', 300, 220, 0.17, 0.15, 0.26, 0.004, 2000);
+      noiseVoice(ctx, out, 0.17, 0.08, {
+        type: 'highpass',
+        from: 2800,
+        peak: 0.26,
+      });
+      // 焊接气雾：起得快、随后自然衰减到无声，不做循环。
+      noiseVoice(ctx, out, 0.34, 1.1, {
+        type: 'bandpass',
+        from: 1900,
+        to: 720,
+        q: 0.9,
+        peak: 0.16,
+        attack: 0.12,
+      });
+      // 金属余韵。
+      tone(ctx, out, 'sine', 540, 500, 0.34, 0.95, 0.12, 0.01);
     },
   },
   'defender-lost': {

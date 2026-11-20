@@ -70,6 +70,13 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     });
 }
 
+// 标题曲与海浪在 welcome 面板出现后就开始排队（浏览器允许则直接出声）；
+// 任何一次手势都会解锁共享 AudioContext。监听常驻且早于 World.create 注册：
+// 加载期间的点击也能算数，退出 XR 后引擎挂起上下文时下一次点击同样能恢复。
+const unlock = (): void => unlockAudio();
+window.addEventListener('pointerdown', unlock, { passive: true });
+window.addEventListener('keydown', unlock);
+
 World.create(
   document.getElementById('scene-container') as HTMLDivElement,
   projectOptions,
@@ -187,12 +194,6 @@ World.create(
 
   // Keep the welcome panel turned toward the viewer in browser and XR alike.
   world.getSceneEntity('welcome-panel')?.addComponent(Billboard);
-
-  // 标题曲与海浪在 welcome 面板出现后就开始排队（浏览器允许则直接出声）；
-  // 首次手势只负责解锁共享 AudioContext，战斗音效在后台继续合成。
-  const unlock = (): void => unlockAudio();
-  window.addEventListener('pointerdown', unlock, { once: true, passive: true });
-  window.addEventListener('keydown', unlock, { once: true });
 
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
   panel
