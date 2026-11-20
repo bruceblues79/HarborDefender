@@ -71,7 +71,7 @@ export default defineAssets({
   // from the raw src suffix BEFORE resolving manifest keys, so a key without
   // the extension would be loaded as a plain (non-decodable) texture.
   'ocean-env.hdr': {
-    url: publicAssetUrl('textures/kloofendal_partly_cloudy_puresky_1k.hdr'),
+    url: publicAssetUrl('textures/procedural_sky_1k.hdr'),
     type: AssetType.HDRTexture,
     name: 'Ocean Environment HDR',
     // Kept out of the preloader: the scene's IBLTexture requests it once the
