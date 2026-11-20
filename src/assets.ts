@@ -67,18 +67,6 @@ export default defineAssets({
     name: 'Build Panel',
     priority: 'critical',
   },
-  // Key must end with ".hdr": IWSDK's EnvironmentSystem sniffs the file type
-  // from the raw src suffix BEFORE resolving manifest keys, so a key without
-  // the extension would be loaded as a plain (non-decodable) texture.
-  'ocean-env.hdr': {
-    url: publicAssetUrl('textures/procedural_sky_1k.hdr'),
-    type: AssetType.HDRTexture,
-    name: 'Ocean Environment HDR',
-    // Kept out of the preloader: the scene's IBLTexture requests it once the
-    // level initialises, and battle setup re-reads the same cache entry for
-    // the sky dome and ocean cubemap.
-    priority: 'lazy',
-  },
   'ocean-body': {
     url: versionedAssetUrl('gltf/ocean-body.glb'),
     type: AssetType.GLTF,

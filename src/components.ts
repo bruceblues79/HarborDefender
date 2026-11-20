@@ -757,14 +757,13 @@ export const NextWaveCommand = createComponent('NextWaveCommand', {});
 export const WaveIntermission = createComponent('WaveIntermission', {});
 
 /**
- * Sky dome for every render mode: samples the same equirectangular HDR the
- * ocean reflects and reuses the ocean's tint/brightness, so the two surfaces
- * read as one world. Outside an XR session it fills the whole sphere and acts
- * as the scene background; in an XR session it becomes a partial-immersion
- * disc around the player's facing axis (world -z) whose rim fades into
- * passthrough, ragged by static noise.
- * SkyDomeSystem owns the mesh and mirrors these inspector fields into the
- * uniforms. Sea colour is linear, matching the ocean shader's own constants.
+ * Sky dome for every render mode: shows the equirectangular sky texture as-is,
+ * and the ocean reflects that same texture, so the two surfaces read as one
+ * world. Outside an XR session it fills the whole sphere and acts as the scene
+ * background; in an XR session it becomes a partial-immersion disc around the
+ * player's facing axis (world -z) whose rim fades into passthrough, ragged by
+ * static noise. SkyDomeSystem owns the mesh and mirrors these inspector fields
+ * into the uniforms.
  */
 export const SkyDome = createComponent('SkyDome', {
   /** Ceiling of the dome's sky alpha over passthrough (1 = fully opaque). */
@@ -781,8 +780,6 @@ export const SkyDome = createComponent('SkyDome', {
   pitchUpDeg: { type: 'Float32', default: 7.5 },
   /** Multiplier on the whole sky colour. */
   skyIntensity: { type: 'Float32', default: 1.0 },
-  /** Sea tint below the horizon; matches the ocean's tint constant. */
-  seaColor: { type: 'Color', default: [0.3, 0.52, 0.72, 1] },
 });
 
 export default defineComponents([
