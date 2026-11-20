@@ -10,7 +10,9 @@
   "resources": {},
   "environment": {
     "shadows": true,
-    "shadowMapType": "pcf-soft"
+    "shadowMapType": "pcf-soft",
+    "toneMapping": "aces",
+    "exposure": 1.2
   },
   "nodes": [
     {

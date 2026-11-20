@@ -412,7 +412,7 @@ export function startBattle(world: World): void {
       // A failed entry reuses the same cached document — guard against a
       // second createTransformEntity double-placing it.
       if (!loadingPanelPlaced) {
-        loadingPanel.position.set(0, 1.25, -1.5);
+        loadingPanel.position.set(0, 1.55, -1.5);
         world.createTransformEntity(loadingPanel);
         loadingPanelPlaced = true;
       }
