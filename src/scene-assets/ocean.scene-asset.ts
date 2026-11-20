@@ -75,6 +75,11 @@ varying vec2 vUv;
 // UV values, so the inscribed circle scales with the quad automatically.
 const float MASK_RADIUS = 0.5;
 const float MASK_FADE = 0.06;
+// Feather width ramps continuously from the harbour side to the far side (see
+// farness in main): the near rim keeps the narrow width that reads as a clean
+// blend into the wall, the sides widen, and the far rim gets the widest, calmest
+// dissolve — otherwise the grazing angle collapses that edge into a hard arc.
+const float MASK_FADE_FAR = 0.28;
 const vec2 MASK_CENTER = vec2(0.5, 0.4725);
 
 // Hash-based value noise (2D), quintic-interpolated (C2-continuous) so the
@@ -111,8 +116,14 @@ vec3 linearToSRGB(vec3 c) {
 void main() {
   // Mask first: everything outside the disc is thrown away before the costly
   // noise, cubemap and shadow work runs.
-  float d = distance(vUv, MASK_CENTER);
-  float mask = 1.0 - smoothstep(MASK_RADIUS - MASK_FADE, MASK_RADIUS, d);
+  // The farther from the harbour, the flatter and wider the feather: 0 at the
+  // wall side, 1 at the far rim, so the mask's fade band grows gradually
+  // instead of stepping between two widths.
+  vec2 maskOffset = vUv - MASK_CENTER;
+  float farness = smoothstep(-0.45, 0.45, maskOffset.y);
+  float fadeWidth = mix(MASK_FADE, MASK_FADE_FAR, farness);
+  float d = length(maskOffset);
+  float mask = 1.0 - smoothstep(MASK_RADIUS - fadeWidth, MASK_RADIUS, d);
   if (mask <= 0.001) discard;
 
   vec3 color;
@@ -163,6 +174,22 @@ void main() {
   color *= mix(0.5, 1.0, getShadowMask());
 
   color *= brightness;
+
+  // Rim dissolve: the disc's far edge sits just below eye level, so the water
+  // there reflects the upper hemisphere (which darkens with elevation) while
+  // the dome behind it shows the horizon-tinted lower hemisphere. Fade the
+  // water colour into the sky the dome shows behind that same pixel, so the
+  // mask's alpha fade dissolves between two equal colours. Only the open-sea
+  // side of the rim is treated: the near arc sits against the harbour wall,
+  // where the pixel behind is stone, not sky — that side of the mask stays
+  // untouched.
+  float seaward = smoothstep(5.0, 8.0, -vWorldPosition.z);
+  float rimBlend = (1.0 - mask) * seaward;
+  if (rimBlend > 0.001) {
+    vec3 backdrop = textureCube(envMap, normalize(vWorldPosition - cameraPosition)).rgb;
+    color = mix(color, backdrop * brightness, rimBlend);
+  }
+
   gl_FragColor = vec4(linearToSRGB(color), mask);
 }
 `;

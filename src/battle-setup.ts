@@ -520,8 +520,8 @@ export function startBattle(world: World): void {
             }
           });
 
-          // One flat 30 × 30 m quad: its near edge sits on the wall's sea
-          // face and it extends away from the harbour.
+          // One flat quad: its near edge sits on the wall's sea face and it
+          // extends away from the harbour.
           oceanObject.position.set(
             0,
             OCEAN.surfaceY,
