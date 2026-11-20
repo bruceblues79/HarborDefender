@@ -38,7 +38,7 @@
         "asset": "welcome-panel"
       },
       "transform": {
-        "position": [0, 1.25, -1.5],
+        "position": [0, 1.55, -1.5],
         "scale": 1
       },
       "components": {
