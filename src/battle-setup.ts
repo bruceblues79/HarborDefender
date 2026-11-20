@@ -6,7 +6,6 @@
  */
 
 import {
-  AssetManager,
   Box3,
   HalfFloatType,
   Mesh,
@@ -50,8 +49,12 @@ import type { DefenseUnitId } from './level-config.js';
 import { createBombardier } from './scene-assets/bombardier.scene-asset.js';
 import { createBossIslewrath } from './scene-assets/boss-islewrath.scene-asset.js';
 import { createCannon } from './scene-assets/cannon.scene-asset.js';
+import { createDefensePad } from './scene-assets/defense-pad.scene-asset.js';
 import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
-import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
+import {
+  createOceanBody,
+  createOceanMaterial,
+} from './scene-assets/ocean.scene-asset.js';
 import { createOrnithopter } from './scene-assets/ornithopter.scene-asset.js';
 import { createPirateChief } from './scene-assets/pirate-chief.scene-asset.js';
 import { createPirateShip } from './scene-assets/pirate-ship.scene-asset.js';
@@ -429,23 +432,17 @@ export function startBattle(world: World): void {
       }
       loadingPanel.visible = true;
 
-      // 3. Load the battle view's assets in parallel: the GLB models and the
-      // runtime-generated sky map (worker, no network). The sky dome, the
+      // 3. Build the battle view in parallel: the runtime-generated sky map
+      // (worker, no network) and every procedural model. The sky dome, the
       // ocean cubemap and the PMREM environment all read this one texture; the
       // dome stays hidden until the loading panel is gone.
       //
-      // The harbor wall, cannon, pirate hull and ornithopter are no longer
-      // solidified GLBs: they are built in code as soon as loading starts, one
-      // frame after the panel is shown so it paints first. The entry gate below
-      // waits for that bake — the panel never hides before every runtime-built
-      // prototype exists.
+      // Nothing here is a solidified GLB any more: one frame after the panel is
+      // shown (so it paints first) the bakes run, and the entry gate below
+      // waits for all of them.
       const skyTexturePromise = createSkyTexture(world);
       Promise.all([
         skyTexturePromise,
-        Promise.all([
-          AssetManager.loadGLTFById('ocean-body'),
-          AssetManager.loadGLTFById('defense-pad'),
-        ]),
         (async () => {
           await nextFrame(world);
           // 先让面板真正呈现一帧，再停留 LOADING_MIN_MS，构建才不会把它挡在屏幕外。
@@ -458,13 +455,14 @@ export function startBattle(world: World): void {
             bombardier: createBombardier(),
             boss: createBossIslewrath(),
             chief: createPirateChief(),
+            ocean: createOceanBody(),
+            pad: createDefensePad(),
           };
         })(),
       ])
         .then(
           ([
             skyTexture,
-            [oceanGltf, padGltf],
             {
               wall: wallObject,
               cannon: cannonProto,
@@ -473,6 +471,8 @@ export function startBattle(world: World): void {
               bombardier: bombardierProto,
               boss: bossProto,
               chief: chiefProto,
+              ocean: oceanObject,
+              pad: padPrototype,
             },
           ]) => {
           // Every attacker hull is baked in code like the wall and cannon:
@@ -506,8 +506,7 @@ export function startBattle(world: World): void {
           world.scene.environment = skyEnvironmentTarget.texture;
           pmrem.dispose();
 
-          // Swap the GLB's placeholder material for the wave shader
-          const oceanObject = oceanGltf.scene;
+          // Swap the placeholder material for the wave shader
           const oceanMaterial = createOceanMaterial();
           oceanMaterial.uniforms.envMap.value = cubeRT.texture;
           oceanMaterial.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
@@ -571,7 +570,6 @@ export function startBattle(world: World): void {
           // DefensePadSystem breathes only empty slots; DefensePadInputSystem
           // keeps RayInteractable on the pad only while the slot is empty and
           // opens the build panel from a press.
-          const padPrototype = padGltf.scene;
           for (
             let slotIndex = 0;
             slotIndex < DEFENSE_SLOTS.length;

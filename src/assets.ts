@@ -67,16 +67,4 @@ export default defineAssets({
     name: 'Build Panel',
     priority: 'critical',
   },
-  'ocean-body': {
-    url: versionedAssetUrl('gltf/ocean-body.glb'),
-    type: AssetType.GLTF,
-    name: 'Ocean Body',
-    priority: 'background',
-  },
-  'defense-pad': {
-    url: publicAssetUrl('gltf/defense-pad.glb'),
-    type: AssetType.GLTF,
-    name: 'Defense Pad',
-    priority: 'background',
-  },
 });

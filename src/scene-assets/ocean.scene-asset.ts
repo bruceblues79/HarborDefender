@@ -5,7 +5,28 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { ShaderMaterial, UniformsLib, UniformsUtils, Vector3 } from '@iwsdk/core';
+import {
+  Mesh,
+  MeshStandardMaterial,
+  PlaneGeometry,
+  ShaderMaterial,
+  UniformsLib,
+  UniformsUtils,
+  Vector3,
+} from '@iwsdk/core';
+import { OCEAN_PLANE_SIZE } from '../level-config.js';
+
+/**
+ * 海面本体：一块水平四边形，UV 与 shader 的圆盘 mask 对齐。
+ * 材质由 createOceanMaterial 在战斗加载时替换；这里只提供几何。
+ */
+export function createOceanBody(): Mesh {
+  const geometry = new PlaneGeometry(OCEAN_PLANE_SIZE, OCEAN_PLANE_SIZE);
+  geometry.rotateX(-Math.PI / 2);
+  const mesh = new Mesh(geometry, new MeshStandardMaterial());
+  mesh.name = 'ocean-body';
+  return mesh;
+}
 
 /**
  * Shader uniform array cap for simultaneous wake sources — the single source
@@ -206,12 +227,11 @@ export interface OceanNoiseParams {
 }
 
 /**
- * Fake-reflection material for the solidified ocean plane
- * (gltf/ocean-body.glb, exported by scripts/export-assets.ts). The GLB
- * carries a single flat quad; this shader supplies the cubemap reflection
- * with its noise and wake perturbation, applied to the loaded mesh at game
- * start. The quad is masked to a centred disc in UV space: opaque inside,
- * fading at the rim, discarded outside.
+ * Fake-reflection material for the procedural ocean plane
+ * (createOceanBody). This shader supplies the cubemap reflection with its
+ * noise and wake perturbation on that single flat quad. The quad is masked
+ * to a centred disc in UV space: opaque inside, fading at the rim, discarded
+ * outside.
  *
  * `lights: true` plus the merged UniformsLib.lights lets the renderer feed
  * the shadow-map uniforms, so the surface can receive cast shadows while
