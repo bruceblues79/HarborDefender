@@ -32,6 +32,14 @@ const ZENITH = [0.055, 0.135, 0.36];
 const HORIZON = [0.56, 0.68, 0.86];
 const SUN_TINT = [1.0, 0.955, 0.9];
 
+/**
+ * 负海拔下沉：`-y` 超过 DEEP_START 开始向 DEEP_BLUE 过渡，到 DEEP_END
+ * 完全沉入。球面下半部分因此是从高空俯瞰的深海，而不是平涂的地平线色。
+ */
+const DEEP_START = 0.10;
+const DEEP_END = 0.8;
+const DEEP_BLUE = [0.012, 0.05, 0.16];
+
 function hash3(ix: number, iy: number, iz: number): number {
   let h =
     (Math.imul(ix, 374761393) +
@@ -191,9 +199,9 @@ export function generateSkyPixels(sunDir: SkySunDirection): Float32Array {
     for (let col = 0; col < SKY_MAP_WIDTH; col++) {
       const { x, y, z } = equirectDir(col, row);
 
-      // 整个球都是云天：云的图案对水平线做镜像，下半球照样有云，
+      // 整球都是云天：云的图案对水平线做镜像，下半球照样有云，
       // 云一直落到海面，不再有“某个仰角以上才有云”的分界。
-      // 底色在下半球保持地平线色（不再压暗），保证与上半球严格连续。
+      // 底色在下半球保持地平线色，与上半球严格连续。
       const dy = Math.abs(y);
       const sky = y >= 0 ? sampleSky(x, y, z) : HORIZON;
       let rgb: [number, number, number] = [sky[0], sky[1], sky[2]];
@@ -214,6 +222,17 @@ export function generateSkyPixels(sunDir: SkySunDirection): Float32Array {
           mix(rgb[0], SUN_TINT[0] * 1.28, h),
           mix(rgb[1], SUN_TINT[1] * 1.24, h),
           mix(rgb[2], SUN_TINT[2] * 1.2, h),
+        ];
+      }
+
+      // 负海拔：越过一定角度后，云天下沉并逐渐过渡到超深蓝——像从高海拔
+      // 俯瞰地球弧线之外的深海。水平线以下因此不是平涂，也没有镜像。
+      const deep = smoothstep(DEEP_START, DEEP_END, -y);
+      if (deep > 0.001) {
+        rgb = [
+          mix(rgb[0], DEEP_BLUE[0], deep),
+          mix(rgb[1], DEEP_BLUE[1], deep),
+          mix(rgb[2], DEEP_BLUE[2], deep),
         ];
       }
 
