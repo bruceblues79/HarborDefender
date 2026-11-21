@@ -37,11 +37,14 @@ export class SceneFadeSystem extends createSystem({
       // at full opacity. Cap the step so the fade always reads as a fade.
       const step = Math.min(delta, 1 / 30);
       const duration = Number(entity.getValue(SceneFade, 'duration'));
+      const delay = Number(entity.getValue(SceneFade, 'delay'));
+      const total = delay + duration;
       const elapsed = Math.min(
-        duration,
+        total,
         Number(entity.getValue(SceneFade, 'elapsed')) + step,
       );
-      const value = duration > 0 ? elapsed / duration : 1;
+      const ramped = Math.max(0, elapsed - delay);
+      const value = duration > 0 ? Math.min(1, ramped / duration) : 1;
 
       entity.object3D?.traverse((child) => {
         const mesh = child as Mesh;
@@ -52,7 +55,7 @@ export class SceneFadeSystem extends createSystem({
         if (uniform) uniform.value = value;
       });
 
-      if (elapsed >= duration) this.finished.push(entity);
+      if (elapsed >= total) this.finished.push(entity);
       else entity.setValue(SceneFade, 'elapsed', elapsed);
     }
     for (const entity of this.finished) entity.removeComponent(SceneFade);

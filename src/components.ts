@@ -792,6 +792,8 @@ export const SkyDome = createComponent('SkyDome', {
 export const SceneFade = createComponent('SceneFade', {
   /** Seconds of the 0 → 1 ramp. */
   duration: { type: 'Float32', default: 0.5 },
+  /** Seconds to hold at 0 before the ramp starts. */
+  delay: { type: 'Float32', default: 0 },
   /** Seconds elapsed; SceneFadeSystem advances it each frame. */
   elapsed: { type: 'Float32', default: 0 },
 });

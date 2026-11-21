@@ -368,8 +368,11 @@ const LOADING_MIN_MS = 1000;
 /** 首屏天空穹落到 welcome 面板后的淡入时长（秒）。 */
 const SKY_FADE = 1;
 
-/** 海水在战斗资源加入时才开始淡入，时长（秒）。 */
+/** 海水淡入时长（秒），比天空晚 SEA_FADE_DELAY 开始。 */
 const SEA_FADE = 1;
+
+/** 天空先铺开、海水随后淡入的间隔（秒）。 */
+const SEA_FADE_DELAY = 0.5;
 
 /**
  * PMREM 环境的 render target：scene.environment 指向它的 texture，这里持有
@@ -448,11 +451,14 @@ export function bootWelcomeScene(world: World): void {
       const oceanEntity = world.createTransformEntity(oceanObject);
       oceanEntity.addComponent(OceanTag);
 
-      // Backdrop ready: swap loading for the glass welcome panel, then ramp
-      // the sea and the sky in over the dark page colour.
+      // Backdrop ready: swap loading for the glass welcome panel, ramp the sky
+      // in, then let the sea follow half a second later.
       loadingPanel.visible = false;
       if (welcomePanel) welcomePanel.visible = true;
-      oceanEntity.addComponent(SceneFade, { duration: SEA_FADE });
+      oceanEntity.addComponent(SceneFade, {
+        duration: SEA_FADE,
+        delay: SEA_FADE_DELAY,
+      });
       skyDomeSystem?.fadeIn(SKY_FADE);
       console.info('[boot] backdrop ready, welcome fade-in');
     })

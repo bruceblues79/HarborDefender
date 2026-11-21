@@ -212,15 +212,6 @@ void main() {
     color = mix(color, backdrop * brightness, rimBlend);
   }
 
-  // Boot fade: dissolve from the sky seen behind this pixel into the water
-  // colour. Scaling the colour by uFade read like a multiply layer, while an
-  // alpha-only ramp read brighter than the sky it fades in with; cross-fading
-  // makes the surface equal its backdrop at uFade = 0 and the real water
-  // colour at uFade = 1. The settled frame is untouched.
-  if (uFade < 1.0) {
-    vec3 behind = textureCube(envMap, normalize(vWorldPosition - cameraPosition)).rgb;
-    color = mix(behind * brightness, color, uFade);
-  }
   gl_FragColor = vec4(linearToSRGB(color), mask * uFade);
 }
 `;
