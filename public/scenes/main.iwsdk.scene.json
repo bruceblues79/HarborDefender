@@ -13,13 +13,13 @@
       "id": "sun-light",
       "name": "Sun Light",
       "transform": {
-        "position": [0, 5.75, -6],
-        "rotationDeg": [-80, 15, 0]
+        "position": [-5, 6.2, 6],
+        "rotationDeg": [-46, -30, 0]
       },
       "components": {
         "DirectionalLight": {
-          "color": [1, 1, 1, 1],
-          "intensity": 3.14,
+          "color": [1, 0.94, 0.87, 1],
+          "intensity": 4.2,
           "castShadow": true,
           "shadowCameraSize": 12,
           "shadowNormalBias": 0.008
