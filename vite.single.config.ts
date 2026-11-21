@@ -87,6 +87,27 @@ function inlineScene(): Plugin {
   };
 }
 
+/**
+ * uikit 用 Blob Worker 把 TTF 转成 MSDF，file:// 下 Worker 会被拒绝。
+ * 单文件里改成在页面内求值 worker 源码，直接调用生成器。
+ */
+function inlineMSDF(): Plugin {
+  return {
+    name: 'preview-inline-msdf',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!id.replace(/\\/gu, '/').includes('@pmndrs/uikit/dist/loaders/ttf.js')) return null;
+      const next = code.replace(
+        /const workerUrl = URL\.createObjectURL\(new Blob\(\[workerSource\], \{ type: 'text\/javascript' \}\)\);\s*const generator = new MSDF\(\{ workerUrl, wasmUrl \}\);/u,
+        `const { createInlineMSDF } = await import('preview-inline-msdf');
+        const generator = createInlineMSDF(workerSource, wasmUrl);`,
+      );
+      if (next === code) this.error('preview-inline-msdf: generator construction not found');
+      return next;
+    },
+  };
+}
+
 const inlineAssets = collectInlineAssets();
 
 export default defineConfig({
@@ -96,8 +117,9 @@ export default defineConfig({
     __BUILD_VERSION__: JSON.stringify(buildVersion),
     __PREVIEW_ASSETS__: JSON.stringify(inlineAssets),
   },
-  plugins: [iwsdkDev(), inlineScene(), classicScript()],
+  plugins: [iwsdkDev(), inlineScene(), inlineMSDF(), classicScript()],
   resolve: {
+    alias: { 'preview-inline-msdf': join(ROOT, 'src/preview-inline-msdf.ts') },
     dedupe: ['three', '@pmndrs/uikit', '@pmndrs/uikit-horizon', '@pmndrs/uikit-lucide'],
   },
   optimizeDeps: {
