@@ -7,7 +7,6 @@
 
 import {
   BackSide,
-  Color,
   DataTexture,
   LinearFilter,
   Mesh,
@@ -17,23 +16,18 @@ import {
   UnsignedByteType,
 } from '@iwsdk/core';
 import type { Texture } from '@iwsdk/core';
-import {
-  HORIZON_GRADE_GLSL,
-  WATER_BRIGHTNESS,
-  WATER_TINT,
-  WATER_TINT_AMOUNT,
-} from './ocean.scene-asset.js';
 
 /**
  * Sky dome (天幕): a BackSide sphere that samples the same equirectangular HDR
  * the ocean reflects, so both read the same texels for the same world
  * direction — the horizon seam disappears and the two share one sky.
  *
- * The HDR is sampled in the view direction, then put through the ocean's exact
- * colour transform (tint mix and brightness, imported from the ocean material)
- * before the manual linear -> sRGB encode. Below the horizon the dome fades to
- * the sea tint: the ocean disc covers that area, and the sliver past its edge
- * should read as water, not as the HDR's ground half.
+ * The HDR is sampled in the view direction and shown as-is: one texture, no
+ * extra tint or brightness. The ocean samples the same texture through its
+ * reflection cubemap, so the two surfaces share one colour source. Below the
+ * horizon the lookup clamps to the horizon row, so the lower hemisphere
+ * continues the sky's own horizon colour — there is no horizon line in the dome
+ * at all; the water disc simply sits in front of it.
  *
  * The same mesh serves every render mode. Outside an XR session the mask is
  * off and the sphere is the scene background; in a partial-immersion session
@@ -67,7 +61,6 @@ uniform float uNoiseScale;
 uniform float uAxisY;
 uniform float uAxisZ;
 
-uniform vec3 uSeaColor;
 uniform float uIntensity;
 
 varying vec3 vWorldPosition;
@@ -91,8 +84,6 @@ vec3 linearToSRGB(vec3 c) {
   c = max(c, vec3(0.0));
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
 }
-
-${HORIZON_GRADE_GLSL}
 
 void main() {
   // View ray through this fragment: the dome hugs the world origin and the
@@ -121,26 +112,15 @@ void main() {
   // Equirect lookup in the view direction. The formula matches three.js's
   // equirectUv, which is what builds the ocean's reflection cubemap from this
   // same texture, so both surfaces agree texel for texel. Below the horizon the
-  // lookup clamps to the horizon row: the ocean does not reach the true
-  // horizon, and stretching the horizon band downward is what keeps that gap
-  // from reading as a separate flat strip.
+  // lookup keeps descending into the sky map's lower half (a slow darkening of
+  // the horizon colour) instead of clamping: the dome wraps all the way down,
+  // and the water disc simply sits in front of it. In XR the passthrough mask
+  // hides the lower sphere anyway.
   vec2 uv = vec2(
     atan(dir.z, dir.x) * 0.15915494309189535 + 0.5,
-    asin(clamp(max(dir.y, 0.0), -1.0, 1.0)) * 0.3183098861837907 + 0.5
+    asin(clamp(dir.y, -1.0, 1.0)) * 0.3183098861837907 + 0.5
   );
   vec3 color = texture2D(uSkyMap, uv).rgb;
-
-  // Deepen the blown-out HDR horizon — the same grade the ocean applies to its
-  // reflection, so sky and water meet on one matched horizon line.
-  color = horizonGrade(color, dir.y);
-
-  // The ocean's colour transform, mirrored so the horizon line is seamless.
-  color = mix(color, vec3(${WATER_TINT.join(', ')}), ${WATER_TINT_AMOUNT});
-  color *= ${WATER_BRIGHTNESS};
-
-  // Looking well below the horizon (past the wall, under the camera) there is
-  // no sky to show; fade into the sea tint there.
-  color = mix(uSeaColor * ${WATER_BRIGHTNESS}, color, smoothstep(-0.14, 0.0, dir.y));
 
   color = linearToSRGB(color * uIntensity);
 
@@ -182,7 +162,6 @@ export function createSkyDomeMaterial(skyMap?: Texture): ShaderMaterial {
       uNoiseScale: { value: 2.5 },
       uAxisY: { value: Math.sin(7.5 * DEG2RAD) },
       uAxisZ: { value: -Math.cos(7.5 * DEG2RAD) },
-      uSeaColor: { value: new Color(...WATER_TINT) },
       uIntensity: { value: 1 },
     },
     vertexShader,

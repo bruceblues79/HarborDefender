@@ -5,7 +5,28 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { ShaderMaterial, UniformsLib, UniformsUtils, Vector3 } from '@iwsdk/core';
+import {
+  Mesh,
+  MeshStandardMaterial,
+  PlaneGeometry,
+  ShaderMaterial,
+  UniformsLib,
+  UniformsUtils,
+  Vector3,
+} from '@iwsdk/core';
+import { OCEAN_PLANE_SIZE } from '../level-config.js';
+
+/**
+ * 海面本体：一块水平四边形，UV 与 shader 的圆盘 mask 对齐。
+ * 材质由 createOceanMaterial 在战斗加载时替换；这里只提供几何。
+ */
+export function createOceanBody(): Mesh {
+  const geometry = new PlaneGeometry(OCEAN_PLANE_SIZE, OCEAN_PLANE_SIZE);
+  geometry.rotateX(-Math.PI / 2);
+  const mesh = new Mesh(geometry, new MeshStandardMaterial());
+  mesh.name = 'ocean-body';
+  return mesh;
+}
 
 /**
  * Shader uniform array cap for simultaneous wake sources — the single source
@@ -15,40 +36,10 @@ import { ShaderMaterial, UniformsLib, UniformsUtils, Vector3 } from '@iwsdk/core
 export const MAX_WAKE = 12;
 
 /**
- * Water look, shared with the sky dome: the sky applies this same tint mix and
- * brightness to the same HDR, so the horizon seam between the two surfaces is
- * invisible. Change these here and both follow.
+ * Global multiplier on the water colour. 1.0 keeps the reflected sky texture
+ * exactly as the dome shows it — one texture, no colour added on top.
  */
-export const WATER_TINT: [number, number, number] = [0.30, 0.52, 0.72];
-export const WATER_TINT_AMOUNT = 0.18;
-export const WATER_BRIGHTNESS = 1.15;
-
-/**
- * Near-horizon grade, shared by the sky dome and the water reflection.
- *
- * The source HDR's horizon is blown out to white, which reads as smog and
- * mirrors as a white band on the sea. Both shaders replace that band with the
- * same soft blue — the sky by view elevation, the water by reflection
- * elevation — so the two surfaces still meet on one clean, matching horizon.
- *
- * Elevation is the sine of the view (sky) or reflection (water) elevation.
- */
-export const HORIZON_COLOR: [number, number, number] = [0.26, 0.46, 0.70];
-export const HORIZON_BAND = 0.34;
-
-/** UV radius where the far-sea haze starts / fully takes over. */
-export const MIST_START = 0.32;
-export const MIST_END = 0.50;
-
-export const HORIZON_GRADE_GLSL = `
-const vec3 HORIZON_COLOR = vec3(${HORIZON_COLOR.join(', ')});
-const float HORIZON_BAND = ${HORIZON_BAND};
-
-vec3 horizonGrade(vec3 radiance, float elevation) {
-  float band = 1.0 - smoothstep(0.0, HORIZON_BAND, max(elevation, 0.0));
-  return mix(radiance, HORIZON_COLOR, band * 0.92);
-}
-`;
+export const WATER_BRIGHTNESS = 1;
 
 const vertexShader = `
 #include <common>
@@ -105,6 +96,11 @@ varying vec2 vUv;
 // UV values, so the inscribed circle scales with the quad automatically.
 const float MASK_RADIUS = 0.5;
 const float MASK_FADE = 0.06;
+// Feather width ramps continuously from the harbour side to the far side (see
+// farness in main): the near rim keeps the narrow width that reads as a clean
+// blend into the wall, the sides widen, and the far rim gets the widest, calmest
+// dissolve — otherwise the grazing angle collapses that edge into a hard arc.
+const float MASK_FADE_FAR = 0.32;
 const vec2 MASK_CENTER = vec2(0.5, 0.4725);
 
 // Hash-based value noise (2D), quintic-interpolated (C2-continuous) so the
@@ -138,13 +134,17 @@ vec3 linearToSRGB(vec3 c) {
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
 }
 
-${HORIZON_GRADE_GLSL}
-
 void main() {
   // Mask first: everything outside the disc is thrown away before the costly
   // noise, cubemap and shadow work runs.
-  float d = distance(vUv, MASK_CENTER);
-  float mask = 1.0 - smoothstep(MASK_RADIUS - MASK_FADE, MASK_RADIUS, d);
+  // The farther from the harbour, the flatter and wider the feather: 0 at the
+  // wall side, 1 at the far rim, so the mask's fade band grows gradually
+  // instead of stepping between two widths.
+  vec2 maskOffset = vUv - MASK_CENTER;
+  float farness = smoothstep(-0.45, 0.45, maskOffset.y);
+  float fadeWidth = mix(MASK_FADE, MASK_FADE_FAR, farness);
+  float d = length(maskOffset);
+  float mask = 1.0 - smoothstep(MASK_RADIUS - fadeWidth, MASK_RADIUS, d);
   if (mask <= 0.001) discard;
 
   vec3 color;
@@ -183,22 +183,9 @@ void main() {
     reflDir = normalize(reflDir + vec3(wakeGrad.x, 0.0, wakeGrad.y) * 0.5);
 
     color = textureCube(envMap, reflDir).rgb * reflectivity;
-    color = horizonGrade(color, reflDir.y);
-    color = mix(color, vec3(${WATER_TINT.join(', ')}), ${WATER_TINT_AMOUNT});
   } else {
     // Sides / bottom: deep water body color, no env mapping
     color = vec3(0.06, 0.11, 0.18);
-  }
-
-  // Far-sea haze: the rim dissolves into the same colour the sky shows at the
-  // waterline, so the boundary reads as depth instead of a disc edge. Two
-  // drifting octaves break the band up so it reads as volume, not a ring.
-  float haze = smoothstep(${MIST_START}, ${MIST_END}, d);
-  if (haze > 0.001) {
-    float drift = valueNoise(vWorldPosition.xz * 0.08 + vec2(time * 0.012, 0.0));
-    float detail = valueNoise(vWorldPosition.xz * 0.21 + vec2(0.0, time * 0.02));
-    haze = pow(haze, 1.6) * mix(0.62, 1.0, drift * 0.7 + detail * 0.3);
-    color = mix(color, HORIZON_COLOR, haze);
   }
 
   // Darken by the shadow mask (receiveShadow-gated by the renderer). The
@@ -208,6 +195,22 @@ void main() {
   color *= mix(0.5, 1.0, getShadowMask());
 
   color *= brightness;
+
+  // Rim dissolve: the disc's far edge sits just below eye level, so the water
+  // there reflects the upper hemisphere (which darkens with elevation) while
+  // the dome behind it shows the horizon-tinted lower hemisphere. Fade the
+  // water colour into the sky the dome shows behind that same pixel, so the
+  // mask's alpha fade dissolves between two equal colours. Only the open-sea
+  // side of the rim is treated: the near arc sits against the harbour wall,
+  // where the pixel behind is stone, not sky — that side of the mask stays
+  // untouched.
+  float seaward = smoothstep(5.0, 8.0, -vWorldPosition.z);
+  float rimBlend = (1.0 - mask) * seaward;
+  if (rimBlend > 0.001) {
+    vec3 backdrop = textureCube(envMap, normalize(vWorldPosition - cameraPosition)).rgb;
+    color = mix(color, backdrop * brightness, rimBlend);
+  }
+
   gl_FragColor = vec4(linearToSRGB(color), mask);
 }
 `;
@@ -224,12 +227,11 @@ export interface OceanNoiseParams {
 }
 
 /**
- * Fake-reflection material for the solidified ocean plane
- * (gltf/ocean-body.glb, exported by scripts/export-assets.ts). The GLB
- * carries a single flat quad; this shader supplies the cubemap reflection
- * with its noise and wake perturbation, applied to the loaded mesh at game
- * start. The quad is masked to a centred disc in UV space: opaque inside,
- * fading at the rim, discarded outside.
+ * Fake-reflection material for the procedural ocean plane
+ * (createOceanBody). This shader supplies the cubemap reflection with its
+ * noise and wake perturbation on that single flat quad. The quad is masked
+ * to a centred disc in UV space: opaque inside, fading at the rim, discarded
+ * outside.
  *
  * `lights: true` plus the merged UniformsLib.lights lets the renderer feed
  * the shadow-map uniforms, so the surface can receive cast shadows while

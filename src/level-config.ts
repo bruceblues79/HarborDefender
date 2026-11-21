@@ -236,9 +236,9 @@ export const REPAIR_BUTTON = {
 
 /**
  * Empty-slot pedestal pads: a permanent Ø0.38 × 0.04 m disc under every
- * defense slot (defense-pad.glb, npm run export-assets). A slot with no
+ * defense slot (defense-pad.scene-asset.ts). A slot with no
  * live occupant breathes and doubles as the build entry: DefensePadSystem
- * raises that pad's own material's emissiveIntensity sinusoidally — the GLB
+ * raises that pad's own material's emissiveIntensity sinusoidally — the model
  * bakes the warm-gold emissive colour at full strength, so the runtime
  * writes one scalar per pad; every empty pad pulses in lockstep (same phase
  * accumulator). DefensePadInputSystem keeps RayInteractable on empty pads
@@ -282,8 +282,8 @@ export const ECONOMY = {
   killReward: 200,
   /** Health points restored per second while a unit repairs (100 pool). */
   repairHpPerSecond: 10,
-  /** Money drained per second while a unit repairs (修满 180 金). */
-  repairCostPerSecond: 18,
+  /** Money drained per second while a unit repairs (修满 120 金). */
+  repairCostPerSecond: 12,
   /**
    * Book value per unit id: the ONLY price knob — an empty or destroyed
    * slot builds at full value. There is no trade-in: a live occupant's

@@ -6,11 +6,11 @@
  */
 
 import {
-  AssetManager,
   Box3,
   HalfFloatType,
   Mesh,
   Object3D,
+  PMREMGenerator,
   RayInteractable,
   UIKitMLAsset,
   Vector3,
@@ -18,7 +18,11 @@ import {
   World,
   loadUIKitMLAsset,
 } from '@iwsdk/core';
-import type { Entity, MeshStandardMaterial } from '@iwsdk/core';
+import type {
+  Entity,
+  MeshStandardMaterial,
+  WebGLRenderTarget,
+} from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
 import {
   CannonAim,
@@ -45,13 +49,18 @@ import type { DefenseUnitId } from './level-config.js';
 import { createBombardier } from './scene-assets/bombardier.scene-asset.js';
 import { createBossIslewrath } from './scene-assets/boss-islewrath.scene-asset.js';
 import { createCannon } from './scene-assets/cannon.scene-asset.js';
+import { createDefensePad } from './scene-assets/defense-pad.scene-asset.js';
 import { createHarborWall } from './scene-assets/harbor-wall.scene-asset.js';
-import { createOceanMaterial } from './scene-assets/ocean.scene-asset.js';
+import {
+  createOceanBody,
+  createOceanMaterial,
+} from './scene-assets/ocean.scene-asset.js';
 import { createOrnithopter } from './scene-assets/ornithopter.scene-asset.js';
 import { createPirateChief } from './scene-assets/pirate-chief.scene-asset.js';
 import { createPirateShip } from './scene-assets/pirate-ship.scene-asset.js';
 import { setChiefPrototype } from './boss-chief-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
+import { createSkyTexture } from './procedural-sky-texture.js';
 import { SkyDomeSystem } from './sky-dome-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
@@ -344,22 +353,27 @@ function nextFrame(world: World): Promise<void> {
 const LOADING_MIN_MS = 1000;
 
 /**
+ * PMREM 环境的 render target：scene.environment 指向它的 texture，这里持有
+ * 引用，保证整场游戏的 GPU 资源不会被回收。
+ */
+let skyEnvironmentTarget: WebGLRenderTarget | null = null;
+
+/**
  * One-shot battle start flow: hide the welcome panel, show the loading
- * panel, load the HDR sky map and the remaining GLB models while the harbor
- * wall and cannon are built in code, then place the field and ease into the
- * battle view. Re-entry after a MAIN-menu return skips straight to the view
- * change — the battlefield is already built.
+ * panel, generate the sky map and load the remaining GLB models while the
+ * harbor wall and cannon are built in code, then place the field and ease
+ * into the battle view. Re-entry after a MAIN-menu return skips straight to
+ * the view change — the battlefield is already built.
  *
- * The HDR is requested here because the sky dome and the ocean cubemap need
- * the raw texture; image-based lighting itself is owned by the scene's
- * IBLTexture, which EnvironmentSystem loads on level init, so this read is a
- * cache hit. The sky dome is fed but kept hidden while the loading panel is
- * up, and the field objects are placed into the world only in this same entry
- * pass.
+ * The sky map is generated in a worker here (no .hdr download) because the
+ * dome, the ocean cubemap and the PMREM environment all need the same raw
+ * texture. The dome is fed but kept hidden while the loading panel is up, and
+ * the field objects are placed into the world only in this same entry pass.
  *
- * Lighting split: standard PBR objects (wall, cannons) are lit by the
- * IBLTexture env map; the ocean keeps its unlit fake-reflection shader, which
- * samples the cubemap built here from the same cached HDR texture.
+ * Lighting split: standard PBR objects (wall, cannons) are lit by the PMREM
+ * environment built from this texture; the ocean keeps its unlit
+ * fake-reflection shader, which samples the cubemap built from the same
+ * texture.
  */
 export function startBattle(world: World): void {
   if (battleStarted) return;
@@ -418,23 +432,17 @@ export function startBattle(world: World): void {
       }
       loadingPanel.visible = true;
 
-      // 3. Load the battle view's assets in parallel: the GLB models and the
-      // HDR sky map. EnvironmentSystem's IBLTexture already requested the map
-      // on level init, so this resolves from the AssetManager cache; the sky
-      // dome and the ocean cubemap still need the raw texture. The dome stays
-      // hidden until the loading panel is gone.
+      // 3. Build the battle view in parallel: the runtime-generated sky map
+      // (worker, no network) and every procedural model. The sky dome, the
+      // ocean cubemap and the PMREM environment all read this one texture; the
+      // dome stays hidden until the loading panel is gone.
       //
-      // The harbor wall, cannon, pirate hull and ornithopter are no longer
-      // solidified GLBs: they are built in code as soon as loading starts, one
-      // frame after the panel is shown so it paints first. The entry gate below
-      // waits for that bake — the panel never hides before every runtime-built
-      // prototype exists.
+      // Nothing here is a solidified GLB any more: one frame after the panel is
+      // shown (so it paints first) the bakes run, and the entry gate below
+      // waits for all of them.
+      const skyTexturePromise = createSkyTexture(world);
       Promise.all([
-        AssetManager.loadHDRTextureById('ocean-env.hdr'),
-        Promise.all([
-          AssetManager.loadGLTFById('ocean-body'),
-          AssetManager.loadGLTFById('defense-pad'),
-        ]),
+        skyTexturePromise,
         (async () => {
           await nextFrame(world);
           // 先让面板真正呈现一帧，再停留 LOADING_MIN_MS，构建才不会把它挡在屏幕外。
@@ -447,13 +455,14 @@ export function startBattle(world: World): void {
             bombardier: createBombardier(),
             boss: createBossIslewrath(),
             chief: createPirateChief(),
+            ocean: createOceanBody(),
+            pad: createDefensePad(),
           };
         })(),
       ])
         .then(
           ([
-            hdrTexture,
-            [oceanGltf, padGltf],
+            skyTexture,
             {
               wall: wallObject,
               cannon: cannonProto,
@@ -462,6 +471,8 @@ export function startBattle(world: World): void {
               bombardier: bombardierProto,
               boss: bossProto,
               chief: chiefProto,
+              ocean: oceanObject,
+              pad: padPrototype,
             },
           ]) => {
           // Every attacker hull is baked in code like the wall and cannon:
@@ -478,16 +489,24 @@ export function startBattle(world: World): void {
           waveSystem?.setUnitPrototype('bombardier', bombardierProto);
           waveSystem?.setUnitPrototype('boss_islewrath', bossProto);
           setChiefPrototype(chiefProto);
-          // Equirect HDR -> cubemap: avoids pole stretching in reflections
+          // Equirect sky -> cubemap: avoids pole stretching in reflections
           const cubeRT = new WebGLCubeRenderTarget(256, {
             type: HalfFloatType,
           });
-          cubeRT.fromEquirectangularTexture(world.renderer, hdrTexture);
+          cubeRT.fromEquirectangularTexture(world.renderer, skyTexture);
 
-          skyDomeSystem?.setSkyTexture(hdrTexture);
+          skyDomeSystem?.setSkyTexture(skyTexture);
 
-          // Swap the GLB's placeholder material for the wave shader
-          const oceanObject = oceanGltf.scene;
+          // Image-based lighting without a scene IBLTexture: PMREM the same
+          // equirect and hand it to the scene directly. EnvironmentSystem
+          // leaves a manually assigned scene.environment alone (its own
+          // target is unset), so this stays until the page unloads.
+          const pmrem = new PMREMGenerator(world.renderer);
+          skyEnvironmentTarget = pmrem.fromEquirectangular(skyTexture);
+          world.scene.environment = skyEnvironmentTarget.texture;
+          pmrem.dispose();
+
+          // Swap the placeholder material for the wave shader
           const oceanMaterial = createOceanMaterial();
           oceanMaterial.uniforms.envMap.value = cubeRT.texture;
           oceanMaterial.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
@@ -500,8 +519,8 @@ export function startBattle(world: World): void {
             }
           });
 
-          // One flat 30 × 30 m quad: its near edge sits on the wall's sea
-          // face and it extends away from the harbour.
+          // One flat quad: its near edge sits on the wall's sea face and it
+          // extends away from the harbour.
           oceanObject.position.set(
             0,
             OCEAN.surfaceY,
@@ -551,7 +570,6 @@ export function startBattle(world: World): void {
           // DefensePadSystem breathes only empty slots; DefensePadInputSystem
           // keeps RayInteractable on the pad only while the slot is empty and
           // opens the build panel from a press.
-          const padPrototype = padGltf.scene;
           for (
             let slotIndex = 0;
             slotIndex < DEFENSE_SLOTS.length;

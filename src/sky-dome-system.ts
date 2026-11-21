@@ -6,7 +6,7 @@
  */
 
 import { ShaderMaterial, createSystem } from '@iwsdk/core';
-import type { Color, Mesh, Object3D, Texture } from '@iwsdk/core';
+import type { Mesh, Object3D, Texture } from '@iwsdk/core';
 import { SkyDome } from './components.js';
 import { createSkyDomeMesh } from './scene-assets/sky-dome.scene-asset.js';
 
@@ -14,7 +14,6 @@ const DEG2RAD = Math.PI / 180;
 
 type UniformMap = { [name: string]: { value: unknown } };
 type NumberUniform = { value: number };
-type ColorUniform = { value: Color };
 
 /**
  * Owns the sky dome: creates the mesh entity (hidden), accepts the ocean's HDR
@@ -68,7 +67,6 @@ export class SkyDomeSystem extends createSystem({
   update(_delta: number, _time: number): void {
     const maskOn = this.maskOn ? 1 : 0;
     for (const entity of this.queries.domes.entities) {
-      const sea = entity.getVectorView(SkyDome, 'seaColor');
       // Rim angles collapse to cosines once here; the shader just smoothsteps.
       const edgeCos = Math.cos(Number(entity.getValue(SkyDome, 'edgeDeg')) * DEG2RAD);
       const fadeCos = Math.cos(
@@ -90,7 +88,6 @@ export class SkyDomeSystem extends createSystem({
         (u.uIntensity as NumberUniform).value = Number(
           entity.getValue(SkyDome, 'skyIntensity'),
         );
-        (u.uSeaColor as ColorUniform).value.setRGB(sea[0], sea[1], sea[2]);
       });
     }
   }
