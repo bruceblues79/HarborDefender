@@ -377,22 +377,17 @@ const SEA_FADE = 1;
  */
 let skyEnvironmentTarget: WebGLRenderTarget | null = null;
 
-/** 首屏烘焙的天空 cubemap：海面反射采样它，页面存续期间一直持有。 */
-let skyCubeRT: WebGLCubeRenderTarget | null = null;
-
-/** 海面只构建一次；之后的战斗重入和回 MAIN 都直接复用它。 */
-let oceanBuilt = false;
-
 /**
  * First-screen boot: hide the authored welcome panel, paint the loading panel
- * over the dark page colour, then bake the procedural sky (dome texture,
- * reflection cubemap and PMREM environment). The loading panel then hands over
- * to the glass welcome panel while the sky dome ramps in over SKY_FADE seconds.
+ * over the dark page colour, bake the procedural sky (dome texture, reflection
+ * cubemap and PMREM environment) and build the sea. The loading panel then
+ * hands over to the glass welcome panel while the sky and the sea ramp in over
+ * their fade timings.
  *
- * Only the sky lives here — it is the welcome backdrop. The sea, harbor wall,
- * defenders, attackers and pads all belong to startBattle, so ENTER GAME has
- * its own loading pass for everything below the sky. The dome is deliberately
- * not part of battlefieldObjects: it must survive a MAIN-menu return.
+ * The harbor wall, defenders, attackers and pads belong to startBattle, so
+ * ENTER GAME keeps its own loading pass for the field pieces. The dome and the
+ * sea are deliberately not part of battlefieldObjects: they are the welcome
+ * backdrop too and must survive a MAIN-menu return.
  */
 export function bootWelcomeScene(world: World): void {
   const welcomePanel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
@@ -419,8 +414,6 @@ export function bootWelcomeScene(world: World): void {
       // Equirect sky -> cubemap: avoids pole stretching in reflections.
       const cubeRT = new WebGLCubeRenderTarget(256, { type: HalfFloatType });
       cubeRT.fromEquirectangularTexture(world.renderer, skyTexture);
-      // The sea samples this cubemap when the battle field is built.
-      skyCubeRT = cubeRT;
       skyDomeSystem?.setSkyTexture(skyTexture);
 
       // Image-based lighting without a scene IBLTexture: PMREM the same
@@ -431,12 +424,37 @@ export function bootWelcomeScene(world: World): void {
       world.scene.environment = skyEnvironmentTarget.texture;
       pmrem.dispose();
 
-      // Sky ready: swap loading for the glass welcome panel and ramp the dome
-      // in over the dark page colour. The sea waits for the battle field.
+      const oceanMaterial = createOceanMaterial();
+      oceanMaterial.uniforms.uFade.value = 0;
+      oceanMaterial.uniforms.envMap.value = cubeRT.texture;
+      oceanMaterial.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
+
+      const oceanObject = createOceanBody();
+      oceanObject.traverse((child: Object3D) => {
+        if ((child as Mesh).isMesh) {
+          (child as Mesh).material = oceanMaterial;
+          // The unlit shader still samples the shadow map when the mesh
+          // receives shadows (see createOceanMaterial).
+          child.receiveShadow = true;
+        }
+      });
+      // One flat quad: its near edge sits on the wall's sea face and it
+      // extends away from the harbour.
+      oceanObject.position.set(
+        0,
+        OCEAN.surfaceY,
+        WALL_SEA_FACE_Z - OCEAN_PLANE_SIZE / 2,
+      );
+      const oceanEntity = world.createTransformEntity(oceanObject);
+      oceanEntity.addComponent(OceanTag);
+
+      // Backdrop ready: swap loading for the glass welcome panel, then ramp
+      // the sea and the sky in over the dark page colour.
       loadingPanel.visible = false;
       if (welcomePanel) welcomePanel.visible = true;
+      oceanEntity.addComponent(SceneFade, { duration: SEA_FADE });
       skyDomeSystem?.fadeIn(SKY_FADE);
-      console.info('[boot] sky ready, welcome fade-in');
+      console.info('[boot] backdrop ready, welcome fade-in');
     })
     .catch((err: unknown) => {
       console.error('Welcome scene boot failed:', err);
@@ -448,52 +466,11 @@ export function bootWelcomeScene(world: World): void {
 }
 
 /**
- * Build the sea together with the battle field. The sea is NOT part of the
- * welcome backdrop: it joins when ENTER GAME's loading hands over to the
- * battlefield, ramping in over SEA_FADE seconds right as the harbor wall and
- * the battery settle in. Built once — MAIN-menu returns reuse the same entity
- * and never replay the ramp.
- */
-function buildOcean(world: World): void {
-  if (oceanBuilt) return;
-
-  const oceanMaterial = createOceanMaterial();
-  oceanMaterial.uniforms.uFade.value = 0;
-  if (skyCubeRT) {
-    oceanMaterial.uniforms.envMap.value = skyCubeRT.texture;
-    // Keep the render target alive with the mesh that samples it.
-    oceanMaterial.userData.envCubeRT = skyCubeRT;
-  }
-
-  const oceanObject = createOceanBody();
-  oceanObject.traverse((child: Object3D) => {
-    if ((child as Mesh).isMesh) {
-      (child as Mesh).material = oceanMaterial;
-      // The unlit shader still samples the shadow map when the mesh
-      // receives shadows (see createOceanMaterial).
-      child.receiveShadow = true;
-    }
-  });
-  // One flat quad: its near edge sits on the wall's sea face and it
-  // extends away from the harbour.
-  oceanObject.position.set(
-    0,
-    OCEAN.surfaceY,
-    WALL_SEA_FACE_Z - OCEAN_PLANE_SIZE / 2,
-  );
-  const oceanEntity = world.createTransformEntity(oceanObject);
-  oceanEntity.addComponent(OceanTag);
-  oceanEntity.addComponent(SceneFade, { duration: SEA_FADE });
-  oceanBuilt = true;
-  console.info('[battle] sea fade-in');
-}
-
-/**
  * Battle entry: hide the welcome panel, show the loading panel, build the
- * battle resources (sea, harbor wall, defenders, attackers, pads) in code,
- * then place the field and ease into the battle view. The sky was already
- * booted with the welcome screen. Re-entry after a MAIN-menu return skips
- * straight to the view change — the battlefield is already built.
+ * remaining battle resources (harbor wall, defenders, attackers, pads) in
+ * code, then place the field and ease into the battle view. The sky and sea
+ * were already booted with the welcome screen. Re-entry after a MAIN-menu
+ * return skips straight to the view change — the battlefield is already built.
  *
  * Lighting split: standard PBR objects (wall, cannons) are lit by the PMREM
  * environment built from the boot sky texture; the ocean keeps its unlit
@@ -544,10 +521,10 @@ export function startBattle(world: World): void {
       loadingPanel.visible = true;
       console.info('[battle] loading remaining resources');
 
-      // 3. Build the battle resources. The sky belongs to the welcome boot;
-      // the sea and the field pieces are created here. One frame after the
-      // panel is shown (so it paints first) the bakes run, and the loading
-      // panel stays for at least LOADING_MIN_MS.
+      // 3. Build the remaining battle resources. The sky and sea belong to
+      // the welcome boot; only the field pieces are created here. One frame
+      // after the panel is shown (so it paints first) the bakes run, and the
+      // loading panel stays for at least LOADING_MIN_MS.
       (async () => {
         await nextFrame(world);
         // 先让面板真正呈现一帧，再停留 LOADING_MIN_MS，构建才不会把它挡在屏幕外。
@@ -625,10 +602,6 @@ export function startBattle(world: World): void {
             if (initial) mountDefenseUnit(world, slotIndex, initial);
           }
 
-          // Loading is over: the sea joins the wall and the battery now and
-          // ramps in behind them.
-          buildOcean(world);
-
           // Empty-slot pedestal pads: one permanent disc per slot, standing
           // on the wall top. Each clone gets its own material instance so
           // DefensePadSystem breathes only empty slots; DefensePadInputSystem
@@ -679,8 +652,8 @@ export function startBattle(world: World): void {
 /**
  * MAIN-menu hand-off: hide the battlefield (it is never disposed — see the
  * persistence note above), bring the welcome panel back and ease the camera
- * to its authored welcome pose. The sky stays visible, and so does the sea
- * once the first battle has built it; a later ENTER GAME rebuilds nothing.
+ * to its authored welcome pose. The sky and sea stay visible as the welcome
+ * backdrop; a later ENTER GAME rebuilds nothing.
  */
 export function returnToWelcome(world: World): void {
   battleStarted = false;
