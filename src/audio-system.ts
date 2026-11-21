@@ -30,7 +30,6 @@ import {
   IslewrathChief,
   LaserCycle,
   LevelDirector,
-  Repairing,
   ShellFaction,
   SplashFade,
   UnitTag,
@@ -435,7 +434,6 @@ export class AudioSystem extends createSystem({
   lasers: { required: [LaserCycle] },
   chiefs: { required: [IslewrathChief] },
   deathLights: { required: [ChiefDeathLight] },
-  repairing: { required: [Repairing] },
   lostCores: { required: [HitCore, Destroyed] },
   pressed: { required: [Pressed] },
 }) {
@@ -495,12 +493,6 @@ export class AudioSystem extends createSystem({
 
     this.queries.pressed.subscribe('qualify', () => {
       gameAudio.play('ui-click');
-    });
-
-    // 维修是一次点击触发的一次性音效：进入 Repairing 时敲一下并自然衰减，
-    // 维修持续期间不再重复播放。
-    this.queries.repairing.subscribe('qualify', (unit: Entity) => {
-      this.playAt(unit, 'repair', 1);
     });
 
     this.queries.started.subscribe('qualify', () => gameAudio.play('wave-horn'));

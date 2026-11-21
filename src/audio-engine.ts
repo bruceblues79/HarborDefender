@@ -33,7 +33,6 @@ export type SfxCue =
   | 'ui-close'
   | 'build'
   | 'build-fail'
-  | 'repair'
   | 'defender-lost'
   | 'ambience-sea';
 
@@ -582,45 +581,6 @@ export const SFX: Record<SfxCue, SfxDef> = {
     render: (ctx, out) => {
       tone(ctx, out, 'square', 150, 120, 0, 0.14, 0.2, 0.004, 900);
       tone(ctx, out, 'square', 112, 96, 0.12, 0.16, 0.18, 0.004, 800);
-    },
-  },
-  repair: {
-    key: 'sfx/repair.wav',
-    pool: 3,
-    positional: true,
-    volume: 0.5,
-    minGap: 0.3,
-    refDistance: 4,
-    rolloffFactor: 1.2,
-    maxDistance: 40,
-    duration: 1.5,
-    render: (ctx, out) => {
-      // 两下扳手敲击。
-      tone(ctx, out, 'square', 1480, 1320, 0, 0.05, 0.16, 0.002, 5200);
-      tone(ctx, out, 'triangle', 320, 240, 0, 0.16, 0.3, 0.004, 2200);
-      noiseVoice(ctx, out, 0, 0.09, {
-        type: 'highpass',
-        from: 2600,
-        peak: 0.3,
-      });
-      tone(ctx, out, 'square', 1560, 1400, 0.17, 0.05, 0.14, 0.002, 5200);
-      tone(ctx, out, 'triangle', 300, 220, 0.17, 0.15, 0.26, 0.004, 2000);
-      noiseVoice(ctx, out, 0.17, 0.08, {
-        type: 'highpass',
-        from: 2800,
-        peak: 0.26,
-      });
-      // 焊接气雾：起得快、随后自然衰减到无声，不做循环。
-      noiseVoice(ctx, out, 0.34, 1.1, {
-        type: 'bandpass',
-        from: 1900,
-        to: 720,
-        q: 0.9,
-        peak: 0.16,
-        attack: 0.12,
-      });
-      // 金属余韵。
-      tone(ctx, out, 'sine', 540, 500, 0.34, 0.95, 0.12, 0.01);
     },
   },
   'defender-lost': {
