@@ -23,9 +23,13 @@ import {
   LevelDirector,
   ShellFaction,
   ShellTag,
+  SparkBurst,
+  SparkBurstTag,
   SplashFade,
   WakeSource,
   Wallet,
+  WreckFire,
+  WreckFireTag,
 } from './components.js';
 import {
   BOSS,
@@ -63,6 +67,8 @@ export class ShellHitSystem extends createSystem({
   cores: { required: [HitCore, Health], excluded: [Destroyed] },
   freeFlashes: { required: [HitFlashTag], excluded: [HitFlash] },
   freeBursts: { required: [DieBurstTag], excluded: [DieBurst] },
+  freeSparks: { required: [SparkBurstTag], excluded: [SparkBurst] },
+  freeWreckFires: { required: [WreckFireTag], excluded: [WreckFire] },
   directors: { required: [LevelDirector] },
 }) {
   /** hit_core node per core entity index, resolved once on qualify. */
@@ -81,6 +87,10 @@ export class ShellHitSystem extends createSystem({
   private readonly claimedFlashes = new Set<number>();
   /** Bursts handed out this frame; the free-burst query refreshes next frame. */
   private readonly claimedBursts = new Set<number>();
+  /** Spark bursts handed out this frame; the free query refreshes next frame. */
+  private readonly claimedSparks = new Set<number>();
+  /** Wreck fires handed out this frame; the free query refreshes next frame. */
+  private readonly claimedWreckFires = new Set<number>();
   /** Zero-health snapshot buffer for the death sweep; reused per frame. */
   private readonly dying: Entity[] = [];
 
@@ -123,6 +133,8 @@ export class ShellHitSystem extends createSystem({
     this.hitDamages.length = 0;
     this.claimedFlashes.clear();
     this.claimedBursts.clear();
+    this.claimedSparks.clear();
+    this.claimedWreckFires.clear();
 
     // Core world positions once per frame (pirate ships yaw after stopping).
     for (const [index, node] of this.coreNodes) {
@@ -269,6 +281,18 @@ export class ShellHitSystem extends createSystem({
           BOSS.turretBurstFloorY,
           COMBAT.dieBurstFloorBounce,
         );
+        // A turret is a far bigger kill than a hull hit, so it gets the full
+        // explosion treatment on top of the debris: an oversized flash at the
+        // core and a wide ember spray that outlives the chunks.
+        this.spawnHitFlash(at, COMBAT.hitSparkTurretFlashScale);
+        this.spawnSparks(
+          at,
+          COMBAT.hitSparkDeathCount,
+          COMBAT.hitSparkDeathSizeRatio,
+          COMBAT.hitSparkDeathDuration,
+        );
+        // Leave a small flame burning where the turret stood.
+        this.spawnWreckFire(at);
       }
       // Keep the shared prototype resources alive: boss parts are prototype
       // clones. dispose() also removes the turret mesh from the hull clone
@@ -383,6 +407,56 @@ export class ShellHitSystem extends createSystem({
         duration: COMBAT.hitFlashDuration,
         peakScale,
       });
+      return;
+    }
+  }
+
+  /**
+   * Claim a free pooled spark burst and plant it at the impact point:
+   * position, visible, then the `SparkBurst` component that both hands
+   * animation to SparkBurstSystem and (via its synchronous qualify callback)
+   * scatters the embers. Pool empty: skip silently — a hit never waits on fx.
+   */
+  private spawnSparks(
+    position: Vector3,
+    count: number,
+    sizeRatio: number,
+    duration: number,
+  ): void {
+    for (const spark of this.queries.freeSparks.entities) {
+      if (this.claimedSparks.has(spark.index)) continue;
+      if (spark.hasComponent(SparkBurst)) continue;
+      this.claimedSparks.add(spark.index);
+      const object = spark.object3D;
+      if (!object) return;
+      object.position.copy(position);
+      object.visible = true;
+      spark.addComponent(SparkBurst, {
+        duration,
+        elapsed: 0,
+        sizeRatio,
+        count,
+      });
+      return;
+    }
+  }
+
+  /**
+   * Claim a free pooled burning-wreck emitter at the dead turret's position.
+   * Unlike the one-shot bursts this one keeps running for its full duration,
+   * so it is what actually marks the turret's socket after the debris lands.
+   * Pool empty: skip silently.
+   */
+  private spawnWreckFire(position: Vector3): void {
+    for (const emitter of this.queries.freeWreckFires.entities) {
+      if (this.claimedWreckFires.has(emitter.index)) continue;
+      if (emitter.hasComponent(WreckFire)) continue;
+      this.claimedWreckFires.add(emitter.index);
+      const object = emitter.object3D;
+      if (!object) return;
+      object.position.copy(position);
+      object.visible = true;
+      emitter.addComponent(WreckFire, { sizeRatio: 1 });
       return;
     }
   }

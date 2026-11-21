@@ -255,10 +255,11 @@ export class BuildPanelSystem extends createSystem({
     row: UiElement,
     next: string,
   ): void {
-    if (this.unitClasses.get(unitId) === next) return;
-    for (const candidate of ['dock-unit', 'dock-unit-off']) {
-      row.classList.remove(candidate);
-    }
+    const previous = this.unitClasses.get(unitId);
+    if (previous === next) return;
+    // Remove only the class this system actually added: uikit warns when a
+    // removal targets a class the runtime classList does not carry.
+    if (previous) row.classList.remove(previous);
     row.classList.add(next);
     this.unitClasses.set(unitId, next);
   }

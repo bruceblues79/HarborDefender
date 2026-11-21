@@ -43,10 +43,12 @@ import { SceneFadeSystem } from './scene-fade-system.js';
 import { ShellHitSystem } from './shell-hit-system.js';
 import { ShipMovementSystem } from './ship-movement-system.js';
 import { SkyDomeSystem } from './sky-dome-system.js';
+import { SparkBurstSystem } from './spark-burst-system.js';
 import { SpawnFadeSystem } from './spawn-fade-system.js';
 import { SplashSystem } from './splash-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { TrajectoryPreviewSystem } from './trajectory-preview-system.js';
+import { WreckFireSystem } from './wreck-fire-system.js';
 import { installXRButton } from './xr-button.js';
 import { installHandPriorityArbitration } from './xr-hand-arbitration.js';
 
@@ -155,6 +157,8 @@ World.create(
   world.registerSystem(BallisticSystem, { priority: 13 });
   world.registerSystem(ShellHitSystem, { priority: 14 });
   world.registerSystem(HitFlashSystem, { priority: 15 });
+  world.registerSystem(SparkBurstSystem, { priority: 15 });
+  world.registerSystem(WreckFireSystem, { priority: 15 });
   world.registerSystem(DieBurstSystem, { priority: 15 });
   world.registerSystem(SplashSystem, { priority: 15 });
   // Repair drain: the only per-frame wallet writer. Registered after
