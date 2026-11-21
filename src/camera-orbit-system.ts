@@ -365,9 +365,14 @@ export class CameraOrbitSystem extends createSystem({
       return;
     }
     if (this.viewElapsed < this.viewDuration) {
+      // The build that precedes a view change runs synchronously between two
+      // frames, so the first delta after it can be hundreds of ms. Left
+      // uncapped, that single step would finish the whole move and the camera
+      // would snap instead of gliding. Cap the step so the tween always reads.
+      const step = Math.min(delta, 1 / 30);
       this.viewElapsed = Math.min(
         this.viewDuration,
-        this.viewElapsed + delta,
+        this.viewElapsed + step,
       );
       const t = easeInOutCubic(this.viewElapsed / this.viewDuration);
       this.target.lerpVectors(this.targetFrom, this.targetTo, t);

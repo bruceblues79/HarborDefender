@@ -371,8 +371,8 @@ const SKY_FADE = 1;
 /** 海水淡入时长（秒），比天空晚 SEA_FADE_DELAY 开始。 */
 const SEA_FADE = 1;
 
-/** 天空先铺开、海水随后淡入的间隔（秒）。 */
-const SEA_FADE_DELAY = 0.5;
+/** 天空淡入结束后再等这么久，海水才开始淡入（秒）。 */
+const SEA_FADE_DELAY = SKY_FADE + 0.5;
 
 /**
  * PMREM 环境的 render target：scene.environment 指向它的 texture，这里持有
