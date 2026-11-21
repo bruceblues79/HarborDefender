@@ -212,7 +212,11 @@ void main() {
     color = mix(color, backdrop * brightness, rimBlend);
   }
 
-  gl_FragColor = vec4(linearToSRGB(color), mask * uFade);
+  // Fade the colour as well as the coverage: the sea samples the sky cubemap
+  // at full colour, so an alpha-only ramp pops brighter than the sky it is
+  // fading in with. Multiplying both makes the ramp read as a soft rise and
+  // leaves the settled frame untouched (uFade = 1).
+  gl_FragColor = vec4(linearToSRGB(color) * uFade, mask * uFade);
 }
 `;
 
