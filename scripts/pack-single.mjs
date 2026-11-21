@@ -32,13 +32,32 @@ const bundle = (await readFile(path.join(buildDir, scriptMatch[1]), 'utf8')).rep
 );
 
 // 经典脚本：file:// 下部分浏览器会拦截 type="module"。
+// 不破坏页面，只在左下角累积错误与告警，便于远端定位问题。
+const logBox =
+  '<div id="__preview_log" style="position:fixed;left:8px;bottom:8px;z-index:2147483647;max-width:92vw;max-height:45vh;overflow:auto;font:11px/1.45 monospace;color:#fff;background:rgba(0,0,0,.78);padding:6px 8px;border-radius:6px;white-space:pre-wrap;display:none"></div>';
+
 const reporter = `<script>
 (function () {
-  var show = function (text) {
-    document.body.innerHTML = '<pre style="margin:0;padding:12px;background:#f5f5f5;color:#b00;font:12px/1.5 monospace;white-space:pre-wrap">' + String(text) + '</pre>';
-  };
-  window.addEventListener('error', function (e) { show((e.error && e.error.stack) || e.message || 'script error'); });
-  window.addEventListener('unhandledrejection', function (e) { show((e.reason && (e.reason.stack || e.reason)) || 'unhandled rejection'); });
+  var lines = [];
+  function flush() {
+    var box = document.getElementById('__preview_log');
+    if (!box) { setTimeout(flush, 100); return; }
+    box.style.display = 'block';
+    box.textContent = lines.join('\\n');
+  }
+  function format(value) {
+    try { return value && value.stack ? value.stack : String(value); } catch (err) { return '[unprintable]'; }
+  }
+  function push(kind, text) {
+    if (lines.length >= 40) return;
+    lines.push(kind + ' ' + text);
+    flush();
+  }
+  var rawError = console.error, rawWarn = console.warn;
+  console.error = function () { rawError.apply(console, arguments); push('E', Array.prototype.map.call(arguments, format).join(' ')); };
+  console.warn = function () { rawWarn.apply(console, arguments); push('W', Array.prototype.map.call(arguments, format).join(' ')); };
+  window.addEventListener('error', function (e) { push('E', format(e.error) + ' ' + (e.message || '')); });
+  window.addEventListener('unhandledrejection', function (e) { push('R', format(e.reason)); });
 })();
 </script>`;
 // 引擎按后缀校验关卡 URL，这里用 fetch 拦截伪造的 .iwsdk.scene.json 路径。
@@ -62,7 +81,7 @@ window.__PREVIEW_SCENE__ = ${JSON.stringify(sceneJson).replace(/<\//gu, '<\\/')}
 </script>`;
 
 // 经典脚本不再延迟执行，必须放在 body 末尾，否则引擎挂载时 document.body 还是 null。
-const bundleTag = `${sceneShim}\n${reporter}\n<script>\n${bundle}\n</script>`;
+const bundleTag = `${logBox}\n${sceneShim}\n${reporter}\n<script>\n${bundle}\n</script>`;
 html = html.replace(scriptTag, '');
 if (html.includes('</body>')) {
   html = html.replace('</body>', () => `${bundleTag}\n  </body>`);

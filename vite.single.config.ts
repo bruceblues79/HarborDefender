@@ -117,7 +117,8 @@ export default defineConfig({
     __BUILD_VERSION__: JSON.stringify(buildVersion),
     __PREVIEW_ASSETS__: JSON.stringify(inlineAssets),
   },
-  plugins: [iwsdkDev(), inlineScene(), inlineMSDF(), classicScript()],
+  // publicDir 关闭后插件扫描不到 public/ui，字体必须在配置里显式保留。
+  plugins: [iwsdkDev({ bundle: { fonts: ['inter'] } }), inlineScene(), inlineMSDF(), classicScript()],
   resolve: {
     alias: { 'preview-inline-msdf': join(ROOT, 'src/preview-inline-msdf.ts') },
     dedupe: ['three', '@pmndrs/uikit', '@pmndrs/uikit-horizon', '@pmndrs/uikit-lucide'],
