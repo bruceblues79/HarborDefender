@@ -670,7 +670,7 @@ export const COMBAT = {
    * burst draws from a shared InstancedMesh pool — one mesh per concurrent
    * burst, at most `hitSparkParticles` quads each, no per-play allocation.
    */
-  hitSparkPoolSize: 10,
+  hitSparkPoolSize: 14,
   /** Quad capacity of one pooled burst mesh. */
   hitSparkParticles: 20,
   /** Embers per ordinary hit: half the turret-death count, but fatter. */
