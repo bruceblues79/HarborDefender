@@ -65,6 +65,12 @@ export interface UnitTypeDef {
   stopGapX?: number;
   stopGapZ?: number;
   /**
+   * Follow gap (m) kept behind a same-type unit ahead in flight. Optional:
+   * falls back to the ShipMovement default 1.1 — aerial layers widen it past
+   * their rotor disc / wingspan (~1.4 m).
+   */
+  stopDistance?: number;
+  /**
    * Boss-carrier flag: the spawn pipeline skips the generic root HitCore and
    * Health (the boss's four gun turrets are assembled as independent combat
    * parts instead; the hull itself is not a target). Carries no behaviour of
@@ -1136,6 +1142,7 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     // 在 3.4 m 宽 × 1.55 m 深的停机带里排下 3 × 2 六个位，层容量不必下调。
     stopGapX: 1.5,
     stopGapZ: 1.5,
+    stopDistance: 1.4,
   },
   ornithopter: {
     assetId: 'ornithopter',
@@ -1153,6 +1160,7 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     wake: false,
     stopZMin: ORNITHOPTER.stopZMin,
     stopZMax: ORNITHOPTER.stopZMax,
+    stopDistance: 1.4,
   },
   'boss_islewrath': {
     assetId: 'boss-islewrath',
