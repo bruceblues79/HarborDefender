@@ -51,6 +51,21 @@ function collectInlineAssets(): Record<string, string> {
   return map;
 }
 
+/**
+ * file:// 下模块脚本会被部分浏览器/WebView 直接拦掉，单文件改用经典脚本。
+ * IIFE 里没有 import.meta，Worker URL 那处（physics，本项目从不创建）用
+ * document.baseURI 兜底。
+ */
+function classicScript(): Plugin {
+  return {
+    name: 'preview-classic-script',
+    enforce: 'post',
+    renderChunk(code) {
+      return { code: code.replace(/import\.meta\.url/gu, 'document.baseURI'), map: null };
+    },
+  };
+}
+
 /** 场景 JSON 由虚拟模块拼成 URL 再 fetch，单文件里换成 data URL。 */
 function inlineScene(): Plugin {
   const scenePath = JSON.parse(readFileSync('./iwsdk.config.json', 'utf8')).scene as string;
@@ -78,7 +93,7 @@ export default defineConfig({
     __BUILD_VERSION__: JSON.stringify(buildVersion),
     __PREVIEW_ASSETS__: JSON.stringify(inlineAssets),
   },
-  plugins: [iwsdkDev(), inlineScene()],
+  plugins: [iwsdkDev(), inlineScene(), classicScript()],
   resolve: {
     dedupe: ['three', '@pmndrs/uikit', '@pmndrs/uikit-horizon', '@pmndrs/uikit-lucide'],
   },
@@ -102,7 +117,7 @@ export default defineConfig({
     cssCodeSplit: false,
     rollupOptions: {
       input: './index.html',
-      output: { inlineDynamicImports: true },
+      output: { format: 'iife', inlineDynamicImports: true },
     },
   },
   esbuild: { target: 'esnext' },

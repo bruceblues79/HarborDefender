@@ -30,7 +30,18 @@ const bundle = (await readFile(path.join(buildDir, scriptMatch[1]), 'utf8')).rep
   /<\/script>/gu,
   '<\\/script>',
 );
-html = html.replace(scriptTag, () => `<script type="module">\n${bundle}\n</script>`);
+
+// 经典脚本：file:// 下部分浏览器会拦截 type="module"。
+const reporter = `<script>
+(function () {
+  var show = function (text) {
+    document.body.innerHTML = '<pre style="margin:0;padding:12px;background:#f5f5f5;color:#b00;font:12px/1.5 monospace;white-space:pre-wrap">' + String(text) + '</pre>';
+  };
+  window.addEventListener('error', function (e) { show((e.error && e.error.stack) || e.message || 'script error'); });
+  window.addEventListener('unhandledrejection', function (e) { show((e.reason && (e.reason.stack || e.reason)) || 'unhandled rejection'); });
+})();
+</script>`;
+html = html.replace(scriptTag, () => `${reporter}\n<script>\n${bundle}\n</script>`);
 
 const styleTag = /<link[^>]*rel="stylesheet"[^>]*href="\.\/([^"]+)"[^>]*>/u;
 for (let match = html.match(styleTag); match; match = html.match(styleTag)) {
