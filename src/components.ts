@@ -782,6 +782,20 @@ export const SkyDome = createComponent('SkyDome', {
   skyIntensity: { type: 'Float32', default: 1.0 },
 });
 
+/**
+ * One-shot material fade for the boot backdrop (sky dome + sea). The value
+ * ramps 0 → 1 over `duration` and SceneFadeSystem writes it into every mesh
+ * shader's `uFade` uniform below the entity, then drops the component on
+ * arrival. Presence is the tag: only the boot pass adds it, so battle
+ * re-entries and MAIN-menu returns never replay the fade.
+ */
+export const SceneFade = createComponent('SceneFade', {
+  /** Seconds of the 0 → 1 ramp. */
+  duration: { type: 'Float32', default: 0.5 },
+  /** Seconds elapsed; SceneFadeSystem advances it each frame. */
+  elapsed: { type: 'Float32', default: 0 },
+});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -832,4 +846,5 @@ export default defineComponents([
   NextWaveCommand,
   WaveIntermission,
   SkyDome,
+  SceneFade,
 ]);

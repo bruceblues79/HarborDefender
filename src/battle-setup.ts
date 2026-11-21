@@ -33,6 +33,7 @@ import {
   HitCore,
   OceanTag,
   Repairing,
+  SceneFade,
 } from './components.js';
 import {
   COMBAT,
@@ -271,12 +272,24 @@ let battlefieldReady = false;
 /** Whether a battle entry is currently in flight (guards double ENTER). */
 let battleStarted = false;
 /**
- * Whether the loading panel already carries a transform entity — re-entries
- * after a failed load reuse the same cached document, and a second
- * createTransformEntity on one object would double-place it.
+ * The ONE placed loading panel. `loadUIKitMLAsset` returns a fresh document
+ * per call, and only the instance that was handed to createTransformEntity can
+ * actually be shown — showing a later load would be a detached object. Boot
+ * places it, and every entry reuses this exact instance.
  */
-let loadingPanelPlaced = false;
+let loadingPanelAsset: UIKitMLAsset | null = null;
 const battlefieldObjects: Object3D[] = [];
+
+/** Return the placed loading panel, loading and parenting it on first use. */
+async function acquireLoadingPanel(world: World): Promise<UIKitMLAsset> {
+  if (!loadingPanelAsset) {
+    const panel = await loadUIKitMLAsset('loading-panel');
+    panel.position.set(0, 1.55, -1.5);
+    world.createTransformEntity(panel);
+    loadingPanelAsset = panel;
+  }
+  return loadingPanelAsset;
+}
 
 /**
  * Per-slot pedestal pad materials — each pad clone gets its own instance so
@@ -352,6 +365,9 @@ function nextFrame(world: World): Promise<void> {
 /** loading 面板的最短停留时间；构建本身很快，靠它保证玩家看到过渡画面。 */
 const LOADING_MIN_MS = 1000;
 
+/** 首屏天空与海水落到 welcome 面板后的淡入时长（秒）。 */
+const WELCOME_FADE = 0.5;
+
 /**
  * PMREM 环境的 render target：scene.environment 指向它的 texture，这里持有
  * 引用，保证整场游戏的 GPU 资源不会被回收。
@@ -359,19 +375,103 @@ const LOADING_MIN_MS = 1000;
 let skyEnvironmentTarget: WebGLRenderTarget | null = null;
 
 /**
- * One-shot battle start flow: hide the welcome panel, show the loading
- * panel, generate the sky map and load the remaining GLB models while the
- * harbor wall and cannon are built in code, then place the field and ease
- * into the battle view. Re-entry after a MAIN-menu return skips straight to
- * the view change — the battlefield is already built.
+ * First-screen boot: hide the authored welcome panel, paint the loading panel
+ * over the dark page colour, bake the procedural sky (dome texture, reflection
+ * cubemap and PMREM environment) and build the sea. The loading panel then
+ * hands over to the glass welcome panel while the sky and water ramp in over
+ * WELCOME_FADE seconds.
  *
- * The sky map is generated in a worker here (no .hdr download) because the
- * dome, the ocean cubemap and the PMREM environment all need the same raw
- * texture. The dome is fed but kept hidden while the loading panel is up, and
- * the field objects are placed into the world only in this same entry pass.
+ * Only the backdrop lives here. The harbor wall, defenders, attackers and pads
+ * stay in startBattle, so ENTER GAME keeps its own loading pass for the
+ * remaining resources. The sea and dome are deliberately not part of
+ * battlefieldObjects: they are the welcome backdrop too and must survive a
+ * MAIN-menu return.
+ */
+export function bootWelcomeScene(world: World): void {
+  const welcomePanel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
+  // The scene-authored welcome panel is visible from the first frame; hide it
+  // immediately so the loading screen owns the boot.
+  if (welcomePanel) welcomePanel.visible = false;
+
+  const skyDomeSystem = world
+    .getSystems()
+    .find((system): system is SkyDomeSystem =>
+      system instanceof SkyDomeSystem,
+    );
+
+  acquireLoadingPanel(world)
+    .then(async (loadingPanel) => {
+      loadingPanel.visible = true;
+      console.info('[boot] loading screen');
+
+      // Let the loading panel paint one frame before the sky bake runs.
+      await nextFrame(world);
+
+      const skyTexture = await createSkyTexture(world);
+
+      // Equirect sky -> cubemap: avoids pole stretching in reflections.
+      const cubeRT = new WebGLCubeRenderTarget(256, { type: HalfFloatType });
+      cubeRT.fromEquirectangularTexture(world.renderer, skyTexture);
+      skyDomeSystem?.setSkyTexture(skyTexture);
+
+      // Image-based lighting without a scene IBLTexture: PMREM the same
+      // equirect and hand it to the scene. EnvironmentSystem leaves a manually
+      // assigned scene.environment alone.
+      const pmrem = new PMREMGenerator(world.renderer);
+      skyEnvironmentTarget = pmrem.fromEquirectangular(skyTexture);
+      world.scene.environment = skyEnvironmentTarget.texture;
+      pmrem.dispose();
+
+      const oceanMaterial = createOceanMaterial();
+      oceanMaterial.uniforms.uFade.value = 0;
+      oceanMaterial.uniforms.envMap.value = cubeRT.texture;
+      oceanMaterial.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
+
+      const oceanObject = createOceanBody();
+      oceanObject.traverse((child: Object3D) => {
+        if ((child as Mesh).isMesh) {
+          (child as Mesh).material = oceanMaterial;
+          // The unlit shader still samples the shadow map when the mesh
+          // receives shadows (see createOceanMaterial).
+          child.receiveShadow = true;
+        }
+      });
+      // One flat quad: its near edge sits on the wall's sea face and it
+      // extends away from the harbour.
+      oceanObject.position.set(
+        0,
+        OCEAN.surfaceY,
+        WALL_SEA_FACE_Z - OCEAN_PLANE_SIZE / 2,
+      );
+      const oceanEntity = world.createTransformEntity(oceanObject);
+      oceanEntity.addComponent(OceanTag);
+
+      // Backdrop ready: swap loading for the glass welcome panel, then ramp
+      // the sea and the sky in over the dark page colour.
+      loadingPanel.visible = false;
+      if (welcomePanel) welcomePanel.visible = true;
+      oceanEntity.addComponent(SceneFade, { duration: WELCOME_FADE });
+      skyDomeSystem?.fadeIn(WELCOME_FADE);
+      console.info('[boot] backdrop ready, welcome fade-in');
+    })
+    .catch((err: unknown) => {
+      console.error('Welcome scene boot failed:', err);
+      // Never dead-lock the entry: drop the loading panel and fall back to the
+      // dark welcome screen.
+      if (loadingPanelAsset) loadingPanelAsset.visible = false;
+      if (welcomePanel) welcomePanel.visible = true;
+    });
+}
+
+/**
+ * Battle entry: hide the welcome panel, show the loading panel, build the
+ * remaining battle resources (harbor wall, defenders, attackers, pads) in
+ * code, then place the field and ease into the battle view. The sky and sea
+ * were already booted with the welcome screen. Re-entry after a MAIN-menu
+ * return skips straight to the view change — the battlefield is already built.
  *
  * Lighting split: standard PBR objects (wall, cannons) are lit by the PMREM
- * environment built from this texture; the ocean keeps its unlit
+ * environment built from the boot sky texture; the ocean keeps its unlit
  * fake-reflection shader, which samples the cubemap built from the same
  * texture.
  */
@@ -389,11 +489,6 @@ export function startBattle(world: World): void {
     .find((system): system is StartPanelSystem =>
       system instanceof StartPanelSystem,
     );
-  const skyDomeSystem = world
-    .getSystems()
-    .find((system): system is SkyDomeSystem =>
-      system instanceof SkyDomeSystem,
-    );
 
   // 1. Hide the welcome panel
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
@@ -404,9 +499,6 @@ export function startBattle(world: World): void {
       new Vector3(0, 2.75, 2.75),
       new Vector3(0, 1.697, -2),
     );
-    // Battle view takes over: reveal the sky dome that was loaded (hidden)
-    // during the loading panel.
-    skyDomeSystem?.setVisible(true);
     startPanelSystem?.show();
   };
 
@@ -420,61 +512,43 @@ export function startBattle(world: World): void {
     return;
   }
 
-  // 2. Show loading panel (1 m × 0.5 m, faces +Z)
-  loadUIKitMLAsset('loading-panel')
+  // 2. Show loading panel (1 m × 0.5 m, faces +Z) — the same placed instance
+  // boot used, so ENTER GAME always starts with the loading screen again.
+  acquireLoadingPanel(world)
     .then((loadingPanel) => {
-      // A failed entry reuses the same cached document — guard against a
-      // second createTransformEntity double-placing it.
-      if (!loadingPanelPlaced) {
-        loadingPanel.position.set(0, 1.55, -1.5);
-        world.createTransformEntity(loadingPanel);
-        loadingPanelPlaced = true;
-      }
       loadingPanel.visible = true;
+      console.info('[battle] loading remaining resources');
 
-      // 3. Build the battle view in parallel: the runtime-generated sky map
-      // (worker, no network) and every procedural model. The sky dome, the
-      // ocean cubemap and the PMREM environment all read this one texture; the
-      // dome stays hidden until the loading panel is gone.
-      //
-      // Nothing here is a solidified GLB any more: one frame after the panel is
-      // shown (so it paints first) the bakes run, and the entry gate below
-      // waits for all of them.
-      const skyTexturePromise = createSkyTexture(world);
-      Promise.all([
-        skyTexturePromise,
-        (async () => {
-          await nextFrame(world);
-          // 先让面板真正呈现一帧，再停留 LOADING_MIN_MS，构建才不会把它挡在屏幕外。
-          await new Promise((resolve) => setTimeout(resolve, LOADING_MIN_MS));
-          return {
-            wall: createHarborWall(),
-            cannon: createCannon(),
-            ship: createPirateShip(),
-            ornithopter: createOrnithopter(),
-            bombardier: createBombardier(),
-            boss: createBossIslewrath(),
-            chief: createPirateChief(),
-            ocean: createOceanBody(),
-            pad: createDefensePad(),
-          };
-        })(),
-      ])
+      // 3. Build the remaining battle resources. The sky and sea belong to
+      // the welcome boot; only the field pieces are created here. One frame
+      // after the panel is shown (so it paints first) the bakes run, and the
+      // loading panel stays for at least LOADING_MIN_MS.
+      (async () => {
+        await nextFrame(world);
+        // 先让面板真正呈现一帧，再停留 LOADING_MIN_MS，构建才不会把它挡在屏幕外。
+        await new Promise((resolve) => setTimeout(resolve, LOADING_MIN_MS));
+        return {
+          wall: createHarborWall(),
+          cannon: createCannon(),
+          ship: createPirateShip(),
+          ornithopter: createOrnithopter(),
+          bombardier: createBombardier(),
+          boss: createBossIslewrath(),
+          chief: createPirateChief(),
+          pad: createDefensePad(),
+        };
+      })()
         .then(
-          ([
-            skyTexture,
-            {
-              wall: wallObject,
-              cannon: cannonProto,
-              ship: shipProto,
-              ornithopter: ornithopterProto,
-              bombardier: bombardierProto,
-              boss: bossProto,
-              chief: chiefProto,
-              ocean: oceanObject,
-              pad: padPrototype,
-            },
-          ]) => {
+          ({
+            wall: wallObject,
+            cannon: cannonProto,
+            ship: shipProto,
+            ornithopter: ornithopterProto,
+            bombardier: bombardierProto,
+            boss: bossProto,
+            chief: chiefProto,
+            pad: padPrototype,
+          }) => {
           // Every attacker hull is baked in code like the wall and cannon:
           // hand all prototypes to the wave director before the START gates
           // open; every attacker is a clone of them.
@@ -489,45 +563,6 @@ export function startBattle(world: World): void {
           waveSystem?.setUnitPrototype('bombardier', bombardierProto);
           waveSystem?.setUnitPrototype('boss_islewrath', bossProto);
           setChiefPrototype(chiefProto);
-          // Equirect sky -> cubemap: avoids pole stretching in reflections
-          const cubeRT = new WebGLCubeRenderTarget(256, {
-            type: HalfFloatType,
-          });
-          cubeRT.fromEquirectangularTexture(world.renderer, skyTexture);
-
-          skyDomeSystem?.setSkyTexture(skyTexture);
-
-          // Image-based lighting without a scene IBLTexture: PMREM the same
-          // equirect and hand it to the scene directly. EnvironmentSystem
-          // leaves a manually assigned scene.environment alone (its own
-          // target is unset), so this stays until the page unloads.
-          const pmrem = new PMREMGenerator(world.renderer);
-          skyEnvironmentTarget = pmrem.fromEquirectangular(skyTexture);
-          world.scene.environment = skyEnvironmentTarget.texture;
-          pmrem.dispose();
-
-          // Swap the placeholder material for the wave shader
-          const oceanMaterial = createOceanMaterial();
-          oceanMaterial.uniforms.envMap.value = cubeRT.texture;
-          oceanMaterial.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
-          oceanObject.traverse((child: Object3D) => {
-            if ((child as Mesh).isMesh) {
-              (child as Mesh).material = oceanMaterial;
-              // The unlit shader still samples the shadow map when the
-              // mesh receives shadows (see createOceanMaterial).
-              child.receiveShadow = true;
-            }
-          });
-
-          // One flat quad: its near edge sits on the wall's sea face and it
-          // extends away from the harbour.
-          oceanObject.position.set(
-            0,
-            OCEAN.surfaceY,
-            WALL_SEA_FACE_Z - OCEAN_PLANE_SIZE / 2,
-          );
-          world.createTransformEntity(oceanObject).addComponent(OceanTag);
-          battlefieldObjects.push(oceanObject);
 
           // Place harbor wall at the ocean body's maxZ edge
           bakeWallFaceMottle(wallObject);
@@ -598,6 +633,7 @@ export function startBattle(world: World): void {
           }
 
           battlefieldReady = true;
+          console.info('[battle] resources ready');
 
           // 4. Hide loading panel — game is ready, ease into the game view,
           // then raise the START gates. Units are dispatched by
@@ -614,17 +650,12 @@ export function startBattle(world: World): void {
 /**
  * MAIN-menu hand-off: hide the battlefield (it is never disposed — see the
  * persistence note above), bring the welcome panel back and ease the camera
- * to its authored welcome pose. A later ENTER GAME rebuilds nothing.
+ * to its authored welcome pose. The sky and sea stay visible as the welcome
+ * backdrop; a later ENTER GAME rebuilds nothing.
  */
 export function returnToWelcome(world: World): void {
   battleStarted = false;
   for (const object of battlefieldObjects) object.visible = false;
-  world
-    .getSystems()
-    .find((system): system is SkyDomeSystem =>
-      system instanceof SkyDomeSystem,
-    )
-    ?.setVisible(false);
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
   if (panel) panel.visible = true;
   world

@@ -6,8 +6,8 @@
  */
 
 import { ShaderMaterial, createSystem } from '@iwsdk/core';
-import type { Mesh, Object3D, Texture } from '@iwsdk/core';
-import { SkyDome } from './components.js';
+import type { Entity, Mesh, Object3D, Texture } from '@iwsdk/core';
+import { SceneFade, SkyDome } from './components.js';
 import { createSkyDomeMesh } from './scene-assets/sky-dome.scene-asset.js';
 
 const DEG2RAD = Math.PI / 180;
@@ -16,30 +16,32 @@ type UniformMap = { [name: string]: { value: unknown } };
 type NumberUniform = { value: number };
 
 /**
- * Owns the sky dome: creates the mesh entity (hidden), accepts the ocean's HDR
- * sky map once the battle entry loads it, and mirrors the SkyDome inspector
- * fields into the shader.
+ * Owns the sky dome: creates the mesh entity (hidden), accepts the procedural
+ * sky map from the boot pass, and mirrors the SkyDome inspector fields into
+ * the shader.
  *
- * The dome belongs to the battle view only. The welcome and loading screens
- * render a flat neutral backdrop, so the dome starts hidden and is revealed by
- * the battle entry once its loading panel is gone. Its passthrough mask is
- * gated separately: in an XR session with alpha-blend passthrough it becomes
- * the partial-immersion disc; with no session (or an opaque session) the mask
- * is off and the sphere covers the whole sky.
+ * The dome is the shared backdrop for the whole page: the boot pass feeds it
+ * the procedural sky map, reveals it and ramps its alpha in over the dark
+ * page colour; it then stays visible through the welcome screen, battle and
+ * MAIN-menu returns. Its passthrough mask is gated separately: in an XR
+ * session with alpha-blend passthrough it becomes the partial-immersion disc;
+ * with no session (or an opaque session) the mask is off and the sphere
+ * covers the whole sky.
  */
 export class SkyDomeSystem extends createSystem({
   domes: { required: [SkyDome] },
 }) {
   private maskOn = false;
   private dome: Mesh | null = null;
+  private domeEntity: Entity | null = null;
 
   init(): void {
     const dome = createSkyDomeMesh();
-    // Nothing fetches the HDR before ENTER GAME, so the dome must not show its
-    // flat fallback over the welcome screen.
+    // Hidden until the boot pass has the sky map and is ready to fade it in.
     dome.visible = false;
     this.dome = dome;
-    this.world.createTransformEntity(dome).addComponent(SkyDome);
+    this.domeEntity = this.world.createTransformEntity(dome);
+    this.domeEntity.addComponent(SkyDome);
 
     const sync = (): void => this.syncSessionState();
     this.xrManager.addEventListener('sessionstart', sync);
@@ -51,7 +53,7 @@ export class SkyDomeSystem extends createSystem({
     this.syncSessionState();
   }
 
-  /** Hand the freshly loaded HDR sky map to the dome shader. */
+  /** Hand the freshly generated sky map to the dome shader. */
   setSkyTexture(texture: Texture): void {
     const material = this.dome?.material as ShaderMaterial | undefined;
     if (!material) return;
@@ -59,9 +61,16 @@ export class SkyDomeSystem extends createSystem({
     material.needsUpdate = true;
   }
 
-  /** Reveal the sky for the battle view / hide it again on MAIN-menu return. */
-  setVisible(visible: boolean): void {
-    if (this.dome) this.dome.visible = visible;
+  /**
+   * Reveal the dome and ramp its alpha in from 0 over `duration` seconds.
+   * Called once by the boot pass, right as the loading panel hands over to
+   * the welcome screen; later re-entries keep the settled alpha of 1.
+   */
+  fadeIn(duration: number): void {
+    if (!this.dome || !this.domeEntity) return;
+    (this.dome.material as ShaderMaterial).uniforms.uFade.value = 0;
+    this.dome.visible = true;
+    this.domeEntity.addComponent(SceneFade, { duration });
   }
 
   update(_delta: number, _time: number): void {

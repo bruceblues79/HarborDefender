@@ -10,7 +10,7 @@ import projectOptions from 'virtual:iwsdk-project';
 import { AudioSystem, unlockAudio } from './audio-system.js';
 import { BallisticSystem } from './ballistic-system.js';
 import { BillboardSystem } from './billboard-system.js';
-import { startBattle } from './battle-setup.js';
+import { bootWelcomeScene, startBattle } from './battle-setup.js';
 import { BossChiefSystem } from './boss-chief-system.js';
 import { BuildPanelSystem } from './build-panel-system.js';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
@@ -39,6 +39,7 @@ import { PropellerSpinSystem } from './propeller-spin-system.js';
 import { RepairSystem } from './repair-system.js';
 import { RepairButtonSystem } from './repair-button-system.js';
 import { ResultPanelSystem } from './result-panel-system.js';
+import { SceneFadeSystem } from './scene-fade-system.js';
 import { ShellHitSystem } from './shell-hit-system.js';
 import { ShipMovementSystem } from './ship-movement-system.js';
 import { SkyDomeSystem } from './sky-dome-system.js';
@@ -103,6 +104,9 @@ World.create(
   // AR partial-immersion dome: hidden on desktop, a pasted seaward half-dome
   // of sky over passthrough only while an immersive-AR session is live.
   world.registerSystem(SkyDomeSystem);
+  // Boot fade: ramps the sky/sea shaders' uFade uniform in once their bake
+  // resolves, then removes itself (never replayed on later entries).
+  world.registerSystem(SceneFadeSystem);
   // Simulation tier: the director paces dispatch, movement runs the ships in
   // while the fade system materialises their hulls in parallel. The endless
   // planner rides the same tier, one step after the director: its
@@ -194,6 +198,10 @@ World.create(
 
   // Keep the welcome panel turned toward the viewer in browser and XR alike.
   world.getSceneEntity('welcome-panel')?.addComponent(Billboard);
+
+  // Boot the backdrop: loading panel first, then the glass welcome screen
+  // fades in over the freshly baked sky and sea.
+  bootWelcomeScene(world);
 
   const panel = world.getSceneObject<UIKitMLAsset>('welcome-panel');
   panel
