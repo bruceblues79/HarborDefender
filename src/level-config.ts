@@ -673,10 +673,10 @@ export const COMBAT = {
   hitSparkPoolSize: 10,
   /** Quad capacity of one pooled burst mesh. */
   hitSparkParticles: 20,
-  /** Embers per ordinary hit. */
+  /** Embers per ordinary hit: half the turret-death count, but fatter. */
   hitSparkHitCount: 10,
-  hitSparkHitSizeRatio: 1,
-  hitSparkHitDuration: 0.35,
+  hitSparkHitSizeRatio: 1.7,
+  hitSparkHitDuration: 0.5,
   /** Embers for a boss turret's death burst (fatter, longer, travels wider). */
   hitSparkDeathCount: 20,
   hitSparkDeathSizeRatio: 1.7,

@@ -42,6 +42,36 @@ import {
 } from './level-config.js';
 
 /**
+ * Squared distance from a point to the segment a->b. Scalar math only, so the
+ * per-frame sweep allocates nothing.
+ */
+function distanceSqToSegment(
+  cx: number,
+  cy: number,
+  cz: number,
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const abz = bz - az;
+  const apx = cx - ax;
+  const apy = cy - ay;
+  const apz = cz - az;
+  const lenSq = abx * abx + aby * aby + abz * abz;
+  let t = lenSq > 0 ? (apx * abx + apy * aby + apz * abz) / lenSq : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const dx = apx - abx * t;
+  const dy = apy - aby * t;
+  const dz = apz - abz * t;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+/**
  * Distance-based hit resolution between airborne shells and combatants'
  * hit cores. A shell whose faction differs from a core's is consumed the
  * moment its centre comes within the core radius: flight and faction tags
@@ -59,8 +89,10 @@ import {
  * tagged Destroyed (hidden, out of every combat query; LevelWaveSystem
  * reads the tags for defeat).
  *
- * Runs after BallisticSystem so each frame's motion is tested at its end
- * position. Hits are collected during the sweep and resolved afterwards.
+ * Runs after BallisticSystem so each frame's motion is tested as the segment
+ * from last frame's position to this frame's: testing the end point alone let
+ * a fast shell cross a defender core's small radius between two frames, which
+ * read as a clean miss — no flash, no sparks, no damage.
  */
 export class ShellHitSystem extends createSystem({
   shells: { required: [ShellTag, BallisticFlight, ShellFaction] },
@@ -125,7 +157,7 @@ export class ShellHitSystem extends createSystem({
     return false;
   }
 
-  update(): void {
+  update(delta: number): void {
     if (this.paused()) return;
     this.hit.length = 0;
     this.hitCores.length = 0;
@@ -148,16 +180,33 @@ export class ShellHitSystem extends createSystem({
       const sx = shellObject.position.x;
       const sy = shellObject.position.y;
       const sz = shellObject.position.z;
+      // Start of this frame's motion. Pirate shells fly dragless, so this is
+      // exact; defender shells fly with drag and the segment is only slightly
+      // shorter than the real path — still far better than a point sample.
+      const px = sx - Number(shell.getValue(BallisticFlight, 'vx')) * delta;
+      const py = sy - Number(shell.getValue(BallisticFlight, 'vy')) * delta;
+      const pz = sz - Number(shell.getValue(BallisticFlight, 'vz')) * delta;
       for (const core of this.queries.cores.entities) {
         if (String(core.getValue(HitCore, 'faction')) === faction) continue;
         const position = this.corePositions.get(core.index);
         if (!position) continue;
         const radius =
           Number(core.getValue(HitCore, 'radius')) * COMBAT.shellHitRadiusScale;
-        const dx = sx - position.x;
-        const dy = sy - position.y;
-        const dz = sz - position.z;
-        if (dx * dx + dy * dy + dz * dz <= radius * radius) {
+        // Segment-to-point keeps fast shells from tunnelling through a core.
+        if (
+          distanceSqToSegment(
+            position.x,
+            position.y,
+            position.z,
+            px,
+            py,
+            pz,
+            sx,
+            sy,
+            sz,
+          ) <=
+          radius * radius
+        ) {
           this.hit.push(shell);
           this.hitCores.push(core);
           // Ship cores bloom larger than harbour-cannon cores; the shared
@@ -199,6 +248,12 @@ export class ShellHitSystem extends createSystem({
       // Bloom at the struck core's centre: positions were refreshed at the
       // top of this frame, so the map is current for every hit this sweep.
       this.spawnHitFlash(corePosition, this.hitPeakScales[i]);
+      this.spawnSparks(
+        corePosition,
+        COMBAT.hitSparkHitCount,
+        COMBAT.hitSparkHitSizeRatio,
+        COMBAT.hitSparkHitDuration,
+      );
       this.applyDamage(core, this.hitDamages[i]);
     }
 
