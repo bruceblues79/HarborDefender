@@ -41,7 +41,14 @@ const reporter = `<script>
   window.addEventListener('unhandledrejection', function (e) { show((e.reason && (e.reason.stack || e.reason)) || 'unhandled rejection'); });
 })();
 </script>`;
-html = html.replace(scriptTag, () => `${reporter}\n<script>\n${bundle}\n</script>`);
+// 经典脚本不再延迟执行，必须放在 body 末尾，否则引擎挂载时 document.body 还是 null。
+const bundleTag = `${reporter}\n<script>\n${bundle}\n</script>`;
+html = html.replace(scriptTag, '');
+if (html.includes('</body>')) {
+  html = html.replace('</body>', () => `${bundleTag}\n  </body>`);
+} else {
+  html += bundleTag;
+}
 
 const styleTag = /<link[^>]*rel="stylesheet"[^>]*href="\.\/([^"]+)"[^>]*>/u;
 for (let match = html.match(styleTag); match; match = html.match(styleTag)) {
