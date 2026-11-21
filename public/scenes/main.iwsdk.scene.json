@@ -6,23 +6,23 @@
     "shadows": true,
     "shadowMapType": "pcf-soft",
     "toneMapping": "aces",
-    "exposure": 1.2
+    "exposure": 1.15
   },
   "nodes": [
     {
       "id": "sun-light",
       "name": "Sun Light",
       "transform": {
-        "position": [-5, 6.2, 6],
-        "rotationDeg": [-46, -30, 0]
+        "position": [-6, 5.5, -6],
+        "rotationDeg": [13.8, -150.7, 0]
       },
       "components": {
         "DirectionalLight": {
-          "color": [1, 0.94, 0.87, 1],
-          "intensity": 4.2,
+          "color": [1, 0.7, 0.42, 1],
+          "intensity": 5,
           "castShadow": true,
           "shadowCameraSize": 12,
-          "shadowNormalBias": 0.008
+          "shadowNormalBias": 0.01
         }
       }
     },

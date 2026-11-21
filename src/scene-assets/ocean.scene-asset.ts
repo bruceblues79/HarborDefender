@@ -84,6 +84,9 @@ uniform float uFade;          // boot fade-in multiplier on the surface alpha
 uniform float noiseSpeed;     // metres/second, perturbation drifts toward +z
 uniform float noiseFrequency; // noise cells per metre
 uniform float noiseIntensity; // master disturbance strength
+uniform vec3 sunDir;          // unit vector toward the sun (world space)
+uniform vec3 sunColor;        // linear RGB of the directional light
+uniform float sunIntensity;   // authored strength of the sun glitter
 uniform int wakeCount;
 uniform vec3 wakePos[${MAX_WAKE}];    // x, packed radius, z
 uniform vec3 wakeParams[${MAX_WAKE}]; // amplitude, frequency, speed
@@ -148,19 +151,24 @@ void main() {
   float mask = 1.0 - smoothstep(MASK_RADIUS - fadeWidth, MASK_RADIUS, d);
   if (mask * uFade <= 0.001) discard;
 
+  // Deep-water body colour (linear). It shows through where the view is steep
+  // enough for Fresnel reflectance to drop, so near water reads heavier and
+  // colder than the far water that mirrors the sky.
+  const vec3 WATER_DEEP = vec3(0.008, 0.026, 0.05);
   vec3 color;
+  vec3 specular = vec3(0.0);
 
   // Fake reflection only on the +y surface (the water top).
   // Cubemap sampling avoids the pole stretching of equirect UV mapping.
   if (vLocalNormal.y > 0.5) {
     vec3 viewDir = normalize(vWorldPosition - cameraPosition);
-    vec3 reflDir = reflect(viewDir, normalize(vWorldNormal));
+    vec3 V = -viewDir; // surface -> eye
 
-    // Noise perturbation of the reflection direction: the sky projection
-    // wobbles as if the surface had fine ripples, without touching geometry.
+    // Noise + wake perturbation produces ONE slope field that drives both the
+    // reflection wobble and the sun glitter, so the two never disagree.
     float n1 = flowingNoise(vWorldPosition.xz * noiseFrequency, time * noiseSpeed);
     float n2 = flowingNoise(vWorldPosition.zx * noiseFrequency + 19.3, time * noiseSpeed * 0.8);
-    reflDir = normalize(reflDir + vec3(n1, 0.0, n2) * noiseIntensity);
+    vec2 perturb = vec2(n1, n2) * noiseIntensity;
 
     // Wake ripple perturbation: the ripple gradient tilts the reflection
     // toward the ring centre, creating a lensing wobble around each source.
@@ -181,12 +189,31 @@ void main() {
       vec2 dir = diff / max(dist, 0.001);
       wakeGrad += dir * d;
     }
-    reflDir = normalize(reflDir + vec3(wakeGrad.x, 0.0, wakeGrad.y) * 0.5);
+    perturb += wakeGrad * 0.5;
 
-    color = textureCube(envMap, reflDir).rgb * reflectivity;
+    vec3 reflDir = normalize(reflect(viewDir, normalize(vWorldNormal)) + vec3(perturb.x, 0.0, perturb.y));
+    vec3 N = normalize(vec3(-perturb.x * 10.0, 1.0, -perturb.y * 10.0));
+
+    // Schlick Fresnel: grazing water mirrors the sky, steep water shows the
+    // deep body colour.
+    float ndv = clamp(dot(N, V), 0.0, 1.0);
+    float fresnel = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
+    vec3 reflected = textureCube(envMap, reflDir).rgb * reflectivity;
+    color = mix(WATER_DEEP, reflected, fresnel);
+
+    // Sun glitter: a tight sparkle lobe over a broad sheen, broken up by a
+    // high-frequency glint noise so the path reads as scattered coins instead
+    // of one smooth hotspot.
+    vec3 H = normalize(sunDir + V);
+    float ndh = max(dot(N, H), 0.0);
+    float sparkle = pow(ndh, 900.0);
+    float sheen = pow(ndh, 60.0);
+    float glint = valueNoise(vWorldPosition.xz * 55.0 + vec2(time * 1.7));
+    specular = sunColor * sunIntensity *
+      (sparkle * (0.45 + 1.4 * smoothstep(0.35, 0.85, glint)) + sheen * 0.08);
   } else {
     // Sides / bottom: deep water body color, no env mapping
-    color = vec3(0.06, 0.11, 0.18);
+    color = WATER_DEEP;
   }
 
   // Darken by the shadow mask (receiveShadow-gated by the renderer). The
@@ -196,6 +223,10 @@ void main() {
   color *= mix(0.5, 1.0, getShadowMask());
 
   color *= brightness;
+
+  // Glitter survives only where the sun is not occluded: ship and wall
+  // shadows cut a clean dark lane through the golden path.
+  color += specular * getShadowMask();
 
   // Rim dissolve: the disc's far edge sits just below eye level, so the water
   // there reflects the upper hemisphere (which darkens with elevation) while
@@ -225,6 +256,12 @@ export interface OceanNoiseParams {
   intensity?: number;
   /** Linear brightness multiplier on the final water colour. */
   brightness?: number;
+  /** World-space unit vector toward the sun — drives the glitter path. */
+  sunDirection?: readonly [number, number, number];
+  /** Linear RGB of the directional light. */
+  sunColor?: readonly [number, number, number];
+  /** Strength of the sun glitter (0 disables it). */
+  sunIntensity?: number;
 }
 
 /**
@@ -259,6 +296,13 @@ export function createOceanMaterial(noise: OceanNoiseParams = {}): ShaderMateria
         noiseSpeed: { value: noise.speed ?? 0.8 },
         noiseFrequency: { value: noise.frequency ?? 3.0 },
         noiseIntensity: { value: noise.intensity ?? 0.015 },
+        sunDir: {
+          value: new Vector3(...(noise.sunDirection ?? [-0.489, 0.208, -0.847])),
+        },
+        sunColor: {
+          value: new Vector3(...(noise.sunColor ?? [1, 0.7, 0.42])),
+        },
+        sunIntensity: { value: noise.sunIntensity ?? 1 },
         wakeCount: { value: 0 },
         wakePos: { value: Array.from({ length: MAX_WAKE }, () => new Vector3()) },
         wakeParams: { value: Array.from({ length: MAX_WAKE }, () => new Vector3()) },

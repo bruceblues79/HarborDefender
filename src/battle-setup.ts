@@ -61,7 +61,7 @@ import { createPirateChief } from './scene-assets/pirate-chief.scene-asset.js';
 import { createPirateShip } from './scene-assets/pirate-ship.scene-asset.js';
 import { setChiefPrototype } from './boss-chief-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
-import { createSkyTexture } from './procedural-sky-texture.js';
+import { createSkyTexture, resolveSunLight } from './procedural-sky-texture.js';
 import { SkyDomeSystem } from './sky-dome-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
@@ -429,7 +429,12 @@ export function bootWelcomeScene(world: World): void {
       world.scene.environment = skyEnvironmentTarget.texture;
       pmrem.dispose();
 
-      const oceanMaterial = createOceanMaterial();
+      const sun = resolveSunLight(world);
+      const oceanMaterial = createOceanMaterial({
+        sunDirection: sun.direction,
+        sunColor: sun.color,
+        sunIntensity: sun.intensity * 0.2,
+      });
       oceanMaterial.uniforms.uFade.value = 0;
       oceanMaterial.uniforms.envMap.value = cubeRT.texture;
       oceanMaterial.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
