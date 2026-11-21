@@ -12,6 +12,7 @@
     "reference:warmup": "iwsdk reference warmup",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
+    "pack:html": "node scripts/pack-single.mjs",
     "preview": "vite preview",
     "deploy": "npm run build && node scripts/deploy.mjs"
   },

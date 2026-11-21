@@ -53,7 +53,7 @@ import { installHandPriorityArbitration } from './xr-hand-arbitration.js';
 // every tab to close: an immutable sw.js pins the precached index.html to the
 // first build a client ever saw. updateViaCache: 'none' bypasses the HTTP cache,
 // SKIP_WAITING wakes the generated worker, and controllerchange reloads once.
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+if (import.meta.env.PROD && 'serviceWorker' in navigator && location.protocol.startsWith('http')) {
   const scope = import.meta.env.BASE_URL;
   const hadController = navigator.serviceWorker.controller !== null;
   navigator.serviceWorker.addEventListener('controllerchange', () => {

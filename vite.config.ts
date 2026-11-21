@@ -17,7 +17,12 @@ import { VitePWA } from 'vite-plugin-pwa';
 const buildVersion = JSON.parse(readFileSync('./package.json', 'utf8')).version as string;
 
 export default defineConfig({
-  define: { __BUILD_VERSION__: JSON.stringify(buildVersion) },
+  define: {
+    __BUILD_VERSION__: JSON.stringify(buildVersion),
+    // 单文件预览构建（vite.single.config.ts）用数据 URL 取代 public/ 路径，
+    // 正式构建与 dev 保持原样。
+    __PREVIEW_ASSETS__: 'null',
+  },
   plugins: [
     iwsdkDev(),
     VitePWA({

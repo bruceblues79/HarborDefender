@@ -22,6 +22,8 @@ import {
   SKY_MAP_WIDTH,
   generateSkyPixels,
 } from './procedural-sky.js';
+// inline：Worker 打成 Blob，单文件 html 里没有独立的 worker 文件可加载。
+import SkyWorker from './procedural-sky.worker.ts?worker&inline';
 import type { SkySunDirection } from './procedural-sky.js';
 import type {
   SkyWorkerRequest,
@@ -49,10 +51,7 @@ function requestSkyPixels(sunDir: SkySunDirection): Promise<Float32Array> {
   return new Promise((resolve, reject) => {
     let worker: Worker;
     try {
-      worker = new Worker(
-        new URL('./procedural-sky.worker.ts', import.meta.url),
-        { type: 'module' },
-      );
+      worker = new SkyWorker();
     } catch (error) {
       reject(error);
       return;
