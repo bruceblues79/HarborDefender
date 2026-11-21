@@ -22,6 +22,8 @@ import {
   SKY_MAP_WIDTH,
   generateSkyPixels,
 } from './procedural-sky.js';
+// inline：Worker 打成 Blob，单文件 html 里没有独立的 worker 文件可加载。
+import SkyWorker from './procedural-sky.worker.ts?worker&inline';
 import type { SkySunDirection } from './procedural-sky.js';
 import type {
   SkyWorkerRequest,
@@ -30,9 +32,9 @@ import type {
 
 /**
  * 场景主光没取到时的太阳方向，与 main.iwsdk.scene.json 的 sun-light 旋转
- * （-80°, 15°, 0）一致。
+ * （-46°, -30°, 0）一致：下午三点，太阳在 +Z 一侧偏 -X 约 40°，高度约 38°。
  */
-const SUN_DIRECTION_FALLBACK: SkySunDirection = [0.259, 0.951, 0.168];
+const SUN_DIRECTION_FALLBACK: SkySunDirection = [-0.5, 0.623, 0.602];
 
 /**
  * 太阳方向取自主光的 world +Z（DirectionalLight 沿本地 -Z 发光，+Z 指向太阳），
@@ -49,10 +51,7 @@ function requestSkyPixels(sunDir: SkySunDirection): Promise<Float32Array> {
   return new Promise((resolve, reject) => {
     let worker: Worker;
     try {
-      worker = new Worker(
-        new URL('./procedural-sky.worker.ts', import.meta.url),
-        { type: 'module' },
-      );
+      worker = new SkyWorker();
     } catch (error) {
       reject(error);
       return;

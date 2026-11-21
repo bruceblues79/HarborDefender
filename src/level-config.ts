@@ -665,6 +665,60 @@ export const COMBAT = {
   /** Fresnel rim colour (dark red, sRGB hex). */
   hitFlashEdgeColor: 0x8a1400,
   /**
+   * Impact embers: additive spark quads thrown off on every solid hit, and a
+   * larger burst (plus a full-size flash) when a boss turret dies. Every
+   * burst draws from a shared InstancedMesh pool — one mesh per concurrent
+   * burst, at most `hitSparkParticles` quads each, no per-play allocation.
+   */
+  hitSparkPoolSize: 14,
+  /** Quad capacity of one pooled burst mesh. */
+  hitSparkParticles: 20,
+  /** Embers per ordinary hit: half the turret-death count, but fatter. */
+  hitSparkHitCount: 10,
+  hitSparkHitSizeRatio: 1.7,
+  hitSparkHitDuration: 0.5,
+  /** Embers for a boss turret's death burst (fatter, longer, travels wider). */
+  hitSparkDeathCount: 20,
+  hitSparkDeathSizeRatio: 1.7,
+  hitSparkDeathDuration: 0.7,
+  /** Peak flash multiplier on the turret's death flash (base radius × this). */
+  hitSparkTurretFlashScale: 2.4,
+  /** Random launch speed range (m/s). */
+  hitSparkSpeedMin: 1.65,
+  hitSparkSpeedMax: 3.9,
+  /** Ember gravity (m/s²) — lighter than debris, so embers hang and drift. */
+  hitSparkGravity: 3.2,
+  /** Exponential drag (1/s) applied to every velocity component. */
+  hitSparkDrag: 2.2,
+  /** Ember quad size range (m). */
+  hitSparkSizeMin: 0.045,
+  hitSparkSizeMax: 0.105,
+  /** Hot core / cool rim tints (sRGB hex) of the ember gradient. */
+  hitSparkCoreColor: 0xfff2cc,
+  hitSparkEdgeColor: 0xff5a12,
+  /**
+   * Burning wreck: a small looping flame left at a destroyed boss turret's
+   * position. Few, small additive quads that keep re-spawning at the emitter
+   * so the deck looks on fire long after the chunk burst ends.
+   */
+  wreckFirePoolSize: 4,
+  /** Quads per emitter. */
+  wreckFireParticles: 8,
+  /** Quad size range (m) — big enough to read as a fire, still local. */
+  wreckFireSizeMin: 0.08,
+  wreckFireSizeMax: 0.18,
+  /** Rise speed range (m/s). */
+  wreckFireRiseMin: 0.25,
+  wreckFireRiseMax: 0.55,
+  /** Per-particle life range (s) before it respawns at the emitter. */
+  wreckFireLifeMin: 0.45,
+  wreckFireLifeMax: 0.85,
+  /** Horizontal sway amplitude (m) of a rising ember. */
+  wreckFireDrift: 0.025,
+  /** Hot core / cool rim tints (sRGB hex) of the flame gradient. */
+  wreckFireCoreColor: 0xffc04a,
+  wreckFireEdgeColor: 0xd02400,
+  /**
    * Death-burst pool shared by every unit death: one pooled entity per
    * burst, each an InstancedMesh of small wood-and-iron chunks that fly
    * apart under gravity. Pool entities share one geometry AND one material
@@ -905,7 +959,7 @@ export const BOSS = {
    * on the deck around the gone turret, and they rebound (wall-top bounce)
    * instead of sinking.
    */
-  turretBurstRatio: 0.45,
+  turretBurstRatio: 0.6,
   turretBurstFloorY: -0.15,
   /**
    * Laser main cannon rhythm (task 030): each emission locks the beam axis

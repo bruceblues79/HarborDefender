@@ -62,6 +62,7 @@ uniform float uAxisY;
 uniform float uAxisZ;
 
 uniform float uIntensity;
+uniform float uFade;       // boot fade-in multiplier on the dome alpha
 
 varying vec3 vWorldPosition;
 
@@ -86,6 +87,8 @@ vec3 linearToSRGB(vec3 c) {
 }
 
 void main() {
+  if (uFade <= 0.001) discard;
+
   // View ray through this fragment: the dome hugs the world origin and the
   // player stays within a few metres of it.
   vec3 dir = normalize(vWorldPosition - cameraPosition);
@@ -127,7 +130,7 @@ void main() {
   // 8-bit sky gradients band badly; a sub-LSB dither dissolves the steps.
   color += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
 
-  gl_FragColor = vec4(color, alpha);
+  gl_FragColor = vec4(color, alpha * uFade);
 }
 `;
 
@@ -163,6 +166,7 @@ export function createSkyDomeMaterial(skyMap?: Texture): ShaderMaterial {
       uAxisY: { value: Math.sin(7.5 * DEG2RAD) },
       uAxisZ: { value: -Math.cos(7.5 * DEG2RAD) },
       uIntensity: { value: 1 },
+      uFade: { value: 1 },
     },
     vertexShader,
     fragmentShader,

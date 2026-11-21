@@ -392,6 +392,50 @@ export const HitFlash = createComponent('HitFlash', {
 });
 
 /**
+ * Marks a pooled hit-spark InstancedMesh. The pool lives in
+ * SparkBurstSystem; a burst is free exactly while it does NOT carry
+ * `SparkBurst` — presence of the state component is the "playing" tag, so no
+ * separate in-use flag exists.
+ */
+export const SparkBurstTag = createComponent('SparkBurstTag', {});
+
+/**
+ * Playing state of a pooled spark burst: the short-lived additive embers
+ * every impact throws off. ShellHitSystem claims a free burst by adding this
+ * component (the thin spawn command); SparkBurstSystem is the only writer
+ * afterwards — its `qualify` callback scatters the particles, `update`
+ * integrates them, and removal returns the mesh to the pool.
+ */
+export const SparkBurst = createComponent('SparkBurst', {
+  /** Seconds the burst takes from spawn to fully recycled. */
+  duration: { type: 'Float32', default: COMBAT.hitSparkHitDuration },
+  /** Seconds elapsed so far. */
+  elapsed: { type: 'Float32', default: 0 },
+  /** Full-size multiplier over the shared particle sizes. */
+  sizeRatio: { type: 'Float32', default: 1 },
+  /** Particles emitted this burst (clamped to the pool mesh capacity). */
+  count: { type: 'Float32', default: COMBAT.hitSparkHitCount },
+});
+
+/**
+ * Marks a pooled burning-wreck emitter. The pool lives in WreckFireSystem; an
+ * emitter is free exactly while it does NOT carry `WreckFire` — presence of
+ * the state component is the "burning" tag, so no separate flag exists.
+ */
+export const WreckFireTag = createComponent('WreckFireTag', {});
+
+/**
+ * Burning state of a pooled wreck emitter: the looping flame left at a
+ * destroyed boss turret's position. ShellHitSystem claims one by adding this
+ * component; WreckFireSystem is the only writer afterwards, respawning the few
+ * embers in place for as long as the Islewrath itself is still afloat.
+ */
+export const WreckFire = createComponent('WreckFire', {
+  /** Full-size multiplier over the shared ember sizes. */
+  sizeRatio: { type: 'Float32', default: 1 },
+});
+
+/**
  * Marks a pooled death-burst InstancedMesh. The pool lives in
  * DieBurstSystem; a burst is free exactly while it does NOT carry
  * `DieBurst` — presence of the state component is the "playing" tag, so no
@@ -782,6 +826,22 @@ export const SkyDome = createComponent('SkyDome', {
   skyIntensity: { type: 'Float32', default: 1.0 },
 });
 
+/**
+ * One-shot material fade for the boot backdrop (sky dome + sea). The value
+ * ramps 0 → 1 over `duration` and SceneFadeSystem writes it into every mesh
+ * shader's `uFade` uniform below the entity, then drops the component on
+ * arrival. Presence is the tag: only the boot pass adds it, so battle
+ * re-entries and MAIN-menu returns never replay the fade.
+ */
+export const SceneFade = createComponent('SceneFade', {
+  /** Seconds of the 0 → 1 ramp. */
+  duration: { type: 'Float32', default: 0.5 },
+  /** Seconds to hold at 0 before the ramp starts. */
+  delay: { type: 'Float32', default: 0 },
+  /** Seconds elapsed; SceneFadeSystem advances it each frame. */
+  elapsed: { type: 'Float32', default: 0 },
+});
+
 export default defineComponents([
   OceanTag,
   WakeSource,
@@ -811,6 +871,10 @@ export default defineComponents([
   GameOver,
   HitFlashTag,
   HitFlash,
+  SparkBurstTag,
+  SparkBurst,
+  WreckFireTag,
+  WreckFire,
   DieBurstTag,
   DieBurst,
   Repairing,
@@ -832,4 +896,5 @@ export default defineComponents([
   NextWaveCommand,
   WaveIntermission,
   SkyDome,
+  SceneFade,
 ]);

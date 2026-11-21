@@ -7,8 +7,12 @@
 
 import { AssetType, defineAssets } from '@iwsdk/core';
 
+// 单文件预览构建里 public/ 不存在，URL 换成构建期内联的 data URL。
+const inlineAsset = (filePath: string): string | null =>
+  __PREVIEW_ASSETS__?.[filePath.replace(/^\/+/u, '')] ?? null;
+
 const publicAssetUrl = (filePath: string): string =>
-  `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
+  inlineAsset(filePath) ?? `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
 
 // Resources served from public/ with no Cache-Control can stay stale in a
 // client's HTTP cache across deploys (seen on Huawei Browser). Versioning the
@@ -16,7 +20,7 @@ const publicAssetUrl = (filePath: string): string =>
 // unversioned URLs (glTF is renamed for incompatible swaps); the ocean carrier
 // changed in place, so it opts in.
 const versionedAssetUrl = (filePath: string): string =>
-  `${publicAssetUrl(filePath)}?v=${__BUILD_VERSION__}`;
+  inlineAsset(filePath) ?? `${publicAssetUrl(filePath)}?v=${__BUILD_VERSION__}`;
 
 export default defineAssets({
   'welcome-panel': {

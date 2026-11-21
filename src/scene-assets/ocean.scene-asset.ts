@@ -80,6 +80,7 @@ uniform samplerCube envMap;
 uniform float reflectivity;
 uniform float brightness;
 uniform float time;
+uniform float uFade;          // boot fade-in multiplier on the surface alpha
 uniform float noiseSpeed;     // metres/second, perturbation drifts toward +z
 uniform float noiseFrequency; // noise cells per metre
 uniform float noiseIntensity; // master disturbance strength
@@ -145,7 +146,7 @@ void main() {
   float fadeWidth = mix(MASK_FADE, MASK_FADE_FAR, farness);
   float d = length(maskOffset);
   float mask = 1.0 - smoothstep(MASK_RADIUS - fadeWidth, MASK_RADIUS, d);
-  if (mask <= 0.001) discard;
+  if (mask * uFade <= 0.001) discard;
 
   vec3 color;
 
@@ -211,7 +212,7 @@ void main() {
     color = mix(color, backdrop * brightness, rimBlend);
   }
 
-  gl_FragColor = vec4(linearToSRGB(color), mask);
+  gl_FragColor = vec4(linearToSRGB(color), mask * uFade);
 }
 `;
 
@@ -251,6 +252,7 @@ export function createOceanMaterial(noise: OceanNoiseParams = {}): ShaderMateria
       UniformsLib.lights,
       {
         time: { value: 0 },
+        uFade: { value: 1 },
         envMap: { value: null },
         reflectivity: { value: 1.0 },
         brightness: { value: noise.brightness ?? WATER_BRIGHTNESS },

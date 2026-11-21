@@ -9,9 +9,9 @@
   The lowercase <button> is a plain HTML-like element, so its size is fully
   controlled by the styles below instead of the Horizon kit Button defaults.
 
-  Panel surface: the stock Horizon panel without the glass material class, so
-  it stays unlit and reads the same before any environment map is loaded; the
-  flat light-grey fill keeps the dark text readable on the neutral backdrop.
+  Panel surface: the stock glass preset over a translucent white fill, exactly
+  like the in-game START panel, so the welcome screen reads as one material
+  family once the sky and sea have faded in behind it.
   (UIKitML style blocks do not support CSS comments.)
 -->
 <style>
@@ -25,7 +25,8 @@
     padding-right: 4;
     padding-bottom: 4;
     padding-left: 4;
-    background-color: #e8e8e8;
+    panel-material-class: glass;
+    background-color: #ffffffaa;
   }
 
   .title-section {

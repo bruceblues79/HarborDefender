@@ -112,38 +112,24 @@ components you expect. A screenshot is never required for this.
 
 The **editor** render does not run application systems, so a scene/editor
 screenshot cannot prove system-driven behavior — but that does **not** make a
-local runtime screenshot mandatory. Visual outcomes go through the gate below.
+local runtime screenshot mandatory. Visual outcomes follow the rule below.
 
 Pose, controller/hand alignment, and immersive interaction correctness can only
 be experienced in an active XR session or on a real device; a flat desktop view
-cannot prove them. Route them through the same deployed-site + human-device gate;
-never claim them from a desktop screenshot.
+cannot prove them. Leave them to the user's own device check; never claim them
+from a desktop screenshot.
 
-### Visual verification gate — ask first, then deploy a versioned build
+### Visual verification — user-driven, never agent-initiated
 
-Visual outcomes (UI layout, text centering, touch gestures, camera feel, mobile
-rendering) are **never** verified by driving the local managed browser, and no
-screenshot is captured on the agent's own initiative. Whenever a task changes
-anything visual, stop before verifying and ask the user exactly one question:
+The agent does not run visual verification on its own: no headless browser, no
+screenshots, no driving the local or deployed page. The user judges visuals.
 
-> Do you want to verify visually yourself, or should I verify it on the live site?
+Deploy only when the user explicitly says so; never deploy or bump the
+`package.json` version proactively.
 
-- **User verifies (human):** bump the patch version in `package.json`, run
-  `npm run deploy`, and hand over
-  `https://svalbardpost.xyz/games/harbor-defender/?v=<version>-<yyyymmddhhmmUTC>`
-  together with exactly what to look at. Do no browser/screenshot check yourself;
-  wait for the user's verdict.
-- **Agent verifies:** bump the patch version identically, run `npm run deploy`,
-  and drive **only the real deployed site** (trusted HTTPS) with browser
-  automation at the same cache-busting URL. Never use localhost, the self-signed
-  cert, the managed browser, `dev up`/`runtime recover`, or hand-rolled local
-  static servers for verification.
-
-Either way the build is versioned and deployed; the query string busts browser
-and PWA caches. If an old service worker is served, one hard reload activates the
-autoUpdate worker — note it, do not redeploy. The verification report must
-include `package.json` version, short git SHA, and UTC timestamp, and must never
-present visual/touch behavior as proven by typecheck or build alone.
+When the user says 「preview 项目」, read `.agents/skills/preview-html/SKILL.md`
+and follow it. Preview builds land in the ignored `.trae-html-share-packages/`
+directory and are sent to the user's own Feishu chat.
 
 ### No local screenshot / visual-verification loops
 
@@ -153,7 +139,7 @@ If a session is already open and its bridge is unavailable
 Chromium, the automation browser is offscreen (`0x0`/`0x8` viewport), or a cert
 interstitial appears, do not retry, restart, switch headed/headless mode, or
 fight the certificate page — at most one diagnostic status check, then use the
-gate above. This overrides screenshot / contact-sheet / preview-loop mandates in
+preview skill above. This overrides screenshot / contact-sheet / preview-loop mandates in
 project skills such as `iwsdk-ui`; those skills may not demand local visual
 evidence.
 

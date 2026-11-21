@@ -1,6 +1,6 @@
 {
   "name": "harbordefender",
-  "version": "0.1.462",
+  "version": "0.1.478",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,6 +12,7 @@
     "reference:warmup": "iwsdk reference warmup",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
+    "pack:html": "node scripts/pack-single.mjs",
     "preview": "vite preview",
     "deploy": "npm run build && node scripts/deploy.mjs"
   },

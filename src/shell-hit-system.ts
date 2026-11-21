@@ -23,9 +23,13 @@ import {
   LevelDirector,
   ShellFaction,
   ShellTag,
+  SparkBurst,
+  SparkBurstTag,
   SplashFade,
   WakeSource,
   Wallet,
+  WreckFire,
+  WreckFireTag,
 } from './components.js';
 import {
   BOSS,
@@ -36,6 +40,36 @@ import {
   REWARD_TABLE,
   RewardTier,
 } from './level-config.js';
+
+/**
+ * Squared distance from a point to the segment a->b. Scalar math only, so the
+ * per-frame sweep allocates nothing.
+ */
+function distanceSqToSegment(
+  cx: number,
+  cy: number,
+  cz: number,
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const abz = bz - az;
+  const apx = cx - ax;
+  const apy = cy - ay;
+  const apz = cz - az;
+  const lenSq = abx * abx + aby * aby + abz * abz;
+  let t = lenSq > 0 ? (apx * abx + apy * aby + apz * abz) / lenSq : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const dx = apx - abx * t;
+  const dy = apy - aby * t;
+  const dz = apz - abz * t;
+  return dx * dx + dy * dy + dz * dz;
+}
 
 /**
  * Distance-based hit resolution between airborne shells and combatants'
@@ -55,14 +89,18 @@ import {
  * tagged Destroyed (hidden, out of every combat query; LevelWaveSystem
  * reads the tags for defeat).
  *
- * Runs after BallisticSystem so each frame's motion is tested at its end
- * position. Hits are collected during the sweep and resolved afterwards.
+ * Runs after BallisticSystem so each frame's motion is tested as the segment
+ * from last frame's position to this frame's: testing the end point alone let
+ * a fast shell cross a defender core's small radius between two frames, which
+ * read as a clean miss — no flash, no sparks, no damage.
  */
 export class ShellHitSystem extends createSystem({
   shells: { required: [ShellTag, BallisticFlight, ShellFaction] },
   cores: { required: [HitCore, Health], excluded: [Destroyed] },
   freeFlashes: { required: [HitFlashTag], excluded: [HitFlash] },
   freeBursts: { required: [DieBurstTag], excluded: [DieBurst] },
+  freeSparks: { required: [SparkBurstTag], excluded: [SparkBurst] },
+  freeWreckFires: { required: [WreckFireTag], excluded: [WreckFire] },
   directors: { required: [LevelDirector] },
 }) {
   /** hit_core node per core entity index, resolved once on qualify. */
@@ -81,6 +119,10 @@ export class ShellHitSystem extends createSystem({
   private readonly claimedFlashes = new Set<number>();
   /** Bursts handed out this frame; the free-burst query refreshes next frame. */
   private readonly claimedBursts = new Set<number>();
+  /** Spark bursts handed out this frame; the free query refreshes next frame. */
+  private readonly claimedSparks = new Set<number>();
+  /** Wreck fires handed out this frame; the free query refreshes next frame. */
+  private readonly claimedWreckFires = new Set<number>();
   /** Zero-health snapshot buffer for the death sweep; reused per frame. */
   private readonly dying: Entity[] = [];
 
@@ -115,7 +157,7 @@ export class ShellHitSystem extends createSystem({
     return false;
   }
 
-  update(): void {
+  update(delta: number): void {
     if (this.paused()) return;
     this.hit.length = 0;
     this.hitCores.length = 0;
@@ -123,6 +165,8 @@ export class ShellHitSystem extends createSystem({
     this.hitDamages.length = 0;
     this.claimedFlashes.clear();
     this.claimedBursts.clear();
+    this.claimedSparks.clear();
+    this.claimedWreckFires.clear();
 
     // Core world positions once per frame (pirate ships yaw after stopping).
     for (const [index, node] of this.coreNodes) {
@@ -136,16 +180,33 @@ export class ShellHitSystem extends createSystem({
       const sx = shellObject.position.x;
       const sy = shellObject.position.y;
       const sz = shellObject.position.z;
+      // Start of this frame's motion. Pirate shells fly dragless, so this is
+      // exact; defender shells fly with drag and the segment is only slightly
+      // shorter than the real path — still far better than a point sample.
+      const px = sx - Number(shell.getValue(BallisticFlight, 'vx')) * delta;
+      const py = sy - Number(shell.getValue(BallisticFlight, 'vy')) * delta;
+      const pz = sz - Number(shell.getValue(BallisticFlight, 'vz')) * delta;
       for (const core of this.queries.cores.entities) {
         if (String(core.getValue(HitCore, 'faction')) === faction) continue;
         const position = this.corePositions.get(core.index);
         if (!position) continue;
         const radius =
           Number(core.getValue(HitCore, 'radius')) * COMBAT.shellHitRadiusScale;
-        const dx = sx - position.x;
-        const dy = sy - position.y;
-        const dz = sz - position.z;
-        if (dx * dx + dy * dy + dz * dz <= radius * radius) {
+        // Segment-to-point keeps fast shells from tunnelling through a core.
+        if (
+          distanceSqToSegment(
+            position.x,
+            position.y,
+            position.z,
+            px,
+            py,
+            pz,
+            sx,
+            sy,
+            sz,
+          ) <=
+          radius * radius
+        ) {
           this.hit.push(shell);
           this.hitCores.push(core);
           // Ship cores bloom larger than harbour-cannon cores; the shared
@@ -187,6 +248,12 @@ export class ShellHitSystem extends createSystem({
       // Bloom at the struck core's centre: positions were refreshed at the
       // top of this frame, so the map is current for every hit this sweep.
       this.spawnHitFlash(corePosition, this.hitPeakScales[i]);
+      this.spawnSparks(
+        corePosition,
+        COMBAT.hitSparkHitCount,
+        COMBAT.hitSparkHitSizeRatio,
+        COMBAT.hitSparkHitDuration,
+      );
       this.applyDamage(core, this.hitDamages[i]);
     }
 
@@ -269,6 +336,18 @@ export class ShellHitSystem extends createSystem({
           BOSS.turretBurstFloorY,
           COMBAT.dieBurstFloorBounce,
         );
+        // A turret is a far bigger kill than a hull hit, so it gets the full
+        // explosion treatment on top of the debris: an oversized flash at the
+        // core and a wide ember spray that outlives the chunks.
+        this.spawnHitFlash(at, COMBAT.hitSparkTurretFlashScale);
+        this.spawnSparks(
+          at,
+          COMBAT.hitSparkDeathCount,
+          COMBAT.hitSparkDeathSizeRatio,
+          COMBAT.hitSparkDeathDuration,
+        );
+        // Leave a small flame burning where the turret stood.
+        this.spawnWreckFire(at);
       }
       // Keep the shared prototype resources alive: boss parts are prototype
       // clones. dispose() also removes the turret mesh from the hull clone
@@ -383,6 +462,56 @@ export class ShellHitSystem extends createSystem({
         duration: COMBAT.hitFlashDuration,
         peakScale,
       });
+      return;
+    }
+  }
+
+  /**
+   * Claim a free pooled spark burst and plant it at the impact point:
+   * position, visible, then the `SparkBurst` component that both hands
+   * animation to SparkBurstSystem and (via its synchronous qualify callback)
+   * scatters the embers. Pool empty: skip silently — a hit never waits on fx.
+   */
+  private spawnSparks(
+    position: Vector3,
+    count: number,
+    sizeRatio: number,
+    duration: number,
+  ): void {
+    for (const spark of this.queries.freeSparks.entities) {
+      if (this.claimedSparks.has(spark.index)) continue;
+      if (spark.hasComponent(SparkBurst)) continue;
+      this.claimedSparks.add(spark.index);
+      const object = spark.object3D;
+      if (!object) return;
+      object.position.copy(position);
+      object.visible = true;
+      spark.addComponent(SparkBurst, {
+        duration,
+        elapsed: 0,
+        sizeRatio,
+        count,
+      });
+      return;
+    }
+  }
+
+  /**
+   * Claim a free pooled burning-wreck emitter at the dead turret's position.
+   * Unlike the one-shot bursts this one keeps running for its full duration,
+   * so it is what actually marks the turret's socket after the debris lands.
+   * Pool empty: skip silently.
+   */
+  private spawnWreckFire(position: Vector3): void {
+    for (const emitter of this.queries.freeWreckFires.entities) {
+      if (this.claimedWreckFires.has(emitter.index)) continue;
+      if (emitter.hasComponent(WreckFire)) continue;
+      this.claimedWreckFires.add(emitter.index);
+      const object = emitter.object3D;
+      if (!object) return;
+      object.position.copy(position);
+      object.visible = true;
+      emitter.addComponent(WreckFire, { sizeRatio: 1 });
       return;
     }
   }

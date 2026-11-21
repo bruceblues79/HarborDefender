@@ -18,19 +18,19 @@ export const SKY_MAP_HEIGHT = 512;
 export type SkySunDirection = readonly [number, number, number];
 
 // --- 云层参数（后续调视觉只改这一段） ---
-const CLOUD_SCALE = 3.4;
-const CLOUD_WARP = 0.35;
-const CLOUD_COVERAGE = 0.42;
-const CLOUD_SOFTNESS = 0.16;
+const CLOUD_SCALE = 3.8;
+const CLOUD_WARP = 0.55;
+const CLOUD_COVERAGE = 0.38;
+const CLOUD_SOFTNESS = 0.1;
 const HAZE_SCALE = 4.2; // 高层薄卷云
 const SHADOW_STEPS = 5;
 const SHADOW_STEP = 0.02;
-const SHADOW_ABSORB = 2.6;
+const SHADOW_ABSORB = 3.4;
 
 // --- 大气参数 ---
 const ZENITH = [0.055, 0.135, 0.36];
-const HORIZON = [0.56, 0.68, 0.86];
-const SUN_TINT = [1.0, 0.955, 0.9];
+const HORIZON = [0.48, 0.6, 0.8];
+const SUN_TINT = [1.0, 0.94, 0.86];
 
 /**
  * 负海拔下沉：`-y` 超过 DEEP_START 开始向 DEEP_BLUE 过渡，到 DEEP_END
@@ -164,9 +164,9 @@ function sampleCloud(
   const mu = Math.max(dx * sunDir[0] + dy * sunDir[1] + dz * sunDir[2], 0);
   const phase = 1 + 1.6 * Math.pow(mu, 10);
 
-  const lit = SUN_TINT[0] * 1.5 * light * phase;
-  const litG = SUN_TINT[1] * 1.45 * light * phase;
-  const litB = SUN_TINT[2] * 1.4 * light * phase;
+  const lit = SUN_TINT[0] * 1.25 * light * phase;
+  const litG = SUN_TINT[1] * 1.2 * light * phase;
+  const litB = SUN_TINT[2] * 1.15 * light * phase;
   const shadow = [ZENITH[0] * 1.0, ZENITH[1] * 0.95, ZENITH[2] * 0.9];
 
   return { rgb: [shadow[0] + lit, shadow[1] + litG, shadow[2] + litB], alpha };
