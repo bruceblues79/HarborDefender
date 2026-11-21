@@ -41,8 +41,28 @@ const reporter = `<script>
   window.addEventListener('unhandledrejection', function (e) { show((e.reason && (e.reason.stack || e.reason)) || 'unhandled rejection'); });
 })();
 </script>`;
+// 引擎按后缀校验关卡 URL，这里用 fetch 拦截伪造的 .iwsdk.scene.json 路径。
+const scenePath = JSON.parse(await readFile(path.join(root, 'iwsdk.config.json'), 'utf8')).scene;
+const sceneJson = await readFile(path.join(root, scenePath), 'utf8');
+const sceneShim = `<script>
+window.__PREVIEW_SCENE__ = ${JSON.stringify(sceneJson).replace(/<\//gu, '<\\/')};
+(function () {
+  var raw = window.fetch;
+  window.fetch = function (input, init) {
+    var url = String((input && input.url) || input);
+    if (url.indexOf('__preview__/level.iwsdk.scene.json') !== -1) {
+      return Promise.resolve(new Response(window.__PREVIEW_SCENE__, {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+    }
+    return raw.call(window, input, init);
+  };
+})();
+</script>`;
+
 // 经典脚本不再延迟执行，必须放在 body 末尾，否则引擎挂载时 document.body 还是 null。
-const bundleTag = `${reporter}\n<script>\n${bundle}\n</script>`;
+const bundleTag = `${sceneShim}\n${reporter}\n<script>\n${bundle}\n</script>`;
 html = html.replace(scriptTag, '');
 if (html.includes('</body>')) {
   html = html.replace('</body>', () => `${bundleTag}\n  </body>`);

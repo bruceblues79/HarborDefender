@@ -66,17 +66,20 @@ function classicScript(): Plugin {
   };
 }
 
-/** 场景 JSON 由虚拟模块拼成 URL 再 fetch，单文件里换成 data URL。 */
+/**
+ * 引擎按 URL 后缀校验关卡文档，data URL 会被拒绝。保留 .iwsdk.scene.json
+ * 路径，由 pack-single 注入的 fetch 拦截返回内联 JSON。
+ */
+const SCENE_URL = './__preview__/level.iwsdk.scene.json';
+
 function inlineScene(): Plugin {
-  const scenePath = JSON.parse(readFileSync('./iwsdk.config.json', 'utf8')).scene as string;
-  const sceneUrl = textDataUrl('application/json', readFileSync(scenePath, 'utf8'));
   return {
     name: 'preview-inline-scene',
     transform(code, id) {
       if (!id.endsWith('virtual:iwsdk-project')) return null;
       const next = code.replace(
         /const level = import\.meta\.env\.BASE_URL \+ normalized\.level\.replace\([^\n]*\);/u,
-        `const level = ${JSON.stringify(sceneUrl)};`,
+        `const level = ${JSON.stringify(SCENE_URL)};`,
       );
       if (next === code) this.error('preview-inline-scene: level assignment not found');
       return next;
