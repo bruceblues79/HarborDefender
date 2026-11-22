@@ -31,6 +31,7 @@ export type SfxCue =
   | 'ui-click'
   | 'ui-open'
   | 'ui-close'
+  | 'repair-start'
   | 'build'
   | 'build-fail'
   | 'defender-lost'
@@ -550,6 +551,31 @@ export const SFX: Record<SfxCue, SfxDef> = {
     render: (ctx, out) => {
       tone(ctx, out, 'square', 780, 780, 0, 0.09, 0.14, 0.003, 4600);
       tone(ctx, out, 'square', 520, 520, 0.08, 0.13, 0.13, 0.003, 4200);
+    },
+  },
+  'repair-start': {
+    key: 'sfx/repair-start.wav',
+    pool: 2,
+    positional: false,
+    volume: 0.5,
+    minGap: 0.2,
+    refDistance: 1,
+    rolloffFactor: 1,
+    maxDistance: 100,
+    duration: 0.6,
+    render: (ctx, out) => {
+      // 木条压进船体的一记实心起手，频段和 ui-click 的短方波完全错开。
+      noiseVoice(ctx, out, 0, 0.09, {
+        type: 'bandpass',
+        from: 1500,
+        to: 520,
+        q: 1.8,
+        peak: 0.2,
+      });
+      tone(ctx, out, 'sine', 210, 132, 0, 0.2, 0.24, 0.004, 900);
+      // 两音上行确认：第一颗钉子落定，再补一声收尾。
+      tone(ctx, out, 'triangle', 523.25, 523.25, 0.1, 0.24, 0.2, 0.006, 4200);
+      tone(ctx, out, 'triangle', 783.99, 783.99, 0.24, 0.34, 0.17, 0.006, 4600);
     },
   },
   build: {

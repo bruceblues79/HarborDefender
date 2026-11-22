@@ -30,6 +30,7 @@ import {
   IslewrathChief,
   LaserCycle,
   LevelDirector,
+  Repairing,
   ShellFaction,
   SplashFade,
   UnitTag,
@@ -431,6 +432,7 @@ export class AudioSystem extends createSystem({
   flashes: { required: [HitFlash] },
   bursts: { required: [DieBurst] },
   splashes: { required: [SplashFade, WakeSource] },
+  repairing: { required: [Repairing] },
   lasers: { required: [LaserCycle] },
   chiefs: { required: [IslewrathChief] },
   deathLights: { required: [ChiefDeathLight] },
@@ -493,6 +495,11 @@ export class AudioSystem extends createSystem({
 
     this.queries.pressed.subscribe('qualify', () => {
       gameAudio.play('ui-click');
+    });
+
+    // 开启维修时在通用 ui-click 之外再叠一记确认音；停止维修不响。
+    this.queries.repairing.subscribe('qualify', () => {
+      gameAudio.play('repair-start');
     });
 
     this.queries.started.subscribe('qualify', () => gameAudio.play('wave-horn'));
