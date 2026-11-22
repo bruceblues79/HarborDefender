@@ -62,6 +62,7 @@ uniform float uAxisY;
 uniform float uAxisZ;
 
 uniform float uIntensity;
+uniform float uExposure;
 uniform float uFade;       // boot fade-in multiplier on the dome alpha
 
 varying vec3 vWorldPosition;
@@ -84,6 +85,12 @@ float valueNoise(vec2 p) {
 vec3 linearToSRGB(vec3 c) {
   c = max(c, vec3(0.0));
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
+
+// HDR sky values routinely exceed 1.0; ACES keeps cloud highlights and the
+// sun disc from clipping to flat white.
+vec3 aces(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
 }
 
 void main() {
@@ -123,9 +130,9 @@ void main() {
     atan(dir.z, dir.x) * 0.15915494309189535 + 0.5,
     asin(clamp(dir.y, -1.0, 1.0)) * 0.3183098861837907 + 0.5
   );
-  vec3 color = texture2D(uSkyMap, uv).rgb;
+  vec3 color = texture2D(uSkyMap, uv).rgb * uIntensity * uExposure;
 
-  color = linearToSRGB(color * uIntensity);
+  color = linearToSRGB(aces(color));
 
   // 8-bit sky gradients band badly; a sub-LSB dither dissolves the steps.
   color += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
@@ -166,6 +173,7 @@ export function createSkyDomeMaterial(skyMap?: Texture): ShaderMaterial {
       uAxisY: { value: Math.sin(7.5 * DEG2RAD) },
       uAxisZ: { value: -Math.cos(7.5 * DEG2RAD) },
       uIntensity: { value: 1 },
+      uExposure: { value: 1 },
       uFade: { value: 1 },
     },
     vertexShader,

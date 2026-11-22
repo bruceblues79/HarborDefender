@@ -11,7 +11,7 @@ import { AssetType, defineAssets } from '@iwsdk/core';
 const inlineAsset = (filePath: string): string | null =>
   __PREVIEW_ASSETS__?.[filePath.replace(/^\/+/u, '')] ?? null;
 
-const publicAssetUrl = (filePath: string): string =>
+export const publicAssetUrl = (filePath: string): string =>
   inlineAsset(filePath) ?? `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
 
 // Resources served from public/ with no Cache-Control can stay stale in a

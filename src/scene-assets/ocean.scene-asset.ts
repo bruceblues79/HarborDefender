@@ -80,6 +80,7 @@ const fragmentShader = `
 uniform samplerCube envMap;
 uniform float reflectivity;
 uniform float brightness;
+uniform float uExposure;      // HDR tone-mapping exposure, shared with the sky
 uniform float time;
 uniform float uFade;          // boot fade-in multiplier on the surface alpha
 uniform float noiseSpeed;     // metres/second, perturbation drifts toward +z
@@ -138,6 +139,12 @@ float flowingNoise(vec2 p, float t) {
 vec3 linearToSRGB(vec3 c) {
   c = max(c, vec3(0.0));
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
+
+// Same ACES curve as the sky dome: the HDR reflection comes from the same
+// equirect, so both surfaces must tone-map identically for the seam to vanish.
+vec3 aces(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
 }
 
 void main() {
@@ -245,7 +252,7 @@ void main() {
     color = mix(color, backdrop * brightness, rimBlend);
   }
 
-  gl_FragColor = vec4(linearToSRGB(color), mask * uFade);
+  gl_FragColor = vec4(linearToSRGB(aces(color * uExposure)), mask * uFade);
 }
 `;
 
@@ -295,6 +302,7 @@ export function createOceanMaterial(noise: OceanNoiseParams = {}): ShaderMateria
         envMap: { value: null },
         reflectivity: { value: 1.0 },
         brightness: { value: noise.brightness ?? WATER_BRIGHTNESS },
+        uExposure: { value: 1.0 },
         noiseSpeed: { value: noise.speed ?? 0.8 },
         noiseFrequency: { value: noise.frequency ?? 3.0 },
         noiseIntensity: { value: noise.intensity ?? 0.015 },
