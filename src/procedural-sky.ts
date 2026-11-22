@@ -30,12 +30,12 @@ const SHADOW_STEP = 0.03;
 const SHADOW_ABSORB = 4.2;
 
 // --- 大气参数 ---
-const ZENITH = [0.022, 0.055, 0.17];
-const MID_SKY = [0.07, 0.125, 0.27];
-const HORIZON_COOL = [0.2, 0.27, 0.42];
-const HORIZON_WARM = [0.85, 0.44, 0.2];
-const SUN_TINT = [1.0, 0.7, 0.42];
-const CLOUD_SHADOW = [0.085, 0.105, 0.155];
+const ZENITH = [0.034, 0.076, 0.195];
+const MID_SKY = [0.085, 0.145, 0.295];
+const HORIZON_COOL = [0.24, 0.31, 0.45];
+const HORIZON_WARM = [0.78, 0.56, 0.33];
+const SUN_TINT = [1.0, 0.85, 0.64];
+const CLOUD_SHADOW = [0.1, 0.12, 0.17];
 const SUN_CORE = [1.0, 0.94, 0.82];
 
 /** 日盘 HDR 亮度：sRGB 直出时烧成纯白，边缘由日晕过渡。 */
@@ -216,7 +216,7 @@ function sampleCloud(
   const light = Math.exp(-occ * SHADOW_ABSORB);
 
   // 前向散射：逆光方向的云边发亮（银边），低太阳让这一圈更宽更暖。
-  const phase = 1 + 2.4 * Math.pow(mu, 5);
+  const phase = 1 + 2.0 * Math.pow(mu, 5);
 
   const up = Math.max(dy, 0);
   const bounce = Math.pow(Math.max(1 - up, 0), 4) * 0.18;

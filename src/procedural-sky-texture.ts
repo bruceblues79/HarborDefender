@@ -32,12 +32,12 @@ import type {
 
 /**
  * 场景主光没取到时的太阳状态，与 main.iwsdk.scene.json 的 sun-light 一致：
- * 黄金时刻低角度侧逆光，太阳在海面上方偏左 30°、高度约 12°。
+ * 傍晚前的暖光，太阳在海面上方偏左 30°、高度约 20°。
  */
 const SUN_LIGHT_FALLBACK: SunLightState = {
-  direction: [-0.489, 0.208, -0.847],
-  color: [1, 0.7, 0.42],
-  intensity: 5,
+  direction: [-0.4698, 0.342, -0.8138],
+  color: [1, 0.84, 0.64],
+  intensity: 4.8,
 };
 
 export interface SunLightState {

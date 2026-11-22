@@ -100,11 +100,12 @@ varying vec2 vUv;
 // fades out, and everything outside is discarded. Centre and radius are both
 // UV values, so the inscribed circle scales with the quad automatically.
 const float MASK_RADIUS = 0.5;
-const float MASK_FADE = 0.06;
+const float MASK_FADE = 0.14;
 // Feather width ramps continuously from the harbour side to the far side (see
-// farness in main): the near rim keeps the narrow width that reads as a clean
-// blend into the wall, the sides widen, and the far rim gets the widest, calmest
-// dissolve — otherwise the grazing angle collapses that edge into a hard arc.
+// farness in main): the near rim keeps a wider-than-before width so the sea
+// dissolves toward the camera instead of ending on a hard horizontal cut, the
+// sides widen, and the far rim gets the widest, calmest dissolve — otherwise
+// the grazing angle collapses that edge into a hard arc.
 const float MASK_FADE_FAR = 0.32;
 const vec2 MASK_CENTER = vec2(0.5, 0.4725);
 
@@ -233,17 +234,14 @@ void main() {
   // shadows cut a clean dark lane through the golden path.
   color += specular * getShadowMask();
 
-  // Rim dissolve: the disc's far edge sits several degrees below eye level, so
-  // between the waterline and the true horizon the dome shows its own below-
-  // horizon band. Fade the water into the sky colour at that same azimuth
-  // (the horizontal direction), so the mask's alpha fade dissolves between two
-  // equal colours instead of exposing a darker strip. Only the open-sea side of
-  // the rim is treated: the near arc sits against the harbour wall, where the
-  // pixel behind is stone, not sky.
-  float seaward = smoothstep(5.0, 8.0, -vWorldPosition.z);
-  float rimBlend = (1.0 - mask) * seaward;
+  // Rim dissolve: every edge of the disc fades into the sky the dome shows
+  // behind that exact pixel. Sampling the view direction (not the reflected
+  // one) guarantees a colour match all around, so the near fade toward the
+  // camera reads as haze rather than a cut, and the far rim keeps melting into
+  // the horizon.
+  float rimBlend = 1.0 - mask;
   if (rimBlend > 0.001) {
-    vec3 backdrop = textureCube(envMap, normalize(vec3(toEye.x, 0.0, toEye.z))).rgb;
+    vec3 backdrop = textureCube(envMap, toEye).rgb;
     color = mix(color, backdrop * brightness, rimBlend);
   }
 
