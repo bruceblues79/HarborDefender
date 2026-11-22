@@ -32,6 +32,7 @@ import { LaserCycleSystem } from './laser-cycle-system.js';
 import { LaserFxSystem } from './laser-fx-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
 import { MenuSystem } from './menu-system.js';
+import { MuzzleFlashSystem } from './muzzle-flash-system.js';
 import { OceanSystem } from './ocean-system.js';
 import { PanelScaleSystem } from './panel-scale-system.js';
 import { PirateFireSystem } from './pirate-fire-system.js';
@@ -157,6 +158,7 @@ World.create(
   world.registerSystem(BallisticSystem, { priority: 13 });
   world.registerSystem(ShellHitSystem, { priority: 14 });
   world.registerSystem(HitFlashSystem, { priority: 15 });
+  world.registerSystem(MuzzleFlashSystem, { priority: 15 });
   world.registerSystem(SparkBurstSystem, { priority: 15 });
   world.registerSystem(WreckFireSystem, { priority: 15 });
   world.registerSystem(DieBurstSystem, { priority: 15 });

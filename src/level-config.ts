@@ -671,6 +671,23 @@ export const COMBAT = {
   /** Fresnel rim colour (dark red, sRGB hex). */
   hitFlashEdgeColor: 0x8a1400,
   /**
+   * Muzzle flash: every projectile launch (city battery, attacker gun, flyer
+   * drop) plays one additive billboard flare just ahead of the muzzle. Pooled
+   * quads, one draw call per concurrent flash, no per-shot allocation.
+   */
+  muzzleFlashPoolSize: 24,
+  /** Seconds from full bloom to fully recycled. */
+  muzzleFlashDuration: 0.13,
+  /** Full width (m) of the flare quad at peak. */
+  muzzleFlashSize: 0.5,
+  /** Starting fraction of peak size — the flare blooms outward as it fades. */
+  muzzleFlashStartScale: 0.45,
+  /** Forward offset (m) from the muzzle so the flare clears the bore. */
+  muzzleFlashOffset: 0.12,
+  /** White-hot core / warm rim tints (sRGB hex). */
+  muzzleFlashCoreColor: 0xfff6d2,
+  muzzleFlashEdgeColor: 0xff6a14,
+  /**
    * Impact embers: additive spark quads thrown off on every solid hit, and a
    * larger burst (plus a full-size flash) when a boss turret dies. Every
    * burst draws from a shared InstancedMesh pool — one mesh per concurrent
