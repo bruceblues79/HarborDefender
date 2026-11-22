@@ -153,9 +153,10 @@ void main() {
   float mask = 1.0 - smoothstep(MASK_RADIUS - fadeWidth, MASK_RADIUS, d);
   if (mask * uFade <= 0.001) discard;
 
-  // Deep-water body colour (linear). Only a quarter of it survives in the
-  // final mix, so it just keeps the sea from reading as pure mirror.
-  const vec3 WATER_DEEP = vec3(0.055, 0.052, 0.056);
+  // Deep-water body colour (linear). A deeper blue so the sea reads as water
+  // rather than a second copy of the sky; it shows through wherever the view
+  // gets steep enough for Fresnel to drop.
+  const vec3 WATER_DEEP = vec3(0.016, 0.038, 0.072);
   vec3 color;
   vec3 specular = vec3(0.0);
 
@@ -199,11 +200,10 @@ void main() {
     vec3 reflDir = normalize(reflect(viewDir, normalize(vWorldNormal)) + vec3(perturb.x, 0.0, perturb.y));
     vec3 N = normalize(vec3(-perturb.x * 10.0, 1.0, -perturb.y * 10.0));
 
-    // Water-sky unity: the sea is mostly a mirror. The residual body colour
-    // only shows up close and steep, so the surface keeps the horizon's tone
-    // and melts into the sky instead of reading as a separate dark band.
+    // The sea mirrors the sky at grazing angles but keeps a real body up
+    // close, so it stays a touch darker than the sky it reflects.
     float ndv = clamp(dot(N, V), 0.0, 1.0);
-    float fresnel = 0.75 + 0.25 * pow(1.0 - ndv, 3.0);
+    float fresnel = 0.55 + 0.45 * pow(1.0 - ndv, 3.0);
     vec3 reflected = textureCube(envMap, reflDir).rgb * reflectivity;
     color = mix(WATER_DEEP, reflected, fresnel);
 

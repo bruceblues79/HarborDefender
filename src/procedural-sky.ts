@@ -20,14 +20,14 @@ export const SKY_MAP_HEIGHT = 768;
 export type SkySunDirection = readonly [number, number, number];
 
 // --- 云层参数（后续调视觉只改这一段） ---
-const CLOUD_SCALE = 3.6;
-const CLOUD_WARP = 0.5;
-const CLOUD_COVERAGE = 0.49;
-const CLOUD_SOFTNESS = 0.09;
+const CLOUD_SCALE = 2.8;
+const CLOUD_WARP = 0.85;
+const CLOUD_COVERAGE = 0.52;
+const CLOUD_SOFTNESS = 0.055;
 const HAZE_SCALE = 4.6; // 高层薄卷云
-const SHADOW_STEPS = 5;
-const SHADOW_STEP = 0.03;
-const SHADOW_ABSORB = 4.2;
+const SHADOW_STEPS = 6;
+const SHADOW_STEP = 0.035;
+const SHADOW_ABSORB = 6.2;
 
 // --- 大气参数 ---
 const ZENITH = [0.034, 0.076, 0.195];
@@ -131,18 +131,19 @@ function cloudDensityDir(dx: number, dy: number, dz: number): number {
   bx += (fbm3(bx * 0.9 + 3.1, by * 0.9 + 7.3, bz * 0.9 - 2.1, 2) - 0.5) * CLOUD_WARP;
   by += (fbm3(bx * 0.9 - 5.7, by * 0.9 + 1.9, bz * 0.9 + 4.3, 2) - 0.5) * CLOUD_WARP;
   bz += (fbm3(bx * 0.9 + 9.4, by * 0.9 - 6.2, bz * 0.9 + 0.8, 2) - 0.5) * CLOUD_WARP;
-  // 三个尺度叠加：低频给大团块，中频给块间过渡，高频给零散小块。
+  // 三个尺度叠加：低频压出大团积云，中频补块间过渡，高频只留很轻的碎边，
+  // 让云是“成团的高耸体块”而不是一整片均匀的雾。
   const large = fbm3(bx + 11.3, by - 4.1, bz + 2.7, 4);
   const mid = fbm3(bx * 2.2 - 7.7, by * 2.2 + 2.9, bz * 2.2 + 5.5, 4);
   const small = fbm3(bx * 4.6 + 31.7, by * 4.6 - 12.4, bz * 4.6 + 8.2, 3);
-  return clamp01(large * 0.62 + mid * 0.27 + small * 0.11);
+  return clamp01(large * 0.72 + mid * 0.22 + small * 0.06);
 }
 
 // 云自阴影只取低频大团块：遮挡形状本来就低频，省掉中高频三个八度。
 function cloudDensityCoarse(dx: number, dy: number, dz: number): number {
   const s = CLOUD_SCALE;
   const large = fbm3(dx * s + 11.3, dy * s - 4.1, dz * s + 2.7, 4);
-  return clamp01(large * 0.62 + 0.19);
+  return clamp01(large * 0.72 + 0.14);
 }
 
 function sampleSky(
@@ -160,21 +161,24 @@ function sampleSky(
   let g = mix(mix(ZENITH[1], MID_SKY[1], tMid), HORIZON_COOL[1], t);
   let b = mix(mix(ZENITH[2], MID_SKY[2], tMid), HORIZON_COOL[2], t);
 
-  // 朝太阳一侧的地平线暖带：只压低层，高空的蓝保持干净。
+  // 朝太阳一侧的地平线暖带：只压低层，高空的蓝保持干净。收窄方位角，
+  // 暖色集中在太阳附近，远离太阳的天空回到冷蓝，云的明暗才有对比。
   const hLen = Math.hypot(dx, dz) || 1e-4;
   const sunHLen = Math.hypot(sunDir[0], sunDir[2]) || 1e-4;
   const azimuth =
     (dx * sunDir[0]) / hLen / sunHLen + (dz * sunDir[2]) / hLen / sunHLen;
-  const warm = Math.pow(Math.max(azimuth, 0), 3.0) * Math.pow(Math.max(1 - up, 0), 5.0);
+  const warm =
+    Math.pow(Math.max(azimuth, 0), 5.0) * Math.pow(Math.max(1 - up, 0), 6.0);
   r = mix(r, HORIZON_WARM[0], warm);
   g = mix(g, HORIZON_WARM[1], warm);
   b = mix(b, HORIZON_WARM[2], warm);
 
-  // 米氏日晕：大范围暖光 + 靠近日盘的一圈强光晕。
+  // 米氏日晕：日盘附近一圈紧实的光晕；大范围暖光收小，避免整片天空被
+  // 洗成均匀的橘灰，失去云的体积感。
   const mu = Math.max(dx * sunDir[0] + dy * sunDir[1] + dz * sunDir[2], 0);
   const glow =
-    (Math.pow(mu, 6.0) * 0.28 + Math.pow(mu, 42.0) * 0.9) *
-    (0.35 + 0.65 * Math.pow(1 - up, 2.0));
+    (Math.pow(mu, 10.0) * 0.18 + Math.pow(mu, 48.0) * 0.95) *
+    (0.3 + 0.7 * Math.pow(1 - up, 2.0));
   return [
     r + SUN_TINT[0] * glow,
     g + SUN_TINT[1] * glow,
@@ -191,15 +195,23 @@ function sampleCloud(
   const mu = Math.max(dx * sunDir[0] + dy * sunDir[1] + dz * sunDir[2], 0);
   const dens = cloudDensityDir(dx, dy, dz);
 
+  // 逆光侧抬云：太阳对面更容易堆起厚重的高耸积云墙，云底压暗、边缘被
+  // 侧逆光点亮，形成“半边天压着云、半边天留空”的张力。
+  const azLen = Math.hypot(dx, dz) || 1e-4;
+  const sunAzLen = Math.hypot(sunDir[0], sunDir[2]) || 1e-4;
+  const azimuth = (dx * sunDir[0] + dz * sunDir[2]) / (azLen * sunAzLen);
+  const antiSun = smoothstep(0.15, -0.75, azimuth);
+  const shaped = dens + antiSun * 0.05;
+
   // 主积云：软阈值转成覆盖率。整球都是云天，不做地平线稀释 ——
   // 云对水平线镜像后本身就是连续的，任何“近地平线变薄”的处理都会
   // 在球面上留下一圈没有云的空白带。
   //
   // 日盘周围向云层要一个柔和云隙：低角度太阳必须能透出来，否则逆光
   // 剪影就变成了阴天。只削薄不挖穿，避免出现不自然的圆形空洞。
-  const sunGap = 1.0 - 0.5 * smoothstep(0.94, 0.998, mu);
+  const sunGap = 1.0 - 0.6 * smoothstep(0.95, 0.998, mu);
   const alpha =
-    smoothstep(CLOUD_COVERAGE, CLOUD_COVERAGE + CLOUD_SOFTNESS, dens) * sunGap;
+    smoothstep(CLOUD_COVERAGE, CLOUD_COVERAGE + CLOUD_SOFTNESS, shaped) * sunGap;
   if (alpha <= 0.001) return null;
 
   // 云的自阴影：沿太阳的水平方向在方向空间累积低频遮挡。
@@ -216,17 +228,22 @@ function sampleCloud(
   const light = Math.exp(-occ * SHADOW_ABSORB);
 
   // 前向散射：逆光方向的云边发亮（银边），低太阳让这一圈更宽更暖。
-  const phase = 1 + 2.0 * Math.pow(mu, 5);
+  const phase = 1 + 2.6 * Math.pow(mu, 6);
 
   const up = Math.max(dy, 0);
-  const bounce = Math.pow(Math.max(1 - up, 0), 4) * 0.18;
-  const ambR = CLOUD_SHADOW[0] * (0.85 + 0.3 * (1 - up)) + HORIZON_WARM[0] * bounce;
-  const ambG = CLOUD_SHADOW[1] * (0.85 + 0.3 * (1 - up)) + HORIZON_WARM[1] * bounce;
-  const ambB = CLOUD_SHADOW[2] * (0.85 + 0.3 * (1 - up)) + HORIZON_WARM[2] * bounce;
+  // 越贴近地平线，看到的是云体又厚又暗的阴影底；高空云顶保持明亮。
+  const baseShade = mix(0.55, 1.0, smoothstep(0.03, 0.3, up));
+  const bounce = Math.pow(Math.max(1 - up, 0), 4) * 0.2;
+  const ambR =
+    CLOUD_SHADOW[0] * (0.8 + 0.3 * (1 - up)) * baseShade + HORIZON_WARM[0] * bounce;
+  const ambG =
+    CLOUD_SHADOW[1] * (0.8 + 0.3 * (1 - up)) * baseShade + HORIZON_WARM[1] * bounce;
+  const ambB =
+    CLOUD_SHADOW[2] * (0.8 + 0.3 * (1 - up)) * baseShade + HORIZON_WARM[2] * bounce;
 
-  const litR = SUN_TINT[0] * 1.3 * light * phase;
-  const litG = SUN_TINT[1] * 1.15 * light * phase;
-  const litB = SUN_TINT[2] * 1.0 * light * phase;
+  const litR = SUN_TINT[0] * 1.45 * light * phase;
+  const litG = SUN_TINT[1] * 1.28 * light * phase;
+  const litB = SUN_TINT[2] * 1.1 * light * phase;
 
   return { rgb: [ambR + litR, ambG + litG, ambB + litB], alpha };
 }
