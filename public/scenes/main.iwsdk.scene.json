@@ -27,6 +27,17 @@
       }
     },
     {
+      "id": "sky-fill",
+      "name": "Sky Fill",
+      "components": {
+        "HemisphereLight": {
+          "skyColor": [1, 0.78, 0.62, 1],
+          "groundColor": [0.12, 0.1, 0.1, 1],
+          "intensity": 0.7
+        }
+      }
+    },
+    {
       "id": "welcome-panel",
       "name": "Welcome Panel",
       "content": {

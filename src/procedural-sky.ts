@@ -46,11 +46,13 @@ const SUN_COS_INNER = Math.cos((1.5 * Math.PI) / 180);
 const SUN_COS_OUTER = Math.cos((2.8 * Math.PI) / 180);
 
 /**
- * 负海拔下沉：`-y` 超过 DEEP_START 开始向 DEEP_BLUE 过渡，到 DEEP_END
- * 完全沉入。球面下半部分因此是从高空俯瞰的深海，而不是平涂的地平线色。
+ * 负海拔下沉：`-y` 超过 DEEP_START 才开始向 DEEP_BLUE 过渡，到 DEEP_END
+ * 完全沉入。海面远缘在视平线下方约 6°，这段可见的“地平线下空档”必须保持
+ * 地平线色，否则天与海之间会露出一条更深的蓝带，水面立刻显得脱节。
+ * 真正的深海色只在视线明显向下时才出现。
  */
-const DEEP_START = 0.07;
-const DEEP_END = 0.8;
+const DEEP_START = 0.22;
+const DEEP_END = 0.95;
 const DEEP_BLUE = [0.01, 0.04, 0.115];
 
 function hash3(ix: number, iy: number, iz: number): number {
