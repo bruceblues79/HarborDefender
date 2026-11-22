@@ -21,6 +21,7 @@ import {
 import type {
   Entity,
   MeshStandardMaterial,
+  Texture,
   WebGLRenderTarget,
 } from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
@@ -383,6 +384,12 @@ const SEA_FADE_DELAY = SKY_FADE + 0.5;
 let skyEnvironmentTarget: WebGLRenderTarget | null = null;
 
 /**
+ * 天空反射 cubemap：与海面共用同一张（海面材质持有 render target 存活）。
+ * 城墙积水的 unlit 镜面材质在 startBattle 里建墙时取用。
+ */
+let skyReflectionCube: Texture | null = null;
+
+/**
  * First-screen boot: hide the authored welcome panel, paint the loading panel
  * over the dark page colour, bake the procedural sky (dome texture, reflection
  * cubemap and PMREM environment) and build the sea. The loading panel then
@@ -419,6 +426,7 @@ export function bootWelcomeScene(world: World): void {
       // Equirect sky -> cubemap: avoids pole stretching in reflections.
       const cubeRT = new WebGLCubeRenderTarget(256, { type: HalfFloatType });
       cubeRT.fromEquirectangularTexture(world.renderer, skyTexture);
+      skyReflectionCube = cubeRT.texture;
       skyDomeSystem?.setSkyTexture(skyTexture);
 
       // Image-based lighting without a scene IBLTexture: PMREM the same
@@ -543,7 +551,7 @@ export function startBattle(world: World): void {
         // 先让面板真正呈现一帧，再停留 LOADING_MIN_MS，构建才不会把它挡在屏幕外。
         await new Promise((resolve) => setTimeout(resolve, LOADING_MIN_MS));
         return {
-          wall: createHarborWall(),
+          wall: createHarborWall(skyReflectionCube),
           cannon: createCannon(),
           ship: createPirateShip(),
           ornithopter: createOrnithopter(),
@@ -586,7 +594,8 @@ export function startBattle(world: World): void {
           // scene-JSON assets get these via content flags.
           wallObject.traverse((child: Object3D) => {
             if ((child as Mesh).isMesh) {
-              child.castShadow = true;
+              // 积水是贴墙顶的透明水膜，投阴影只会在石面上压出一圈脏影。
+              child.castShadow = child.name !== 'wall-puddle';
               child.receiveShadow = true;
             }
           });

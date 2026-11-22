@@ -166,7 +166,7 @@ export const OCEAN_FAR_Z: number = OCEAN.centerZ - OCEAN.length / 2;
 
 /**
  * Harbor wall placement — kept in step with `harbor-wall.scene-asset.ts` and
- * its transform in battle-setup.ts. The v5 model is 3.0 m long and 0.5 m deep
+ * its transform in battle-setup.ts. The v6 model is 3.0 m long and 0.5 m deep
  * (seaward face z = -1.6, 0.1 m past the ocean's near edge at z = -1.5).
  * WALL_WIDTH / WALL_DEPTH_Z stay at the combat reference values below: the
  * berth band and the burst-chunk water test read them, not the mesh.
