@@ -418,6 +418,27 @@ export const SparkBurst = createComponent('SparkBurst', {
 });
 
 /**
+ * Marks a pooled muzzle-flash quad. The pool lives in MuzzleFlashSystem; a
+ * quad is free exactly while it does NOT carry `MuzzleFlash` — presence of the
+ * state component is the "playing" tag, so no separate in-use flag exists.
+ */
+export const MuzzleFlashTag = createComponent('MuzzleFlashTag', {});
+
+/**
+ * Playing state of a pooled muzzle flash: the brief additive flare every gun
+ * throws at its muzzle the instant a projectile leaves. The fire systems claim
+ * a free quad by adding this component (the thin spawn command);
+ * MuzzleFlashSystem is the only writer afterwards, deriving scale and opacity
+ * from `elapsed`. Removal returns the quad to the pool.
+ */
+export const MuzzleFlash = createComponent('MuzzleFlash', {
+  /** Seconds the flare takes from full bloom to fully recycled. */
+  duration: { type: 'Float32', default: COMBAT.muzzleFlashDuration },
+  /** Seconds elapsed so far. */
+  elapsed: { type: 'Float32', default: 0 },
+});
+
+/**
  * Marks a pooled burning-wreck emitter. The pool lives in WreckFireSystem; an
  * emitter is free exactly while it does NOT carry `WreckFire` — presence of
  * the state component is the "burning" tag, so no separate flag exists.
@@ -873,6 +894,8 @@ export default defineComponents([
   HitFlash,
   SparkBurstTag,
   SparkBurst,
+  MuzzleFlashTag,
+  MuzzleFlash,
   WreckFireTag,
   WreckFire,
   DieBurstTag,

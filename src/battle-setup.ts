@@ -68,6 +68,7 @@ import { StartPanelSystem } from './start-panel-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
 import { DieBurstSystem } from './die-burst-system.js';
 import { HitFlashSystem } from './hit-flash-system.js';
+import { MuzzleFlashSystem } from './muzzle-flash-system.js';
 import { SparkBurstSystem } from './spark-burst-system.js';
 import { SplashSystem } from './splash-system.js';
 import { WreckFireSystem } from './wreck-fire-system.js';
@@ -763,6 +764,13 @@ export function recycleCombatEffects(world: World): void {
   world
     .getSystems()
     .find((system): system is HitFlashSystem => system instanceof HitFlashSystem)
+    ?.recycleAll();
+  world
+    .getSystems()
+    .find(
+      (system): system is MuzzleFlashSystem =>
+        system instanceof MuzzleFlashSystem,
+    )
     ?.recycleAll();
   world
     .getSystems()

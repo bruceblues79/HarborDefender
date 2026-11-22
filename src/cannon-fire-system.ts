@@ -21,11 +21,14 @@ import {
   GameOver,
   GamePaused,
   LevelDirector,
+  MuzzleFlash,
+  MuzzleFlashTag,
   ShellFaction,
   ShellTag,
   StoneTag,
 } from './components.js';
 import { COMBAT } from './level-config.js';
+import { spawnMuzzleFlash } from './muzzle-flash-system.js';
 
 /**
  * Owns the shared projectile pools and the cannons' fire rhythm.
@@ -49,6 +52,7 @@ export class CannonFireSystem extends createSystem({
     excluded: [BallisticFlight, StoneTag],
   },
   airborne: { required: [ShellTag, BallisticFlight] },
+  freeMuzzleFlashes: { required: [MuzzleFlashTag], excluded: [MuzzleFlash] },
   directors: { required: [LevelDirector] },
 }) {
   /** Muzzle object per cannon entity index, resolved once on qualify. */
@@ -150,6 +154,13 @@ export class CannonFireSystem extends createSystem({
       faction: 'defender',
       unitType: String(cannon.getValue(CannonFire, 'unitType')),
     });
+    spawnMuzzleFlash(
+      this.queries.freeMuzzleFlashes.entities,
+      this.muzzlePos,
+      this.muzzleDir.x,
+      this.muzzleDir.y,
+      this.muzzleDir.z,
+    );
     return true;
   }
 

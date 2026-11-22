@@ -14,12 +14,15 @@ import {
   GunCycle,
   LevelDirector,
   LockTarget,
+  MuzzleFlash,
+  MuzzleFlashTag,
   ShellFaction,
   ShellTag,
   ShipMovement,
   StoneTag,
 } from './components.js';
 import { COMBAT } from './level-config.js';
+import { spawnMuzzleFlash } from './muzzle-flash-system.js';
 import { solveIntercept } from './shell-launch.js';
 
 const DEG2RAD = Math.PI / 180;
@@ -56,6 +59,7 @@ export class GunCycleSystem extends createSystem({
     required: [ShellTag, StoneTag],
     excluded: [BallisticFlight],
   },
+  freeMuzzleFlashes: { required: [MuzzleFlashTag], excluded: [MuzzleFlash] },
   directors: { required: [LevelDirector] },
 }) {
   private readonly muzzlePos = new Vector3();
@@ -259,6 +263,13 @@ export class GunCycleSystem extends createSystem({
       faction: 'attacker',
       unitType: String(gun.getValue(GunCycle, 'shellUnitType')),
     });
+    spawnMuzzleFlash(
+      this.queries.freeMuzzleFlashes.entities,
+      this.muzzlePos,
+      this.intercept.vx,
+      this.intercept.vy,
+      this.intercept.vz,
+    );
     return 'fired';
   }
 
