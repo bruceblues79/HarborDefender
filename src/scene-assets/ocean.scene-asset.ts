@@ -36,9 +36,8 @@ export function createOceanBody(): Mesh {
 export const MAX_WAKE = 12;
 
 /**
- * Global multiplier on the water colour. 1.0 reproduces the reflected sky
- * exactly, which is what makes the sea and the sky read as one continuous
- * surface at the horizon.
+ * Global multiplier on the water colour. 1.0 keeps the reflected sky texture
+ * exactly as the dome shows it — one texture, no colour added on top.
  */
 export const WATER_BRIGHTNESS = 1;
 
@@ -152,20 +151,17 @@ void main() {
   float mask = 1.0 - smoothstep(MASK_RADIUS - fadeWidth, MASK_RADIUS, d);
   if (mask * uFade <= 0.001) discard;
 
-  // Deep-water body colour (linear). Only a quarter of it survives in the
-  // final mix, so it just keeps the sea from reading as pure mirror.
-  const vec3 WATER_DEEP = vec3(0.055, 0.052, 0.056);
+  // Deep-water body colour (linear). It shows through where the view is steep
+  // enough for Fresnel reflectance to drop, so near water reads heavier and
+  // colder than the far water that mirrors the sky.
+  const vec3 WATER_DEEP = vec3(0.008, 0.026, 0.05);
   vec3 color;
   vec3 specular = vec3(0.0);
-
-  // Camera -> surface point. Reused by the reflection, the Fresnel term and
-  // the rim dissolve so all three agree on the same viewing azimuth.
-  vec3 toEye = normalize(vWorldPosition - cameraPosition);
 
   // Fake reflection only on the +y surface (the water top).
   // Cubemap sampling avoids the pole stretching of equirect UV mapping.
   if (vLocalNormal.y > 0.5) {
-    vec3 viewDir = toEye;
+    vec3 viewDir = normalize(vWorldPosition - cameraPosition);
     vec3 V = -viewDir; // surface -> eye
 
     // Noise + wake perturbation produces ONE slope field that drives both the
@@ -198,11 +194,10 @@ void main() {
     vec3 reflDir = normalize(reflect(viewDir, normalize(vWorldNormal)) + vec3(perturb.x, 0.0, perturb.y));
     vec3 N = normalize(vec3(-perturb.x * 10.0, 1.0, -perturb.y * 10.0));
 
-    // Water-sky unity: the sea is mostly a mirror. The residual body colour
-    // only shows up close and steep, so the surface keeps the horizon's tone
-    // and melts into the sky instead of reading as a separate dark band.
+    // Schlick Fresnel: grazing water mirrors the sky, steep water shows the
+    // deep body colour.
     float ndv = clamp(dot(N, V), 0.0, 1.0);
-    float fresnel = 0.75 + 0.25 * pow(1.0 - ndv, 3.0);
+    float fresnel = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
     vec3 reflected = textureCube(envMap, reflDir).rgb * reflectivity;
     color = mix(WATER_DEEP, reflected, fresnel);
 
@@ -233,17 +228,18 @@ void main() {
   // shadows cut a clean dark lane through the golden path.
   color += specular * getShadowMask();
 
-  // Rim dissolve: the disc's far edge sits several degrees below eye level, so
-  // between the waterline and the true horizon the dome shows its own below-
-  // horizon band. Fade the water into the sky colour at that same azimuth
-  // (the horizontal direction), so the mask's alpha fade dissolves between two
-  // equal colours instead of exposing a darker strip. Only the open-sea side of
-  // the rim is treated: the near arc sits against the harbour wall, where the
-  // pixel behind is stone, not sky.
+  // Rim dissolve: the disc's far edge sits just below eye level, so the water
+  // there reflects the upper hemisphere (which darkens with elevation) while
+  // the dome behind it shows the horizon-tinted lower hemisphere. Fade the
+  // water colour into the sky the dome shows behind that same pixel, so the
+  // mask's alpha fade dissolves between two equal colours. Only the open-sea
+  // side of the rim is treated: the near arc sits against the harbour wall,
+  // where the pixel behind is stone, not sky — that side of the mask stays
+  // untouched.
   float seaward = smoothstep(5.0, 8.0, -vWorldPosition.z);
   float rimBlend = (1.0 - mask) * seaward;
   if (rimBlend > 0.001) {
-    vec3 backdrop = textureCube(envMap, normalize(vec3(toEye.x, 0.0, toEye.z))).rgb;
+    vec3 backdrop = textureCube(envMap, normalize(vWorldPosition - cameraPosition)).rgb;
     color = mix(color, backdrop * brightness, rimBlend);
   }
 
