@@ -177,13 +177,13 @@ export const TrajectoryPreview = createComponent('TrajectoryPreview', {});
 export const AimDragging = createComponent('AimDragging', {});
 
 /**
- * Barrel recoil state, driven by CannonRecoilSystem. `travel` is the barrel's
- * backward offset along the gun pivot's local +Z (the muzzle fires down -Z),
- * `velocity` its rate of change. CannonFireSystem adds a backward kick to
- * `velocity` on every shot; the system springs both back to rest.
+ * Cannon recoil state, driven by CannonRecoilSystem. `travel` is the whole
+ * cannon's backward offset along the gun pivot's local +Z (the muzzle fires
+ * down -Z), `velocity` its rate of change. CannonFireSystem adds a backward
+ * kick to `velocity` on every shot; the system springs both back to rest.
  */
 export const CannonRecoil = createComponent('CannonRecoil', {
-  /** Current backward barrel offset (m); written by CannonRecoilSystem. */
+  /** Current backward cannon offset (m); written by CannonRecoilSystem. */
   travel: { type: 'Float32', default: 0 },
   /** Offset velocity (m/s); the shot kicks it, the spring drains it. */
   velocity: { type: 'Float32', default: 0 },

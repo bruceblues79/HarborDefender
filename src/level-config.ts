@@ -601,9 +601,9 @@ export const COMBAT = {
   /** Aim degrees per metre of vertical (pitch) wrist travel in XR. */
   aimDegreesPerMeterPitch: 200,
   /**
-   * Barrel recoil: every shot kicks the barrel back along its own bore (the
-   * gun pivot's local +Z) and a short underdamped spring snaps it home. The
-   * kick is an initial velocity, not a distance: with omega 55 / damping
+   * Barrel recoil: every shot kicks the whole cannon back along its own bore
+   * (the gun pivot's local +Z) and a short underdamped spring snaps it home.
+   * The kick is an initial velocity, not a distance: with omega 55 / damping
    * ratio 0.55 it peaks at ~0.028 m about 20 ms after the shot and is back
    * under 1 mm in ~0.09 s — a punch, not a slide.
    */
@@ -612,12 +612,6 @@ export const COMBAT = {
   recoilOmega: 55,
   /** Damping ratio (1 = critically damped): 0.55 leaves a small rebound. */
   recoilDamping: 0.55,
-  /**
-   * Whole-carriage follow: the carriage and gun pivot slide back with the
-   * barrel at this fraction of its offset, so the entire cannon jolts as one
-   * piece instead of only the barrel telescoping in its trunnion.
-   */
-  recoilBodyScale: 0.55,
   /**
    * Hit-core radii (m): a shell within this 3D distance of an opposing
    * faction's hit_core is consumed. The pirate core sits at bounding-box

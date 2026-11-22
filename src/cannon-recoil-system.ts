@@ -14,9 +14,8 @@ import { COMBAT } from './level-config.js';
 const REST_OFFSET = 1e-4;
 const REST_SPEED = 2e-3;
 
-/** The three transforms a recoiling cannon writes each frame. */
+/** The two transforms a recoiling cannon writes each frame. */
 type RecoilRig = {
-  barrel: Object3D;
   carriage: Object3D;
   gunPivot: Object3D;
 };
@@ -27,10 +26,9 @@ type RecoilRig = {
  * CannonFireSystem writes the kick (backward velocity along the gun pivot's
  * local +Z); this system integrates an underdamped spring in closed form, so
  * the recoil is frame-rate independent and needs no sub-stepping. The whole
- * cannon jolts: carriage and gun pivot slide back by the same offset scaled
- * by `recoilBodyScale`, while `cannon-barrel` slides an extra full offset in
- * its trunnion. The cannon root is left untouched, so the aim poses and the
- * entity's placement stay single-truth.
+ * cannon jolts as one rigid piece: carriage and gun pivot slide back by the
+ * same offset, so the barrel keeps its trunnion pose. The cannon root is left
+ * untouched, so the aim poses and the entity's placement stay single-truth.
  */
 export class CannonRecoilSystem extends createSystem({
   recoils: { required: [CannonRecoil], excluded: [Destroyed] },
@@ -41,11 +39,10 @@ export class CannonRecoilSystem extends createSystem({
   init(): void {
     this.queries.recoils.subscribe('qualify', (entity) => {
       const root = entity.object3D;
-      const barrel = root?.getObjectByName('cannon-barrel');
       const carriage = root?.getObjectByName('cannon-carriage');
       const gunPivot = root?.getObjectByName('gun_rotate');
-      if (barrel && carriage && gunPivot) {
-        this.rigs.set(entity.index, { barrel, carriage, gunPivot });
+      if (carriage && gunPivot) {
+        this.rigs.set(entity.index, { carriage, gunPivot });
       }
     });
   }
@@ -83,10 +80,8 @@ export class CannonRecoilSystem extends createSystem({
       entity.setValue(CannonRecoil, 'velocity', velocity);
       const rig = this.rigs.get(entity.index);
       if (!rig) continue;
-      const body = travel * COMBAT.recoilBodyScale;
-      rig.carriage.position.z = body;
-      rig.gunPivot.position.z = body;
-      rig.barrel.position.z = travel;
+      rig.carriage.position.z = travel;
+      rig.gunPivot.position.z = travel;
     }
   }
 }
