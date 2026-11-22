@@ -17,6 +17,7 @@ import type { Entity, Object3D } from '@iwsdk/core';
 import {
   BallisticFlight,
   CannonFire,
+  CannonRecoil,
   Destroyed,
   GameOver,
   GamePaused,
@@ -160,6 +161,14 @@ export class CannonFireSystem extends createSystem({
       this.muzzleDir.x,
       this.muzzleDir.y,
       this.muzzleDir.z,
+    );
+    // Recoil: kick the barrel back down its own bore; CannonRecoilSystem
+    // springs it home within a tenth of a second.
+    cannon.setValue(
+      CannonRecoil,
+      'velocity',
+      Number(cannon.getValue(CannonRecoil, 'velocity')) +
+        COMBAT.recoilKickSpeed,
     );
     return true;
   }

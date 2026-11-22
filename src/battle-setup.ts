@@ -28,6 +28,7 @@ import { CameraOrbitSystem } from './camera-orbit-system.js';
 import {
   CannonAim,
   CannonFire,
+  CannonRecoil,
   DefensePad,
   Destroyed,
   Health,
@@ -186,6 +187,8 @@ function mountDefenseUnit(
   unitEntity.addComponent(RayInteractable);
   unitEntity.addComponent(CannonAim);
   unitEntity.addComponent(CannonFire, { unitType: 'cannon' });
+  // Per-shot barrel spring, driven by CannonFireSystem's kick.
+  unitEntity.addComponent(CannonRecoil);
   // Defender hit core: enemy shells arriving within this radius are
   // consumed by ShellHitSystem, which charges the unit's health pool per
   // hit (knockout = Destroyed tag + hidden). unitType keys the
@@ -235,6 +238,7 @@ export function removeDefenseUnit(world: World, slotIndex: number): void {
   const { entity } = old;
   entity.removeComponent(CannonAim);
   entity.removeComponent(CannonFire);
+  entity.removeComponent(CannonRecoil);
   entity.removeComponent(HitCore);
   entity.removeComponent(Health);
   entity.removeComponent(Destroyed);
