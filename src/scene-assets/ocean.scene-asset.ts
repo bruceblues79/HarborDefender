@@ -179,9 +179,11 @@ void main() {
 
     // Noise + wake perturbation produces ONE slope field that drives both the
     // reflection wobble and the sun glitter, so the two never disagree.
+    // One surge field only: the old second layer sampled swapped coordinates,
+    // so its noise drifted sideways along x. Every ripple now heads for the
+    // wall, and the slope tilts on that axis alone — never across it.
     float n1 = flowingNoise(vWorldPosition.xz * noiseFrequency, time * noiseSpeed);
-    float n2 = flowingNoise(vWorldPosition.zx * noiseFrequency + 19.3, time * noiseSpeed * 0.8);
-    vec2 perturb = vec2(n1, n2) * noiseIntensity;
+    vec2 perturb = vec2(0.0, n1) * noiseIntensity;
 
     // Wake ripple perturbation: the ripple gradient tilts the reflection
     // toward the ring centre, creating a lensing wobble around each source.
