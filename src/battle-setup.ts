@@ -83,8 +83,8 @@ import { WreckFireSystem } from './wreck-fire-system.js';
  * HDRI 的太阳方向（世界空间，指向太阳），由 2K 全景最亮区域质心算出。
  * 天空、水面反光和场景主光都对齐到这一方向，三者才不会互相矛盾。
  */
-const HDRI_SUN_DIRECTION = new Vector3(0.7807, 0.1378, 0.6095).normalize();
-const HDRI_SKY_URL = 'hdri/kloppenheim_06_puresky_2k.hdr';
+const HDRI_SUN_DIRECTION = new Vector3(0.5543, 0.7418, 0.3775).normalize();
+const HDRI_SKY_URL = 'hdri/kloofendal_48d_partly_cloudy_puresky_2k.hdr';
 
 /**
  * Re-bake the harbor wall's vertex colors into per-face stone mottle. The

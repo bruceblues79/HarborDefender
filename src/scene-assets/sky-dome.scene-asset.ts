@@ -31,8 +31,8 @@ import type { Texture } from '@iwsdk/core';
  *
  * The same mesh serves every render mode. Outside an XR session the mask is
  * off and the sphere is the scene background; in a partial-immersion session
- * the mask keeps only a DISC around the player's facing axis (world -z, raised
- * by `pitchUpDeg`), fading through a ragged noise rim into passthrough.
+ * the mask keeps only a head-locked DISC around each eye's own forward axis
+ * (raised by `pitchUpDeg`), fading through a ragged noise rim into passthrough.
  */
 
 export const SKY_DOME_RADIUS = 150;
@@ -58,8 +58,7 @@ uniform float uEdgeCos;
 uniform float uFadeCos;
 uniform float uEdgeNoise;
 uniform float uNoiseScale;
-uniform float uAxisY;
-uniform float uAxisZ;
+uniform float uPitch;
 
 uniform float uIntensity;
 uniform float uExposure;
@@ -105,8 +104,18 @@ void main() {
   if (uMaskOn > 0.5) {
     // Mask first, sample later — the fillrate guard. Fragments past the rim
     // discard immediately, so the invisible majority of the sphere costs a
-    // dot and a smoothstep. The disc axis is world -z raised by pitchUpDeg.
-    float d = dot(dir, vec3(0.0, uAxisY, uAxisZ));
+    // dot and a smoothstep.
+    //
+    // Head-locked axis: the disc is a cone around the camera's own forward
+    // direction (negated third row of the view rotation) raised by uPitch.
+    // Reading it here instead of from a uniform gives each XR eye its own
+    // axis, and the rim keeps its place in the view — a world-anchored axis
+    // drifted sideways as a stray circular patch.
+    vec3 fwd = -vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
+    vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+    vec3 axis = normalize(fwd * cos(uPitch) + up * sin(uPitch));
+
+    float d = dot(dir, axis);
     float m = smoothstep(uEdgeCos, uFadeCos, d);
     if (m <= 0.001) discard;
 
@@ -170,8 +179,7 @@ export function createSkyDomeMaterial(skyMap?: Texture): ShaderMaterial {
       uFadeCos: { value: Math.cos(31.25 * DEG2RAD) },
       uEdgeNoise: { value: 0.4 },
       uNoiseScale: { value: 2.5 },
-      uAxisY: { value: Math.sin(7.5 * DEG2RAD) },
-      uAxisZ: { value: -Math.cos(7.5 * DEG2RAD) },
+      uPitch: { value: 7.5 * DEG2RAD },
       uIntensity: { value: 1 },
       uExposure: { value: 1 },
       uFade: { value: 1 },

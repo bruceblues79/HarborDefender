@@ -854,7 +854,7 @@ export const SkyDome = createComponent('SkyDome', {
   edgeNoise: { type: 'Float32', default: 0.4 },
   /** Noise cells across the dome's sky projection. */
   noiseScale: { type: 'Float32', default: 2.5 },
-  /** Elevation (deg) of the disc axis above the horizontal -z forward. */
+  /** Elevation (deg) of the disc axis above the camera's own forward direction. */
   pitchUpDeg: { type: 'Float32', default: 7.5 },
   /** Multiplier on the whole sky colour. */
   skyIntensity: { type: 'Float32', default: 1.0 },
