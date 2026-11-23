@@ -1,5 +1,5 @@
 /**
- * 天空生成 Worker：把 1024×512 的噪声计算挪出主线程，loading 面板照常动画。
+ * 天空生成 Worker：把 1536×768 的天空计算挪出主线程，loading 面板照常动画。
  * 像素以 RGBA Float32Array 回传（transferable），主线程再转 HalfFloat 上传。
  */
 

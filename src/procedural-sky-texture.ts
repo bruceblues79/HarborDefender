@@ -1,6 +1,6 @@
 /**
  * 运行时天空纹理：在 Worker 里生成 equirect 像素，转成 HalfFloat DataTexture。
- * 取代原先下载 public/textures/procedural_sky_1k.hdr 的静态资源路径。
+ * 取代原先下载的 HDRI 全景图，照明数值按那一张逐项标定（scripts/sky-fingerprint.mjs）。
  *
  * Worker 起不来时（极少数环境）退回主线程同步生成：会卡住 loading 面板一次，
  * 但保证战斗一定能进。
@@ -49,8 +49,7 @@ export interface SunLightState {
 }
 
 /**
- * 太阳方向取自主光的 world +Z（DirectionalLight 沿本地 -Z 发光，+Z 指向太阳），
- * 云的高光边、海面的太阳反光因此永远跟着场景光照走。
+ * 主光的颜色与强度（方向取主光的 world +Z：DirectionalLight 沿本地 -Z 发光，+Z 指向太阳）。
  */
 export function resolveSunLight(world: World): SunLightState {
   const sunLight = world.getSceneObject('sun-light') as DirectionalLight | null;
@@ -61,10 +60,6 @@ export function resolveSunLight(world: World): SunLightState {
     color: [sunLight.color.r, sunLight.color.g, sunLight.color.b],
     intensity: sunLight.intensity,
   };
-}
-
-function resolveSunDirection(world: World): SkySunDirection {
-  return resolveSunLight(world).direction;
 }
 
 function requestSkyPixels(sunDir: SkySunDirection): Promise<Float32Array> {
@@ -92,10 +87,11 @@ function requestSkyPixels(sunDir: SkySunDirection): Promise<Float32Array> {
   });
 }
 
-/** 生成天空 equirect 纹理，供天幕采样、海面 cubemap 与 PMREM 环境光共用。 */
-export async function createSkyTexture(world: World): Promise<Texture> {
-  const sunDir = resolveSunDirection(world);
-
+/**
+ * 生成天空 equirect 纹理，供天幕采样、海面 cubemap 与 PMREM 环境光共用。
+ * sunDir 必须是生成器标定时的太阳方向，照明常量只对这一个方向准确。
+ */
+export async function createSkyTexture(sunDir: SkySunDirection): Promise<Texture> {
   let pixels: Float32Array;
   try {
     pixels = await requestSkyPixels(sunDir);
@@ -119,7 +115,7 @@ export async function createSkyTexture(world: World): Promise<Texture> {
     RGBAFormat,
     HalfFloatType,
   );
-  // 与原先 HDRLoader 的输出保持一致：行 0 在天顶、线性色彩空间、线性过滤。
+  // 行 0 在天顶（与 equirect 采样约定一致）、线性色彩空间、线性过滤。
   texture.flipY = true;
   texture.colorSpace = LinearSRGBColorSpace;
   texture.minFilter = LinearFilter;
