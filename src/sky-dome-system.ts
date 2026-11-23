@@ -25,7 +25,8 @@ type NumberUniform = { value: number };
  * page colour; it then stays visible through the welcome screen, battle and
  * MAIN-menu returns. Its passthrough mask is gated separately: in an XR
  * session with alpha-blend passthrough it becomes the partial-immersion disc,
- * head-locked per eye so the rim keeps its place in the view; with no session
+ * pinned to the world -z seaward axis so it stays over the far sea instead of
+ * following the head (it fades out as the gaze turns away); with no session
  * (or an opaque session) the mask is off and the sphere covers the whole sky.
  */
 export class SkyDomeSystem extends createSystem({

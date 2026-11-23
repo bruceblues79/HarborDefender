@@ -31,8 +31,9 @@ import type { Texture } from '@iwsdk/core';
  *
  * The same mesh serves every render mode. Outside an XR session the mask is
  * off and the sphere is the scene background; in a partial-immersion session
- * the mask keeps only a head-locked DISC around each eye's own forward axis
- * (raised by `pitchUpDeg`), fading through a ragged noise rim into passthrough.
+ * the mask keeps only a DISC pinned to the world -z seaward axis (raised by
+ * `pitchUpDeg`), fading through a ragged noise rim into passthrough. The disc
+ * fades out as the gaze leaves the sea, so it never lingers at the view edge.
  */
 
 export const SKY_DOME_RADIUS = 150;
@@ -106,14 +107,22 @@ void main() {
     // discard immediately, so the invisible majority of the sphere costs a
     // dot and a smoothstep.
     //
-    // Head-locked axis: the disc is a cone around the camera's own forward
-    // direction (negated third row of the view rotation) raised by uPitch.
-    // Reading it here instead of from a uniform gives each XR eye its own
-    // axis, and the rim keeps its place in the view — a world-anchored axis
-    // drifted sideways as a stray circular patch.
+    // World-anchored axis: the disc always sits over the far sea (world -z),
+    // raised by uPitch. It does not follow the head, so both eyes get the
+    // same cone and the patch stays put while the player looks around.
+    vec3 axis = normalize(vec3(0.0, sin(uPitch), -cos(uPitch)));
+
+    // Gaze falloff: a fixed disc would otherwise slide its dark lower half
+    // into the edge of the view on a head turn, reading as a black lens. Fade
+    // the whole patch out as the gaze leaves the sea and back in on return,
+    // so it only ever appears over the far sea.
     vec3 fwd = -vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
-    vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
-    vec3 axis = normalize(fwd * cos(uPitch) + up * sin(uPitch));
+    float dim = smoothstep(
+      cos(60.0 * 0.0174532925),
+      cos(35.0 * 0.0174532925),
+      dot(fwd, axis)
+    );
+    if (dim <= 0.001) discard;
 
     float d = dot(dir, axis);
     float m = smoothstep(uEdgeCos, uFadeCos, d);
@@ -125,7 +134,7 @@ void main() {
       vec2 np = dir.xy / (dir.z + 1.4) * uNoiseScale;
       n = valueNoise(np) * 0.6 + valueNoise(np * 2.3) * 0.4;
     }
-    alpha = uMaxAlpha * clamp(m + (n - 0.5) * uEdgeNoise * band, 0.0, 1.0);
+    alpha = uMaxAlpha * clamp(m + (n - 0.5) * uEdgeNoise * band, 0.0, 1.0) * dim;
   }
 
   // Equirect lookup in the view direction. The formula matches three.js's
