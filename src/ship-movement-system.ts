@@ -24,9 +24,10 @@ import {
  *
  * Moving: sail the straight line from the spawn point to the rolled target at
  * the unit's own cruiseY — ships ride the waterline, the bombardier holds
- * FLYER_Y; a water unit keeps `stopDistance` behind a same-type water unit
- * ahead along its travel direction and waits for it to clear (airborne units
- * never queue — WakeSource presence marks water contact).
+ * FLYER_Y; a unit keeps `stopDistance` behind a same-type unit ahead along
+ * its travel direction and waits for it to clear. Every layer queues
+ * independently: the same-type test already keeps water, middle-air
+ * (ornithopter) and high-air (bombardier) units out of each other's lanes.
  * Stopped: hold at the target, wake eased down.
  *
  * The wake is bound to motion: WAKE_STRENGTH_MOVING while under way,
@@ -130,12 +131,6 @@ export class ShipMovementSystem extends createSystem({
       const otherObject = other.object3D;
       if (!otherObject || otherObject === object) continue;
       if (other.getValue(UnitTag, 'unitType') !== unitType) continue;
-      // Airborne units never queue: they march above the water where hulls
-      // cannot collide, and the corridor yield would only deadlock crossing
-      // routes (two simultaneous flyers blocking each other forever).
-      // WakeSource presence is the unit-sheet water-contact fact — flyers
-      // carry none (same unitType ⇒ same wake-ness, so one check covers both).
-      if (!other.hasComponent(WakeSource)) continue;
       const ox = otherObject.position.x - object.position.x;
       const oz = otherObject.position.z - object.position.z;
       const ahead = ox * fx + oz * fz;

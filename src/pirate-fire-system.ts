@@ -14,6 +14,8 @@ import {
   GamePaused,
   HitCore,
   LevelDirector,
+  MuzzleFlash,
+  MuzzleFlashTag,
   PirateCannon,
   ShellFaction,
   ShellTag,
@@ -22,6 +24,7 @@ import {
   UnitTag,
 } from './components.js';
 import { COMBAT } from './level-config.js';
+import { spawnMuzzleFlash } from './muzzle-flash-system.js';
 import { solveIntercept } from './shell-launch.js';
 
 /**
@@ -64,6 +67,7 @@ export class PirateFireSystem extends createSystem({
     required: [ShellTag, StoneTag],
     excluded: [BallisticFlight],
   },
+  freeMuzzleFlashes: { required: [MuzzleFlashTag], excluded: [MuzzleFlash] },
   directors: { required: [LevelDirector] },
 }) {
   /** Muzzle object per ship entity index, resolved once on qualify. */
@@ -240,6 +244,13 @@ export class PirateFireSystem extends createSystem({
       faction: String(ship.getValue(UnitTag, 'faction')),
       unitType: String(ship.getValue(UnitTag, 'unitType')),
     });
+    spawnMuzzleFlash(
+      this.queries.freeMuzzleFlashes.entities,
+      this.muzzlePos,
+      this.intercept.vx,
+      this.intercept.vy,
+      this.intercept.vz,
+    );
     return true;
   }
 

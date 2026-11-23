@@ -608,6 +608,9 @@ export class LevelWaveSystem extends createSystem({
       targetX: target.x,
       targetZ: target.z,
       cruiseY: def.cruiseY,
+      // Follow gap behind a same-type unit ahead: hulls keep the ship default,
+      // aerial layers widen it to clear their rotor disc / wingspan.
+      stopDistance: def.stopDistance ?? 1.1,
       // Per-hull wake radius: oversized hulls (the boss) churn ship-scaled
       // ripples, everyone else rides the shared WAKE_RADIUS default.
       wakeRadius: def.wakeRadius ?? WAKE_RADIUS,

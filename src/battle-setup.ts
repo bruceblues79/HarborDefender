@@ -6,8 +6,11 @@
  */
 
 import {
+  AssetManager,
   Box3,
+  EquirectangularReflectionMapping,
   HalfFloatType,
+  LinearFilter,
   Mesh,
   Object3D,
   PMREMGenerator,
@@ -19,14 +22,18 @@ import {
   loadUIKitMLAsset,
 } from '@iwsdk/core';
 import type {
+  DirectionalLight,
   Entity,
   MeshStandardMaterial,
+  Texture,
   WebGLRenderTarget,
 } from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
+import { publicAssetUrl } from './assets.js';
 import {
   CannonAim,
   CannonFire,
+  CannonRecoil,
   DefensePad,
   Destroyed,
   Health,
@@ -61,15 +68,23 @@ import { createPirateChief } from './scene-assets/pirate-chief.scene-asset.js';
 import { createPirateShip } from './scene-assets/pirate-ship.scene-asset.js';
 import { setChiefPrototype } from './boss-chief-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
-import { createSkyTexture } from './procedural-sky-texture.js';
+import { resolveSunLight } from './procedural-sky-texture.js';
 import { SkyDomeSystem } from './sky-dome-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
 import { DieBurstSystem } from './die-burst-system.js';
 import { HitFlashSystem } from './hit-flash-system.js';
+import { MuzzleFlashSystem } from './muzzle-flash-system.js';
 import { SparkBurstSystem } from './spark-burst-system.js';
 import { SplashSystem } from './splash-system.js';
 import { WreckFireSystem } from './wreck-fire-system.js';
+
+/**
+ * HDRI 的太阳方向（世界空间，指向太阳），由 2K 全景最亮区域质心算出。
+ * 天空、水面反光和场景主光都对齐到这一方向，三者才不会互相矛盾。
+ */
+const HDRI_SUN_DIRECTION = new Vector3(0.5543, 0.7418, 0.3775).normalize();
+const HDRI_SKY_URL = 'hdri/kloofendal_48d_partly_cloudy_puresky_2k.hdr';
 
 /**
  * Re-bake the harbor wall's vertex colors into per-face stone mottle. The
@@ -184,6 +199,8 @@ function mountDefenseUnit(
   unitEntity.addComponent(RayInteractable);
   unitEntity.addComponent(CannonAim);
   unitEntity.addComponent(CannonFire, { unitType: 'cannon' });
+  // Per-shot barrel spring, driven by CannonFireSystem's kick.
+  unitEntity.addComponent(CannonRecoil);
   // Defender hit core: enemy shells arriving within this radius are
   // consumed by ShellHitSystem, which charges the unit's health pool per
   // hit (knockout = Destroyed tag + hidden). unitType keys the
@@ -233,6 +250,7 @@ export function removeDefenseUnit(world: World, slotIndex: number): void {
   const { entity } = old;
   entity.removeComponent(CannonAim);
   entity.removeComponent(CannonFire);
+  entity.removeComponent(CannonRecoil);
   entity.removeComponent(HitCore);
   entity.removeComponent(Health);
   entity.removeComponent(Destroyed);
@@ -383,6 +401,12 @@ const SEA_FADE_DELAY = SKY_FADE + 0.5;
 let skyEnvironmentTarget: WebGLRenderTarget | null = null;
 
 /**
+ * 天空反射 cubemap：与海面共用同一张（海面材质持有 render target 存活）。
+ * 城墙积水的 unlit 镜面材质在 startBattle 里建墙时取用。
+ */
+let skyReflectionCube: Texture | null = null;
+
+/**
  * First-screen boot: hide the authored welcome panel, paint the loading panel
  * over the dark page colour, bake the procedural sky (dome texture, reflection
  * cubemap and PMREM environment) and build the sea. The loading panel then
@@ -414,11 +438,33 @@ export function bootWelcomeScene(world: World): void {
       // Let the loading panel paint one frame before the sky bake runs.
       await nextFrame(world);
 
-      const skyTexture = await createSkyTexture(world);
+      // Equirect HDR sky. AssetManager keeps the texture in linear half-float,
+      // so the dome, the reflection cubemap and PMREM all receive the same
+      // unbounded values the reference HDRI carries.
+      // The single-file preview inlines the HDR as a data: URL, but the loader
+      // validates the URL suffix; wrap it in a blob URL ending in .hdr.
+      let skyTexture: Texture;
+      const skyUrl = publicAssetUrl(HDRI_SKY_URL);
+      if (skyUrl.startsWith('data:')) {
+        const blobUrl = URL.createObjectURL(await (await fetch(skyUrl)).blob());
+        try {
+          skyTexture = await AssetManager.loadHDRTexture(`${blobUrl}#.hdr`);
+        } finally {
+          URL.revokeObjectURL(blobUrl);
+        }
+      } else {
+        skyTexture = await AssetManager.loadHDRTexture(skyUrl);
+      }
+      skyTexture.mapping = EquirectangularReflectionMapping;
+      skyTexture.minFilter = LinearFilter;
+      skyTexture.magFilter = LinearFilter;
+      skyTexture.generateMipmaps = false;
+      skyTexture.needsUpdate = true;
 
       // Equirect sky -> cubemap: avoids pole stretching in reflections.
       const cubeRT = new WebGLCubeRenderTarget(256, { type: HalfFloatType });
       cubeRT.fromEquirectangularTexture(world.renderer, skyTexture);
+      skyReflectionCube = cubeRT.texture;
       skyDomeSystem?.setSkyTexture(skyTexture);
 
       // Image-based lighting without a scene IBLTexture: PMREM the same
@@ -429,7 +475,25 @@ export function bootWelcomeScene(world: World): void {
       world.scene.environment = skyEnvironmentTarget.texture;
       pmrem.dispose();
 
-      const oceanMaterial = createOceanMaterial();
+      const sun = resolveSunLight(world);
+
+      // The HDRI's sun sits on the +X/+Z side. Move the directional light to
+      // the same bearing (reusing its scene distance so the shadow camera
+      // bounds stay valid) so shadows and the water glitter agree with it.
+      const sunLight = world.getSceneObject('sun-light') as DirectionalLight | null;
+      if (sunLight?.isDirectionalLight) {
+        const distance = sunLight.position.length() || 50;
+        sunLight.position.copy(HDRI_SUN_DIRECTION).multiplyScalar(distance);
+        sunLight.target.position.set(0, 0, 0);
+        sunLight.target.updateMatrixWorld();
+        sunLight.updateMatrixWorld();
+      }
+
+      const oceanMaterial = createOceanMaterial({
+        sunDirection: [HDRI_SUN_DIRECTION.x, HDRI_SUN_DIRECTION.y, HDRI_SUN_DIRECTION.z],
+        sunColor: sun.color,
+        sunIntensity: sun.intensity * 0.2,
+      });
       oceanMaterial.uniforms.uFade.value = 0;
       oceanMaterial.uniforms.envMap.value = cubeRT.texture;
       oceanMaterial.userData.envCubeRT = cubeRT; // keep the RT alive with the mesh
@@ -538,7 +602,7 @@ export function startBattle(world: World): void {
         // 先让面板真正呈现一帧，再停留 LOADING_MIN_MS，构建才不会把它挡在屏幕外。
         await new Promise((resolve) => setTimeout(resolve, LOADING_MIN_MS));
         return {
-          wall: createHarborWall(),
+          wall: createHarborWall(skyReflectionCube),
           cannon: createCannon(),
           ship: createPirateShip(),
           ornithopter: createOrnithopter(),
@@ -581,7 +645,8 @@ export function startBattle(world: World): void {
           // scene-JSON assets get these via content flags.
           wallObject.traverse((child: Object3D) => {
             if ((child as Mesh).isMesh) {
-              child.castShadow = true;
+              // 积水是贴墙顶的透明水膜，投阴影只会在石面上压出一圈脏影。
+              child.castShadow = child.name !== 'wall-puddle';
               child.receiveShadow = true;
             }
           });
@@ -749,6 +814,13 @@ export function recycleCombatEffects(world: World): void {
   world
     .getSystems()
     .find((system): system is HitFlashSystem => system instanceof HitFlashSystem)
+    ?.recycleAll();
+  world
+    .getSystems()
+    .find(
+      (system): system is MuzzleFlashSystem =>
+        system instanceof MuzzleFlashSystem,
+    )
     ?.recycleAll();
   world
     .getSystems()

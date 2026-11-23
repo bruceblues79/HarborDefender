@@ -177,6 +177,19 @@ export const TrajectoryPreview = createComponent('TrajectoryPreview', {});
 export const AimDragging = createComponent('AimDragging', {});
 
 /**
+ * Cannon recoil state, driven by CannonRecoilSystem. `travel` is the whole
+ * cannon's backward offset along the gun pivot's local +Z (the muzzle fires
+ * down -Z), `velocity` its rate of change. CannonFireSystem adds a backward
+ * kick to `velocity` on every shot; the system springs both back to rest.
+ */
+export const CannonRecoil = createComponent('CannonRecoil', {
+  /** Current backward cannon offset (m); written by CannonRecoilSystem. */
+  travel: { type: 'Float32', default: 0 },
+  /** Offset velocity (m/s); the shot kicks it, the spring drains it. */
+  velocity: { type: 'Float32', default: 0 },
+});
+
+/**
  * Auto-fire ability of a cannon's muzzle: launch one pooled shell every
  * `interval` seconds. When the pool is empty the shot is skipped and retried
  * shortly, so a busy pool degrades to a slower fire rate, never a stall.
@@ -415,6 +428,27 @@ export const SparkBurst = createComponent('SparkBurst', {
   sizeRatio: { type: 'Float32', default: 1 },
   /** Particles emitted this burst (clamped to the pool mesh capacity). */
   count: { type: 'Float32', default: COMBAT.hitSparkHitCount },
+});
+
+/**
+ * Marks a pooled muzzle-flash quad. The pool lives in MuzzleFlashSystem; a
+ * quad is free exactly while it does NOT carry `MuzzleFlash` — presence of the
+ * state component is the "playing" tag, so no separate in-use flag exists.
+ */
+export const MuzzleFlashTag = createComponent('MuzzleFlashTag', {});
+
+/**
+ * Playing state of a pooled muzzle flash: the brief additive flare every gun
+ * throws at its muzzle the instant a projectile leaves. The fire systems claim
+ * a free quad by adding this component (the thin spawn command);
+ * MuzzleFlashSystem is the only writer afterwards, deriving scale and opacity
+ * from `elapsed`. Removal returns the quad to the pool.
+ */
+export const MuzzleFlash = createComponent('MuzzleFlash', {
+  /** Seconds the flare takes from full bloom to fully recycled. */
+  duration: { type: 'Float32', default: COMBAT.muzzleFlashDuration },
+  /** Seconds elapsed so far. */
+  elapsed: { type: 'Float32', default: 0 },
 });
 
 /**
@@ -859,6 +893,7 @@ export default defineComponents([
   BallisticFlight,
   CannonAim,
   AimDragging,
+  CannonRecoil,
   TrajectoryPreview,
   SplashFade,
   HitCore,
@@ -873,6 +908,8 @@ export default defineComponents([
   HitFlash,
   SparkBurstTag,
   SparkBurst,
+  MuzzleFlashTag,
+  MuzzleFlash,
   WreckFireTag,
   WreckFire,
   DieBurstTag,

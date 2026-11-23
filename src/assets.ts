@@ -11,7 +11,7 @@ import { AssetType, defineAssets } from '@iwsdk/core';
 const inlineAsset = (filePath: string): string | null =>
   __PREVIEW_ASSETS__?.[filePath.replace(/^\/+/u, '')] ?? null;
 
-const publicAssetUrl = (filePath: string): string =>
+export const publicAssetUrl = (filePath: string): string =>
   inlineAsset(filePath) ?? `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
 
 // Resources served from public/ with no Cache-Control can stay stale in a
@@ -39,36 +39,36 @@ export default defineAssets({
     url: versionedAssetUrl('ui/start.uikitml'),
     type: AssetType.UIKitML,
     name: 'Start Panel',
-    priority: 'critical',
+    priority: 'background',
   },
   'menu-call': {
     url: versionedAssetUrl('ui/menu-call.uikitml'),
     type: AssetType.UIKitML,
     name: 'Menu Call',
-    priority: 'critical',
+    priority: 'background',
   },
   'pause-menu': {
     url: versionedAssetUrl('ui/pause-menu.uikitml'),
     type: AssetType.UIKitML,
     name: 'Pause Menu',
-    priority: 'critical',
+    priority: 'background',
   },
   'result-panel': {
     url: versionedAssetUrl('ui/result.uikitml'),
     type: AssetType.UIKitML,
     name: 'Result Panel',
-    priority: 'critical',
+    priority: 'background',
   },
   'intermission-panel': {
     url: versionedAssetUrl('ui/intermission.uikitml'),
     type: AssetType.UIKitML,
     name: 'Intermission Panel',
-    priority: 'critical',
+    priority: 'background',
   },
   'build-panel': {
     url: versionedAssetUrl('ui/build-panel.uikitml'),
     type: AssetType.UIKitML,
     name: 'Build Panel',
-    priority: 'critical',
+    priority: 'background',
   },
 });

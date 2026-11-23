@@ -65,6 +65,12 @@ export interface UnitTypeDef {
   stopGapX?: number;
   stopGapZ?: number;
   /**
+   * Follow gap (m) kept behind a same-type unit ahead in flight. Optional:
+   * falls back to the ShipMovement default 1.1 — aerial layers widen it past
+   * their rotor disc / wingspan (~1.4 m).
+   */
+  stopDistance?: number;
+  /**
    * Boss-carrier flag: the spawn pipeline skips the generic root HitCore and
    * Health (the boss's four gun turrets are assembled as independent combat
    * parts instead; the hull itself is not a target). Carries no behaviour of
@@ -160,7 +166,7 @@ export const OCEAN_FAR_Z: number = OCEAN.centerZ - OCEAN.length / 2;
 
 /**
  * Harbor wall placement — kept in step with `harbor-wall.scene-asset.ts` and
- * its transform in battle-setup.ts. The v5 model is 3.0 m long and 0.5 m deep
+ * its transform in battle-setup.ts. The v6 model is 3.0 m long and 0.5 m deep
  * (seaward face z = -1.6, 0.1 m past the ocean's near edge at z = -1.5).
  * WALL_WIDTH / WALL_DEPTH_Z stay at the combat reference values below: the
  * berth band and the burst-chunk water test read them, not the mesh.
@@ -595,6 +601,18 @@ export const COMBAT = {
   /** Aim degrees per metre of vertical (pitch) wrist travel in XR. */
   aimDegreesPerMeterPitch: 200,
   /**
+   * Barrel recoil: every shot kicks the whole cannon back along its own bore
+   * (the gun pivot's local +Z) and a short underdamped spring snaps it home.
+   * The kick is an initial velocity, not a distance: with omega 55 / damping
+   * ratio 0.55 it peaks at ~0.028 m about 20 ms after the shot and is back
+   * under 1 mm in ~0.09 s — a punch, not a slide.
+   */
+  recoilKickSpeed: 2.45,
+  /** Spring angular frequency (rad/s); higher = shorter, snappier return. */
+  recoilOmega: 55,
+  /** Damping ratio (1 = critically damped): 0.55 leaves a small rebound. */
+  recoilDamping: 0.55,
+  /**
    * Hit-core radii (m): a shell within this 3D distance of an opposing
    * faction's hit_core is consumed. The pirate core sits at bounding-box
    * centre (hull + sail, ~0.38 m above the waterline), so 0.5 reaches down
@@ -664,6 +682,23 @@ export const COMBAT = {
   hitFlashCenterColor: 0xffd84d,
   /** Fresnel rim colour (dark red, sRGB hex). */
   hitFlashEdgeColor: 0x8a1400,
+  /**
+   * Muzzle flash: every projectile launch (city battery, attacker gun, flyer
+   * drop) plays one additive billboard flare just ahead of the muzzle. Pooled
+   * quads, one draw call per concurrent flash, no per-shot allocation.
+   */
+  muzzleFlashPoolSize: 24,
+  /** Seconds from full bloom to fully recycled. */
+  muzzleFlashDuration: 0.13,
+  /** Full width (m) of the flare quad at peak. */
+  muzzleFlashSize: 0.5,
+  /** Starting fraction of peak size — the flare blooms outward as it fades. */
+  muzzleFlashStartScale: 0.45,
+  /** Forward offset (m) from the muzzle so the flare clears the bore. */
+  muzzleFlashOffset: 0.12,
+  /** White-hot core / warm rim tints (sRGB hex). */
+  muzzleFlashCoreColor: 0xfff6d2,
+  muzzleFlashEdgeColor: 0xff6a14,
   /**
    * Impact embers: additive spark quads thrown off on every solid hit, and a
    * larger burst (plus a full-size flash) when a boss turret dies. Every
@@ -1136,6 +1171,7 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     // 在 3.4 m 宽 × 1.55 m 深的停机带里排下 3 × 2 六个位，层容量不必下调。
     stopGapX: 1.5,
     stopGapZ: 1.5,
+    stopDistance: 1.4,
   },
   ornithopter: {
     assetId: 'ornithopter',
@@ -1153,6 +1189,7 @@ export const UNIT_TYPES: Record<string, UnitTypeDef> = {
     wake: false,
     stopZMin: ORNITHOPTER.stopZMin,
     stopZMax: ORNITHOPTER.stopZMax,
+    stopDistance: 1.4,
   },
   'boss_islewrath': {
     assetId: 'boss-islewrath',

@@ -31,8 +31,9 @@ import type { Texture } from '@iwsdk/core';
  *
  * The same mesh serves every render mode. Outside an XR session the mask is
  * off and the sphere is the scene background; in a partial-immersion session
- * the mask keeps only a DISC around the player's facing axis (world -z, raised
- * by `pitchUpDeg`), fading through a ragged noise rim into passthrough.
+ * the mask keeps only a DISC pinned to the world -z seaward axis (raised by
+ * `pitchUpDeg`), fading through a ragged noise rim into passthrough. The disc
+ * fades out as the gaze leaves the sea, so it never lingers at the view edge.
  */
 
 export const SKY_DOME_RADIUS = 150;
@@ -58,10 +59,10 @@ uniform float uEdgeCos;
 uniform float uFadeCos;
 uniform float uEdgeNoise;
 uniform float uNoiseScale;
-uniform float uAxisY;
-uniform float uAxisZ;
+uniform float uPitch;
 
 uniform float uIntensity;
+uniform float uExposure;
 uniform float uFade;       // boot fade-in multiplier on the dome alpha
 
 varying vec3 vWorldPosition;
@@ -86,6 +87,12 @@ vec3 linearToSRGB(vec3 c) {
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
 }
 
+// HDR sky values routinely exceed 1.0; ACES keeps cloud highlights and the
+// sun disc from clipping to flat white.
+vec3 aces(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
 void main() {
   if (uFade <= 0.001) discard;
 
@@ -98,8 +105,26 @@ void main() {
   if (uMaskOn > 0.5) {
     // Mask first, sample later — the fillrate guard. Fragments past the rim
     // discard immediately, so the invisible majority of the sphere costs a
-    // dot and a smoothstep. The disc axis is world -z raised by pitchUpDeg.
-    float d = dot(dir, vec3(0.0, uAxisY, uAxisZ));
+    // dot and a smoothstep.
+    //
+    // World-anchored axis: the disc always sits over the far sea (world -z),
+    // raised by uPitch. It does not follow the head, so both eyes get the
+    // same cone and the patch stays put while the player looks around.
+    vec3 axis = normalize(vec3(0.0, sin(uPitch), -cos(uPitch)));
+
+    // Gaze falloff: a fixed disc would otherwise slide its dark lower half
+    // into the edge of the view on a head turn, reading as a black lens. Fade
+    // the whole patch out as the gaze leaves the sea and back in on return,
+    // so it only ever appears over the far sea.
+    vec3 fwd = -vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]);
+    float dim = smoothstep(
+      cos(60.0 * 0.0174532925),
+      cos(35.0 * 0.0174532925),
+      dot(fwd, axis)
+    );
+    if (dim <= 0.001) discard;
+
+    float d = dot(dir, axis);
     float m = smoothstep(uEdgeCos, uFadeCos, d);
     if (m <= 0.001) discard;
 
@@ -109,7 +134,7 @@ void main() {
       vec2 np = dir.xy / (dir.z + 1.4) * uNoiseScale;
       n = valueNoise(np) * 0.6 + valueNoise(np * 2.3) * 0.4;
     }
-    alpha = uMaxAlpha * clamp(m + (n - 0.5) * uEdgeNoise * band, 0.0, 1.0);
+    alpha = uMaxAlpha * clamp(m + (n - 0.5) * uEdgeNoise * band, 0.0, 1.0) * dim;
   }
 
   // Equirect lookup in the view direction. The formula matches three.js's
@@ -123,9 +148,9 @@ void main() {
     atan(dir.z, dir.x) * 0.15915494309189535 + 0.5,
     asin(clamp(dir.y, -1.0, 1.0)) * 0.3183098861837907 + 0.5
   );
-  vec3 color = texture2D(uSkyMap, uv).rgb;
+  vec3 color = texture2D(uSkyMap, uv).rgb * uIntensity * uExposure;
 
-  color = linearToSRGB(color * uIntensity);
+  color = linearToSRGB(aces(color));
 
   // 8-bit sky gradients band badly; a sub-LSB dither dissolves the steps.
   color += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
@@ -163,9 +188,9 @@ export function createSkyDomeMaterial(skyMap?: Texture): ShaderMaterial {
       uFadeCos: { value: Math.cos(31.25 * DEG2RAD) },
       uEdgeNoise: { value: 0.4 },
       uNoiseScale: { value: 2.5 },
-      uAxisY: { value: Math.sin(7.5 * DEG2RAD) },
-      uAxisZ: { value: -Math.cos(7.5 * DEG2RAD) },
+      uPitch: { value: 7.5 * DEG2RAD },
       uIntensity: { value: 1 },
+      uExposure: { value: 1 },
       uFade: { value: 1 },
     },
     vertexShader,

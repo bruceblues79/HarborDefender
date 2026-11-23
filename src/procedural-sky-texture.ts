@@ -16,7 +16,7 @@ import {
   RGBAFormat,
   Vector3,
 } from '@iwsdk/core';
-import type { Texture, World } from '@iwsdk/core';
+import type { DirectionalLight, Texture, World } from '@iwsdk/core';
 import {
   SKY_MAP_HEIGHT,
   SKY_MAP_WIDTH,
@@ -31,20 +31,40 @@ import type {
 } from './procedural-sky.worker.js';
 
 /**
- * 场景主光没取到时的太阳方向，与 main.iwsdk.scene.json 的 sun-light 旋转
- * （-46°, -30°, 0）一致：下午三点，太阳在 +Z 一侧偏 -X 约 40°，高度约 38°。
+ * 场景主光没取到时的太阳状态，与 main.iwsdk.scene.json 的 sun-light 一致：
+ * 傍晚前的暖光，太阳在海面上方偏左 30°、高度约 20°。
  */
-const SUN_DIRECTION_FALLBACK: SkySunDirection = [-0.5, 0.623, 0.602];
+const SUN_LIGHT_FALLBACK: SunLightState = {
+  direction: [-0.4698, 0.342, -0.8138],
+  color: [1, 0.84, 0.64],
+  intensity: 4.8,
+};
+
+export interface SunLightState {
+  /** 单位向量，指向太阳（世界空间）。 */
+  direction: SkySunDirection;
+  /** 主光颜色（线性 RGB，与天空贴图同一空间）。 */
+  color: readonly [number, number, number];
+  intensity: number;
+}
 
 /**
  * 太阳方向取自主光的 world +Z（DirectionalLight 沿本地 -Z 发光，+Z 指向太阳），
- * 云的高光边因此永远跟着场景光照走。
+ * 云的高光边、海面的太阳反光因此永远跟着场景光照走。
  */
-function resolveSunDirection(world: World): SkySunDirection {
-  const sunLight = world.getSceneObject('sun-light');
-  if (!sunLight) return SUN_DIRECTION_FALLBACK;
+export function resolveSunLight(world: World): SunLightState {
+  const sunLight = world.getSceneObject('sun-light') as DirectionalLight | null;
+  if (!sunLight || !sunLight.isDirectionalLight) return SUN_LIGHT_FALLBACK;
   const direction = sunLight.getWorldDirection(new Vector3());
-  return [direction.x, direction.y, direction.z];
+  return {
+    direction: [direction.x, direction.y, direction.z],
+    color: [sunLight.color.r, sunLight.color.g, sunLight.color.b],
+    intensity: sunLight.intensity,
+  };
+}
+
+function resolveSunDirection(world: World): SkySunDirection {
+  return resolveSunLight(world).direction;
 }
 
 function requestSkyPixels(sunDir: SkySunDirection): Promise<Float32Array> {

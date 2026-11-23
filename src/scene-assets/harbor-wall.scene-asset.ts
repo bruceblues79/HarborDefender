@@ -2,14 +2,16 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /**
- * HarborDefender 城防港城墙 v5（低模硬边战损，程序化 PBR）。
+ * HarborDefender 城防港城墙 v6（低模硬边战损，程序化 PBR）。
  * 契约：原点在墙身中心；墙顶局部 y = +0.25（放置 y = 0.55 后世界 0.8）；
  * 临海面局部 z = -0.30（世界 -1.60），陆地侧 +0.20（世界 -1.10）。单位：米。
  *
  * 墙长 3.0；临海侧垛口式护墙（垛宽 0.22 / 炮位垛口宽 0.48）。战损全部用 9 cm 网格量化，
  * 断口是硬折面而不是连续曲线；墙顶只散落少量大块碎石，不再做沙包。
  * 炮位安装面（x=±0.75/0）及其 0.23 m 半径内保持绝对水平。
- * 资产只含城墙与碎石，不含炮、基座盘与海面。
+ * 石面无苔藓、流痕克制，法线强度 4.0；墙顶 +Y 面另有 3 处独立薄水膜（积水）。
+ * 积水是 unlit 天空镜面：采样海面同款天空 cubemap，只做静态反射，不加水纹。
+ * 资产只含城墙、碎石与积水，不含炮、基座盘与海面。
  */
 
 const SEED = 20261118;
@@ -159,7 +161,8 @@ function mapsFrom(albedo: HTMLCanvasElement, rm: HTMLCanvasElement, normalStreng
 
 /**
  * 乱石砌墙：6 × 6 抖动 Voronoi 单元，约 12% 单元并给邻居形成大石，
- * 单元间隙即灰缝；石面按到缝的距离做凹凸明暗，另有苔痕、麻点与冷暖色差。
+ * 单元间隙即灰缝；石面按到缝的距离做凹凸明暗，另有麻点与冷暖色差。
+ * 不做苔藓，竖向流痕只保留稀疏几道。
  */
 function buildStoneMaps(): Maps {
   const size = 1024;
@@ -168,12 +171,11 @@ function buildStoneMaps(): Maps {
   const half = size / 2;
   const rnd = mulberry32(SEED + 59);
   const grainNoise = makeNoise(SEED + 5);
-  const stainNoise = makeNoise(SEED + 23);
   const pitNoise = makeNoise(SEED + 41);
   const grimeNoise = makeNoise(SEED + 67);
   const dripNoise = makeNoise(SEED + 89);
 
-  type Stone = { x: number; y: number; tint: number; warm: number; moss: number; exists: boolean };
+  type Stone = { x: number; y: number; tint: number; warm: number; exists: boolean };
   const stones: Stone[] = [];
   for (let r = 0; r < cells; r++) {
     for (let c = 0; c < cells; c++) {
@@ -182,7 +184,6 @@ function buildStoneMaps(): Maps {
         y: (r + 0.5 + (rnd() - 0.5) * 0.66) * cw,
         tint: 0.8 + rnd() * 0.38,
         warm: rnd(),
-        moss: rnd(),
         exists: rnd() > 0.14,
       });
     }
@@ -226,7 +227,6 @@ function buildStoneMaps(): Maps {
       const gap = best ? Math.sqrt(d2) - Math.sqrt(d1) : 0;
       const isJoint = !best || gap < 8;
       const grain = fbm(grainNoise, x * 0.06, y * 0.06, 3);
-      const stain = fbm(stainNoise, x * 0.012, y * 0.012, 3);
       const pit = pitNoise(x * 0.5, y * 0.5);
 
       let r: number;
@@ -239,18 +239,12 @@ function buildStoneMaps(): Maps {
         b = 0.162 + grain * 0.05;
         rough = 0.95;
       } else {
-        const bevel = Math.min(1, gap / 22);
-        const relief = 0.7 + bevel * 0.3;
+        const bevel = Math.min(1, gap / 26);
+        const relief = 0.6 + bevel * 0.4;
         const t = best!.tint;
         r = (0.35 + grain * 0.11) * t * relief + (best!.warm - 0.5) * 0.035;
         g = (0.338 + grain * 0.1) * t * relief;
         b = (0.31 + grain * 0.09) * t * relief + (0.5 - best!.warm) * 0.03;
-        if (best!.moss > 0.62 && stain > 0.58) {
-          const k = Math.min(0.3, (stain - 0.58) * 1.8);
-          r += (0.25 - r) * k;
-          g += (0.3 - g) * k;
-          b += (0.235 - b) * k;
-        }
         if (pit > 0.8) {
           const k = 1 - (pit - 0.8) * 0.8;
           r *= k;
@@ -260,7 +254,7 @@ function buildStoneMaps(): Maps {
         rough = THREE.MathUtils.clamp(0.66 + grain * 0.18 + (1 - bevel) * 0.1, 0, 1);
       }
 
-      // 污渍：块状积垢 + 竖向流痕，避免整面太干净
+      // 污渍：块状积垢保持，竖向流痕只留稀疏几道且更浅
       const grime = fbm(grimeNoise, x * 0.014, y * 0.014, 3);
       if (grime > 0.52) {
         const k = 1 - Math.min(0.38, (grime - 0.52) * 1.5);
@@ -269,8 +263,8 @@ function buildStoneMaps(): Maps {
         b *= k * 0.9;
       }
       const drip = fbm(dripNoise, x * 0.09, y * 0.006, 2);
-      if (drip > 0.6) {
-        const k = 1 - Math.min(0.22, (drip - 0.6) * 1.2);
+      if (drip > 0.72) {
+        const k = 1 - Math.min(0.12, (drip - 0.72) * 0.8);
         r *= k;
         g *= k * 0.98;
         b *= k * 0.94;
@@ -292,7 +286,7 @@ function buildStoneMaps(): Maps {
   ctx.putImageData(image, 0, 0);
   rctx.putImageData(rimage, 0, 0);
 
-  return mapsFrom(albedo, rm, 3.2);
+  return mapsFrom(albedo, rm, 4.0);
 }
 
 // ---------------------------------------------------------------- materials
@@ -313,6 +307,66 @@ function stoneMaterial(): THREE.MeshStandardMaterial {
     metalness: 1,
   });
   return cache;
+}
+
+/**
+ * 积水：unlit 天空镜面。反射方向直接采海面同款天空 cubemap，光照不参与，
+ * 也不做水纹运动；输出手动转 sRGB，与天幕、海面走同一条颜色链路。
+ */
+function puddleMaterial(skyCube: THREE.Texture | null): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    name: 'wall-puddle',
+    uniforms: {
+      uSkyCube: { value: skyCube },
+      uOpacity: { value: 0.92 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec3 vWorldPosition;
+      varying vec3 vWorldNormal;
+
+      void main() {
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPos.xyz;
+        // mat3(modelMatrix) 保持世界空间法线；renderer 的 normalMatrix 是视图空间。
+        vWorldNormal = normalize(mat3(modelMatrix) * normal);
+        gl_Position = projectionMatrix * viewMatrix * worldPos;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform samplerCube uSkyCube;
+      uniform float uOpacity;
+
+      varying vec3 vWorldPosition;
+      varying vec3 vWorldNormal;
+
+      // ShaderMaterial 绕过渲染器的线性 -> sRGB 输出转换，这里手动编码，
+      // 与天幕 / 海面 shader 完全一致。
+      vec3 linearToSRGB(vec3 c) {
+        c = max(c, vec3(0.0));
+        return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+      }
+
+      void main() {
+        vec3 toEye = normalize(vWorldPosition - cameraPosition);
+        vec3 reflDir = reflect(toEye, normalize(vWorldNormal));
+        vec3 sky = textureCube(uSkyCube, reflDir).rgb;
+
+        // 薄水膜略压暗、偏冷，避免看起来像石面上的一个洞。
+        vec3 color = sky * vec3(0.9, 0.94, 0.98);
+
+        // 掠射角更接近镜面；近乎垂直俯视时水膜更透，露出下面的石头。
+        float ndv = clamp(dot(normalize(vWorldNormal), -toEye), 0.0, 1.0);
+        float mirror = mix(0.6, 1.0, pow(1.0 - ndv, 2.0));
+
+        gl_FragColor = vec4(linearToSRGB(color), uOpacity * mirror);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
 }
 
 // ---------------------------------------------------------------- geometry
@@ -438,9 +492,40 @@ function rubbleGeometry(rnd: () => number): THREE.BufferGeometry {
   return geo;
 }
 
+/** 墙顶积水：14 边不规则薄片，紧贴 +Y 面；不规则边直接成形，不留软化带。 */
+function puddleGeometry(
+  width: number,
+  depth: number,
+  rotation: number,
+  seed: number,
+): THREE.BufferGeometry {
+  const segments = 14;
+  const rim: Array<[number, number]> = [];
+  for (let i = 0; i < segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    const r = 0.78 + hash3(seed, i, 5) * 0.34;
+    rim.push([Math.cos(a) * r * width * 0.5, Math.sin(a) * r * depth * 0.5]);
+  }
+  const verts: number[] = [];
+  for (let i = 0; i < segments; i++) {
+    const [x0, z0] = rim[i];
+    const [x1, z1] = rim[(i + 1) % segments];
+    verts.push(0, 0, 0, x1, 0, z1, x0, 0, z0);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.computeVertexNormals();
+  geo.rotateY(rotation);
+  return geo;
+}
+
 // ---------------------------------------------------------------- factory
 
-export function createHarborWall(): THREE.Group {
+/**
+ * `skyReflection` 是海面同款天空 cubemap（battle-setup 在 boot 阶段从程序化
+ * 天空贴图烘出），积水的镜面反射直接采它；不传则积水为纯黑薄膜。
+ */
+export function createHarborWall(skyReflection?: THREE.Texture | null): THREE.Group {
   const material = stoneMaterial();
   const root = new THREE.Group();
   root.name = 'wall';
@@ -489,6 +574,27 @@ export function createHarborWall(): THREE.Group {
   stoneMesh.castShadow = true;
   stoneMesh.receiveShadow = true;
   root.add(stoneMesh);
+
+  // 墙顶 +Y 面小片积水：避开三个炮位安装盘（±0.75/0，半径 0.23）与两端碎石堆；
+  // 只留 3 片、左右不对称，避免看起来像均匀分布
+  const puddleParts: THREE.BufferGeometry[] = [];
+  const puddleSpots: Array<[number, number, number, number, number]> = [
+    [0.372, -0.078, 0.21, 0.12, -0.22],
+    [0.98, -0.15, 0.19, 0.11, -0.4],
+    [-0.98, -0.155, 0.18, 0.11, 0.46],
+  ];
+  puddleSpots.forEach(([x, z, w, d, rot], index) => {
+    const puddle = puddleGeometry(w, d, rot, SEED + 211 + index);
+    puddle.translate(x, DIM.top + 0.001, z);
+    puddleParts.push(puddle);
+  });
+
+  const puddleMesh = new THREE.Mesh(mergeAll(puddleParts), puddleMaterial(skyReflection ?? null));
+  puddleMesh.name = 'wall-puddle';
+  // 这层水膜不投阴影，否则会在石面上压出一圈脏影。
+  puddleMesh.castShadow = false;
+  puddleMesh.receiveShadow = true;
+  root.add(puddleMesh);
 
   return root;
 }

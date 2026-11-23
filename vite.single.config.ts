@@ -29,23 +29,28 @@ const listFiles = (dir: string): string[] =>
  */
 function collectInlineAssets(): Record<string, string> {
   const map: Record<string, string> = {};
-  for (const abs of listFiles(join(PUBLIC_DIR, 'ui'))) {
-    const rel = relative(PUBLIC_DIR, abs).replace(/\\/gu, '/');
-    const ext = extname(abs).slice(1).toLowerCase();
-    if (ext === 'uikitml') {
-      const rewritten = readFileSync(abs, 'utf8').replace(
-        /src="(ui\/icons\/[^"?]+)(?:\?[^"]*)?"/gu,
-        (full, ref: string) => {
-          const iconAbs = join(PUBLIC_DIR, ref);
-          if (!existsSync(iconAbs)) return full;
-          return `src="${svgDataUrl(readFileSync(iconAbs, 'utf8'))}"`;
-        },
-      );
-      map[rel] = textDataUrl('text/plain', rewritten);
-    } else if (ext === 'svg') {
-      map[rel] = svgDataUrl(readFileSync(abs, 'utf8'));
-    } else {
-      map[rel] = textDataUrl('text/plain', readFileSync(abs, 'utf8'));
+  for (const root of [join(PUBLIC_DIR, 'ui'), join(PUBLIC_DIR, 'hdri')]) {
+    if (!existsSync(root)) continue;
+    for (const abs of listFiles(root)) {
+      const rel = relative(PUBLIC_DIR, abs).replace(/\\/gu, '/');
+      const ext = extname(abs).slice(1).toLowerCase();
+      if (ext === 'hdr' || ext === 'exr') {
+        map[rel] = `data:application/octet-stream;base64,${readFileSync(abs).toString('base64')}`;
+      } else if (ext === 'uikitml') {
+        const rewritten = readFileSync(abs, 'utf8').replace(
+          /src="(ui\/icons\/[^"?]+)(?:\?[^"]*)?"/gu,
+          (full, ref: string) => {
+            const iconAbs = join(PUBLIC_DIR, ref);
+            if (!existsSync(iconAbs)) return full;
+            return `src="${svgDataUrl(readFileSync(iconAbs, 'utf8'))}"`;
+          },
+        );
+        map[rel] = textDataUrl('text/plain', rewritten);
+      } else if (ext === 'svg') {
+        map[rel] = svgDataUrl(readFileSync(abs, 'utf8'));
+      } else {
+        map[rel] = textDataUrl('text/plain', readFileSync(abs, 'utf8'));
+      }
     }
   }
   return map;

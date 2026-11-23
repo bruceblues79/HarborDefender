@@ -24,9 +24,10 @@ type NumberUniform = { value: number };
  * the procedural sky map, reveals it and ramps its alpha in over the dark
  * page colour; it then stays visible through the welcome screen, battle and
  * MAIN-menu returns. Its passthrough mask is gated separately: in an XR
- * session with alpha-blend passthrough it becomes the partial-immersion disc;
- * with no session (or an opaque session) the mask is off and the sphere
- * covers the whole sky.
+ * session with alpha-blend passthrough it becomes the partial-immersion disc,
+ * pinned to the world -z seaward axis so it stays over the far sea instead of
+ * following the head (it fades out as the gaze turns away); with no session
+ * (or an opaque session) the mask is off and the sphere covers the whole sky.
  */
 export class SkyDomeSystem extends createSystem({
   domes: { required: [SkyDome] },
@@ -92,8 +93,7 @@ export class SkyDomeSystem extends createSystem({
         (u.uFadeCos as NumberUniform).value = fadeCos;
         (u.uEdgeNoise as NumberUniform).value = Number(entity.getValue(SkyDome, 'edgeNoise'));
         (u.uNoiseScale as NumberUniform).value = Number(entity.getValue(SkyDome, 'noiseScale'));
-        (u.uAxisY as NumberUniform).value = Math.sin(pitch);
-        (u.uAxisZ as NumberUniform).value = -Math.cos(pitch);
+        (u.uPitch as NumberUniform).value = pitch;
         (u.uIntensity as NumberUniform).value = Number(
           entity.getValue(SkyDome, 'skyIntensity'),
         );

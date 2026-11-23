@@ -432,10 +432,10 @@ export class AudioSystem extends createSystem({
   flashes: { required: [HitFlash] },
   bursts: { required: [DieBurst] },
   splashes: { required: [SplashFade, WakeSource] },
+  repairing: { required: [Repairing] },
   lasers: { required: [LaserCycle] },
   chiefs: { required: [IslewrathChief] },
   deathLights: { required: [ChiefDeathLight] },
-  repairing: { required: [Repairing] },
   lostCores: { required: [HitCore, Destroyed] },
   pressed: { required: [Pressed] },
 }) {
@@ -497,10 +497,9 @@ export class AudioSystem extends createSystem({
       gameAudio.play('ui-click');
     });
 
-    // 维修是一次点击触发的一次性音效：进入 Repairing 时敲一下并自然衰减，
-    // 维修持续期间不再重复播放。
-    this.queries.repairing.subscribe('qualify', (unit: Entity) => {
-      this.playAt(unit, 'repair', 1);
+    // 开启维修时在通用 ui-click 之外再叠一记确认音；停止维修不响。
+    this.queries.repairing.subscribe('qualify', () => {
+      gameAudio.play('repair-start');
     });
 
     this.queries.started.subscribe('qualify', () => gameAudio.play('wave-horn'));

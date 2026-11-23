@@ -16,6 +16,7 @@ import { BuildPanelSystem } from './build-panel-system.js';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
 import { CannonAimSystem } from './cannon-aim-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
+import { CannonRecoilSystem } from './cannon-recoil-system.js';
 import { ChiefDeathLightFxSystem } from './chief-death-light-fx-system.js';
 import { ChiefDeathLightSystem } from './chief-death-light-system.js';
 import { Billboard } from './components.js';
@@ -32,6 +33,7 @@ import { LaserCycleSystem } from './laser-cycle-system.js';
 import { LaserFxSystem } from './laser-fx-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
 import { MenuSystem } from './menu-system.js';
+import { MuzzleFlashSystem } from './muzzle-flash-system.js';
 import { OceanSystem } from './ocean-system.js';
 import { PanelScaleSystem } from './panel-scale-system.js';
 import { PirateFireSystem } from './pirate-fire-system.js';
@@ -128,6 +130,9 @@ World.create(
   // is registered second and its live hasComponent guard keeps the two from
   // ever handing out the same shell in a frame.
   world.registerSystem(CannonFireSystem, { priority: 11 });
+  // Barrel recoil is presentation only: after the fire tier, so this frame's
+  // kick is integrated straight away.
+  world.registerSystem(CannonRecoilSystem, { priority: 15 });
   world.registerSystem(PirateFireSystem, { priority: 11 });
   // Free gun pipeline: the independent targeting system rolls each gun's
   // LockTarget slot (registered first so a slot cleared by a shot this frame
@@ -157,6 +162,7 @@ World.create(
   world.registerSystem(BallisticSystem, { priority: 13 });
   world.registerSystem(ShellHitSystem, { priority: 14 });
   world.registerSystem(HitFlashSystem, { priority: 15 });
+  world.registerSystem(MuzzleFlashSystem, { priority: 15 });
   world.registerSystem(SparkBurstSystem, { priority: 15 });
   world.registerSystem(WreckFireSystem, { priority: 15 });
   world.registerSystem(DieBurstSystem, { priority: 15 });
