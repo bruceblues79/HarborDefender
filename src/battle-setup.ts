@@ -6,11 +6,9 @@
  */
 
 import {
-  AssetManager,
   Box3,
   EquirectangularReflectionMapping,
   HalfFloatType,
-  LinearFilter,
   Mesh,
   Object3D,
   PMREMGenerator,
@@ -29,7 +27,6 @@ import type {
   WebGLRenderTarget,
 } from '@iwsdk/core';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
-import { publicAssetUrl } from './assets.js';
 import {
   CannonAim,
   CannonFire,
@@ -68,7 +65,7 @@ import { createPirateChief } from './scene-assets/pirate-chief.scene-asset.js';
 import { createPirateShip } from './scene-assets/pirate-ship.scene-asset.js';
 import { setChiefPrototype } from './boss-chief-system.js';
 import { LevelWaveSystem } from './level-wave-system.js';
-import { resolveSunLight } from './procedural-sky-texture.js';
+import { createSkyTexture, resolveSunLight } from './procedural-sky-texture.js';
 import { SkyDomeSystem } from './sky-dome-system.js';
 import { StartPanelSystem } from './start-panel-system.js';
 import { CannonFireSystem } from './cannon-fire-system.js';
@@ -80,11 +77,10 @@ import { SplashSystem } from './splash-system.js';
 import { WreckFireSystem } from './wreck-fire-system.js';
 
 /**
- * HDRI 的太阳方向（世界空间，指向太阳），由 2K 全景最亮区域质心算出。
- * 天空、水面反光和场景主光都对齐到这一方向，三者才不会互相矛盾。
+ * 太阳方向（世界空间，指向太阳）。程序化天空的照明常量全部按这个方向标定，
+ * 天空、水面反光和场景主光都对齐到它，三者才不会互相矛盾。
  */
-const HDRI_SUN_DIRECTION = new Vector3(0.5543, 0.7418, 0.3775).normalize();
-const HDRI_SKY_URL = 'hdri/kloofendal_48d_partly_cloudy_puresky_2k.hdr';
+const SUN_DIRECTION = new Vector3(0.5543, 0.7418, 0.3775).normalize();
 
 /**
  * Re-bake the harbor wall's vertex colors into per-face stone mottle. The
@@ -438,28 +434,24 @@ export function bootWelcomeScene(world: World): void {
       // Let the loading panel paint one frame before the sky bake runs.
       await nextFrame(world);
 
-      // Equirect HDR sky. AssetManager keeps the texture in linear half-float,
-      // so the dome, the reflection cubemap and PMREM all receive the same
-      // unbounded values the reference HDRI carries.
-      // The single-file preview inlines the HDR as a data: URL, but the loader
-      // validates the URL suffix; wrap it in a blob URL ending in .hdr.
-      let skyTexture: Texture;
-      const skyUrl = publicAssetUrl(HDRI_SKY_URL);
-      if (skyUrl.startsWith('data:')) {
-        const blobUrl = URL.createObjectURL(await (await fetch(skyUrl)).blob());
-        try {
-          skyTexture = await AssetManager.loadHDRTexture(`${blobUrl}#.hdr`);
-        } finally {
-          URL.revokeObjectURL(blobUrl);
-        }
-      } else {
-        skyTexture = await AssetManager.loadHDRTexture(skyUrl);
+      // 程序化天空的照明常量全部按 SUN_DIRECTION 标定。先把主光挪到这个方位
+      // （沿用场景里的距离，阴影相机的包围盒才继续有效），阴影和水面反光才与天空一致。
+      const sunLight = world.getSceneObject('sun-light') as DirectionalLight | null;
+      if (sunLight?.isDirectionalLight) {
+        const distance = sunLight.position.length() || 50;
+        sunLight.position.copy(SUN_DIRECTION).multiplyScalar(distance);
+        sunLight.target.position.set(0, 0, 0);
+        sunLight.target.updateMatrixWorld();
+        sunLight.updateMatrixWorld();
       }
-      skyTexture.mapping = EquirectangularReflectionMapping;
-      skyTexture.minFilter = LinearFilter;
-      skyTexture.magFilter = LinearFilter;
-      skyTexture.generateMipmaps = false;
-      skyTexture.needsUpdate = true;
+
+      // 程序化 equirect 天空：线性半浮点、数值无上限（与它取代的 HDRI 一致），
+      // 天幕、反射 cubemap 和 PMREM 共用同一张。
+      const skyTexture = await createSkyTexture([
+        SUN_DIRECTION.x,
+        SUN_DIRECTION.y,
+        SUN_DIRECTION.z,
+      ]);
 
       // Equirect sky -> cubemap: avoids pole stretching in reflections.
       const cubeRT = new WebGLCubeRenderTarget(256, { type: HalfFloatType });
@@ -477,20 +469,8 @@ export function bootWelcomeScene(world: World): void {
 
       const sun = resolveSunLight(world);
 
-      // The HDRI's sun sits on the +X/+Z side. Move the directional light to
-      // the same bearing (reusing its scene distance so the shadow camera
-      // bounds stay valid) so shadows and the water glitter agree with it.
-      const sunLight = world.getSceneObject('sun-light') as DirectionalLight | null;
-      if (sunLight?.isDirectionalLight) {
-        const distance = sunLight.position.length() || 50;
-        sunLight.position.copy(HDRI_SUN_DIRECTION).multiplyScalar(distance);
-        sunLight.target.position.set(0, 0, 0);
-        sunLight.target.updateMatrixWorld();
-        sunLight.updateMatrixWorld();
-      }
-
       const oceanMaterial = createOceanMaterial({
-        sunDirection: [HDRI_SUN_DIRECTION.x, HDRI_SUN_DIRECTION.y, HDRI_SUN_DIRECTION.z],
+        sunDirection: [SUN_DIRECTION.x, SUN_DIRECTION.y, SUN_DIRECTION.z],
         sunColor: sun.color,
         sunIntensity: sun.intensity * 0.2,
       });
