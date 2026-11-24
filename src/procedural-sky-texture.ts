@@ -104,8 +104,9 @@ export async function createSkyTexture(sunDir: SkySunDirection): Promise<Texture
   }
 
   const half = new Uint16Array(pixels.length);
+  // HalfFloat 上限 65504，日盘核心（G≈66235）略超，先夹住再转，否则 toHalfFloat 每个通道报一次越界。
   for (let i = 0; i < pixels.length; i++) {
-    half[i] = DataUtils.toHalfFloat(pixels[i]);
+    half[i] = DataUtils.toHalfFloat(Math.min(pixels[i], 65504));
   }
 
   const texture = new DataTexture(
