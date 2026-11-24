@@ -124,6 +124,7 @@ const CLOUD_DENSITY = 10;
 const CLOUD_EXTINCTION = 27;
 const CLOUD_STEP = 0.1;
 const CLOUD_MAX_STEPS = 8;
+const CLOUD_FEATHER_SIGMA = [0.5, 1]; // 云层羽化的高斯半径（贴图像素）：[近处的云, 远处的云]，按云的进入距离在 CLOUD_NEAR..CLOUD_FAR 间平滑过渡
 const CLOUD_NEAR = 4; // 细节瓦片开始淡出的距离
 const CLOUD_FAR = 12; // 超过这个进入距离，云层按均匀介质处理
 const CLOUD_SHEAR = [0.15, 0.067]; // 云顶相对云底的平移，给云体一点体积感
@@ -273,6 +274,104 @@ function sampleTile(tile: Float32Array, px: number, pz: number): number {
   return top + (bottom - top) * ty;
 }
 
+/**
+ * 羽化核（高斯，已归一化，取到 ±2σ）：模糊的是云层本身，
+ * 不留贴图像素的锯齿。
+ */
+function featherKernel(sigma: number): Float32Array {
+  const reach = Math.ceil(2 * sigma);
+  const kernel = new Float32Array(2 * reach + 1);
+  let sum = 0;
+  for (let k = -reach; k <= reach; k++) {
+    const weight = Math.exp((-k * k) / (2 * sigma * sigma));
+    kernel[k + reach] = weight;
+    sum += weight;
+  }
+  for (let k = 0; k < kernel.length; k++) kernel[k] /= sum;
+  return kernel;
+}
+
+/**
+ * 云层羽化：对预乘颜色与不透明度做可分离的高斯模糊。
+ * 半径按像素存的云进入距离取：近处的云边界干脆，远处的云稍柔；没有云的像素按远处处理。
+ * 低分辨率生成（标定）时一个像素顶 scale 个，半径同比例放大，标定结果才与正式生成一致。
+ */
+function featherLayer(layer: Float32Array, layerDist: Float32Array, width: number, half: number, scale: number): void {
+  const kernels = new Map<number, Float32Array>();
+  const sigmaOf = new Float32Array(width * half);
+  for (let i = 0; i < sigmaOf.length; i++) {
+    sigmaOf[i] =
+      lerp(CLOUD_FEATHER_SIGMA[0], CLOUD_FEATHER_SIGMA[1], smoothRange(CLOUD_NEAR, CLOUD_FAR, layerDist[i])) * scale;
+  }
+  const kernelOf = (i: number): Float32Array => {
+    const key = Math.round(sigmaOf[i] * 8);
+    let kernel = kernels.get(key);
+    if (!kernel) {
+      kernel = featherKernel(key / 8);
+      kernels.set(key, kernel);
+    }
+    return kernel;
+  };
+  const line = new Float32Array(Math.max(width, half) * 4);
+  // 横向：方位循环
+  for (let row = 0; row < half; row++) {
+    const base = row * width * 4;
+    for (let col = 0; col < width; col++) {
+      const kernel = kernelOf(row * width + col);
+      const taps = kernel.length;
+      const reach = taps >> 1;
+      let sumR = 0;
+      let sumG = 0;
+      let sumB = 0;
+      let sumA = 0;
+      for (let k = 0; k < taps; k++) {
+        const weight = kernel[k];
+        const i = base + (((col + k - reach + width) % width) * 4);
+        sumR += weight * layer[i];
+        sumG += weight * layer[i + 1];
+        sumB += weight * layer[i + 2];
+        sumA += weight * layer[i + 3];
+      }
+      line[col * 4] = sumR;
+      line[col * 4 + 1] = sumG;
+      line[col * 4 + 2] = sumB;
+      line[col * 4 + 3] = sumA;
+    }
+    layer.set(line.subarray(0, width * 4), base);
+  }
+  // 纵向：天顶与地平线处钳位，不与下半球混合
+  for (let col = 0; col < width; col++) {
+    for (let row = 0; row < half; row++) {
+      const kernel = kernelOf(row * width + col);
+      const taps = kernel.length;
+      const reach = taps >> 1;
+      let sumR = 0;
+      let sumG = 0;
+      let sumB = 0;
+      let sumA = 0;
+      for (let k = 0; k < taps; k++) {
+        const weight = kernel[k];
+        const i = (Math.min(half - 1, Math.max(0, row + k - reach)) * width + col) * 4;
+        sumR += weight * layer[i];
+        sumG += weight * layer[i + 1];
+        sumB += weight * layer[i + 2];
+        sumA += weight * layer[i + 3];
+      }
+      line[row * 4] = sumR;
+      line[row * 4 + 1] = sumG;
+      line[row * 4 + 2] = sumB;
+      line[row * 4 + 3] = sumA;
+    }
+    for (let row = 0; row < half; row++) {
+      const i = (row * width + col) * 4;
+      layer[i] = line[row * 4];
+      layer[i + 1] = line[row * 4 + 1];
+      layer[i + 2] = line[row * 4 + 2];
+      layer[i + 3] = line[row * 4 + 3];
+    }
+  }
+}
+
 /** 按方向生成 equirect 像素：RGBA Float32，行 0 = 天顶。 */
 export function generateSkyPixels(
   sunDir: SkySunDirection,
@@ -284,6 +383,8 @@ export function generateSkyPixels(
   const chart = options.cloudBias ?? CLOUD_BIAS;
   const lightChart = options.cloudLight ?? CLOUD_LIGHT;
   const pixels = new Float32Array(width * height * 4);
+  const layer = new Float32Array(width * half * 4); // 云层：预乘颜色 + 不透明度，羽化后再叠回天空
+  const layerDist = new Float32Array(width * half).fill(Infinity); // 各像素云的进入距离，没有云的像素按远处处理
   const { low, high } = buildTiles();
   const sunLength = Math.hypot(...sunDir);
   const sx = sunDir[0] / sunLength;
@@ -394,10 +495,8 @@ export function generateSkyPixels(
         let cloudG = 0;
         let cloudB = 0;
         if (entryDistance < CLOUD_FAR) {
-          const hash = Math.imul(col, 73856093) ^ Math.imul(row, 19349663);
-          const jitter = ((hash ^ (hash >>> 13)) >>> 0) % 1024 / 1024;
           for (let s = 0; s < steps; s++) {
-            const t = entryDistance + (s + jitter) * stepLength;
+            const t = entryDistance + (s + 0.5) * stepLength;
             const px = x * t;
             const pz = z * t;
             const h = (t * dy - CLOUD_BASE) / CLOUD_THICKNESS;
@@ -457,9 +556,13 @@ export function generateSkyPixels(
             transmit -= weight;
           }
         }
-        r = cloudR + transmit * r;
-        g = cloudG + transmit * g;
-        b = cloudB + transmit * b;
+        // 云先存进独立图层（预乘颜色 + 不透明度），整层羽化后再叠回天空。
+        const lo = (row * width + col) * 4;
+        layer[lo] = cloudR;
+        layer[lo + 1] = cloudG;
+        layer[lo + 2] = cloudB;
+        layer[lo + 3] = 1 - transmit;
+        layerDist[row * width + col] = entryDistance;
       }
 
       // 太阳：θ<GLARE_END 内取实测径向剖面与天空的较亮者（剖面的环带均值本身含天空）；
@@ -503,6 +606,20 @@ export function generateSkyPixels(
       pixels[o + 1] = g;
       pixels[o + 2] = b;
       pixels[o + 3] = 1;
+    }
+  }
+
+  // 羽化半径按云的物理距离给：近处干脆、远处稍柔。
+  featherLayer(layer, layerDist, width, half, options.scale ?? 1);
+  // 云层叠回天空：云的颜色已预乘，天空按剩余透射率补上。太阳近旁没有算云，不受影响。
+  for (let row = 0; row < half; row++) {
+    for (let col = 0; col < width; col++) {
+      const o = (row * width + col) * 4;
+      const opacity = layer[o + 3];
+      if (opacity <= 0) continue;
+      pixels[o] = layer[o] + (1 - opacity) * pixels[o];
+      pixels[o + 1] = layer[o + 1] + (1 - opacity) * pixels[o + 1];
+      pixels[o + 2] = layer[o + 2] + (1 - opacity) * pixels[o + 2];
     }
   }
 
