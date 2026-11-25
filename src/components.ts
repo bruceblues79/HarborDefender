@@ -317,6 +317,12 @@ export const ShellFaction = createComponent('ShellFaction', {
   faction: { type: 'String', default: 'defender' },
   /** Attacker unit id for the DAMAGE_MATRIX lookup ('cannon', 'bombardier'…). */
   unitType: { type: 'String', default: '' },
+  /**
+   * Per-shot multiplier over the DAMAGE_MATRIX row at hit time. The firing
+   * gun stamps its own value at launch; boss turret vengeance
+   * (BossVengeanceSystem) is the only non-1 writer.
+   */
+  damageMul: { type: 'Float32', default: 1 },
 });
 
 /**
@@ -617,6 +623,13 @@ export const GunCycle = createComponent('GunCycle', {
   shellSpeed: { type: 'Float32', default: 8 },
   /** Damage-matrix row key stamped onto every shell this gun fires. */
   shellUnitType: { type: 'String', default: '' },
+  /**
+   * Per-shot multiplier stamped onto every shell this gun fires
+   * (ShellFaction.damageMul), applied on top of the matrix row at hit time.
+   * Boss turret vengeance raises it as sibling turrets die
+   * (BossVengeanceSystem); every other gun keeps the 1 default.
+   */
+  damageMul: { type: 'Float32', default: 1 },
   /** Entity index of the hull carrying this gun (the berth gate). */
   carrierIndex: { type: 'Int32', default: -1 },
   /** When true the cycle only ticks once the carrier's state is 'stopped'. */

@@ -979,6 +979,24 @@ export const BOSS = {
   openFireDelay: 0.8,
   openFireStagger: 0.45,
   /**
+   * Gun-turret seat count (gun_t1..gun_t4, see LevelWaveSystem's parts
+   * assembly table). The vengeance steps below divide the fight by it.
+   */
+  turretCount: 4,
+  /**
+   * Turret-loss vengeance (2026-11-24): every gun turret destroyed raises
+   * the surviving guns' per-shot damage one step — matrix row ×
+   * (1 + step × losses), stamped onto shells as ShellFaction.damageMul —
+   * so the fight tightens instead of softening as the guns die.
+   */
+  turretVengeanceStep: 0.2,
+  /**
+   * Lone-laser tempo: once every gun turret is wreckage (laser still
+   * afloat), the laser's cooldown pause runs at this ratio of
+   * laserCooldownSec (5 s → 3 s) from its next cycle.
+   */
+  laserAloneCooldownRatio: 0.6,
+  /**
    * Per-shot jitter reuses COMBAT.fireJitterMin/Max — one jitter truth for
    * every gun in the game, boss included.
    */

@@ -12,6 +12,7 @@ import { BallisticSystem } from './ballistic-system.js';
 import { BillboardSystem } from './billboard-system.js';
 import { bootWelcomeScene, startBattle } from './battle-setup.js';
 import { BossChiefSystem } from './boss-chief-system.js';
+import { BossVengeanceSystem } from './boss-vengeance-system.js';
 import { BuildPanelSystem } from './build-panel-system.js';
 import { CameraOrbitSystem } from './camera-orbit-system.js';
 import { CannonAimSystem } from './cannon-aim-system.js';
@@ -153,6 +154,7 @@ World.create(
   // Health before ShellHitSystem's death sweep (14) picks kills up the same
   // frame, and the fx rig renders from the frozen state after it.
   world.registerSystem(BossChiefSystem, { priority: 11 });
+  world.registerSystem(BossVengeanceSystem, { priority: 11 });
   world.registerSystem(ChiefDeathLightSystem, { priority: 13 });
   world.registerSystem(ChiefDeathLightFxSystem, { priority: 15 });
   // SpawnFade materialises hulls after the movement tier; ShellHitSystem

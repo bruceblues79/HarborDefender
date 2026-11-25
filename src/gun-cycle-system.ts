@@ -262,6 +262,7 @@ export class GunCycleSystem extends createSystem({
     shell.addComponent(ShellFaction, {
       faction: 'attacker',
       unitType: String(gun.getValue(GunCycle, 'shellUnitType')),
+      damageMul: Number(gun.getValue(GunCycle, 'damageMul')),
     });
     spawnMuzzleFlash(
       this.queries.freeMuzzleFlashes.entities,

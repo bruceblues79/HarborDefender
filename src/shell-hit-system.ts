@@ -217,11 +217,14 @@ export class ShellHitSystem extends createSystem({
               : COMBAT.hitFlashShipRadius / COMBAT.hitFlashRadius,
           );
           // Damage is a matrix lookup, not a faction flat rate: the shell's
-          // attacker unit type x the core's unit type (unknown pair -> 0).
+          // attacker unit type x the core's unit type (unknown pair -> 0),
+          // scaled by the firing gun's own multiplier (boss turret
+          // vengeance; the 1 default leaves every other shell untouched).
           let damage =
             DAMAGE_MATRIX[
               `${String(shell.getValue(ShellFaction, 'unitType'))}->${String(core.getValue(HitCore, 'unitType'))}`
             ] ?? 0;
+          damage *= Number(shell.getValue(ShellFaction, 'damageMul'));
           this.hitDamages.push(damage);
           break;
         }
